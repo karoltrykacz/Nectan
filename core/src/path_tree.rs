@@ -188,37 +188,6 @@ impl CompressedPathTree {
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
-    #[test]
-    /// Invalid utf8 paths
-    fn invalid_utf8() {
-        use std::ffi::OsString;
-        use std::os::unix::ffi::OsStringExt;
-
-        // Invalid utf8
-        let bad = OsString::from_vec(vec![0x66, 0x6f, 0xff, 0x6f]);
-        let bad_path = PathBuf::from("/a").join(&bad);
-
-        let t = PathTree::build(&[bad_path.clone()]);
-
-        assert!(bad_path.to_str().is_none());
-
-        let bytes = t.serialize();
-        assert!(!bytes.is_empty());
-
-        let compressed = t.compress();
-        let restored = compressed.decompress().unwrap();
-
-        let kids = restored.children_of(&PathBuf::from("/a"));
-        assert_eq!(kids.len(), 1);
-        let restored_path = &kids[0].0;
-
-        // Lost data after lossy conversion. Not equal after round trip
-        assert_ne!(restored_path, &bad_path);
-
-        let s = restored_path.to_string_lossy();
-        assert!(s.contains('\u{FFFD}'));
-    }
     #[test]
     fn tree_single_path() {
         let paths = vec![PathBuf::from("/a/b/c")];
@@ -357,5 +326,37 @@ mod tests {
             .map(|t| t.0)
             .collect();
         assert_eq!(children, vec![PathBuf::from("/a/b")]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// Invalid utf8 paths
+    fn invalid_utf8() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        // Invalid utf8
+        let bad = OsString::from_vec(vec![0x66, 0x6f, 0xff, 0x6f]);
+        let bad_path = PathBuf::from("/a").join(&bad);
+
+        let t = PathTree::build(&[bad_path.clone()]);
+
+        assert!(bad_path.to_str().is_none());
+
+        let bytes = t.serialize();
+        assert!(!bytes.is_empty());
+
+        let compressed = t.compress();
+        let restored = compressed.decompress().unwrap();
+
+        let kids = restored.children_of(&PathBuf::from("/a"));
+        assert_eq!(kids.len(), 1);
+        let restored_path = &kids[0].0;
+
+        // Lost data after lossy conversion. Not equal after round trip
+        assert_ne!(restored_path, &bad_path);
+
+        let s = restored_path.to_string_lossy();
+        assert!(s.contains('\u{FFFD}'));
     }
 }

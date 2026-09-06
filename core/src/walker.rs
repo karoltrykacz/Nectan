@@ -1,4 +1,5 @@
 use crate::path_tree::{CompressedPathTree, PathTree};
+use futures::future::Join;
 use ignore::WalkBuilder;
 use std::{
     path::PathBuf,
@@ -7,6 +8,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{Sender, channel},
     },
+    thread::JoinHandle,
     time::Instant,
 };
 
@@ -28,9 +30,9 @@ pub struct WalkControllerInner {
 }
 
 #[derive(Clone)]
-pub struct WalkController(Arc<WalkControllerInner>);
+pub struct Walker(Arc<WalkControllerInner>);
 
-impl WalkController {
+impl Walker {
     pub fn finished(&self) -> bool {
         self.finished.load(Ordering::Relaxed)
     }
@@ -56,7 +58,7 @@ impl WalkController {
     }
 
     pub fn new(paths: Vec<PathBuf>, ignore_hidden_files: bool, respect_gitignore: bool) -> Self {
-        WalkController(Arc::new(WalkControllerInner {
+        Walker(Arc::new(WalkControllerInner {
             ignore_hidden_files,
             // respect_gitignore,
             total_entries: AtomicU64::new(0),
@@ -67,9 +69,77 @@ impl WalkController {
             paths,
         }))
     }
+
+    pub fn walk(&self) -> JoinHandle<()> {
+        let c = self.clone();
+        std::thread::spawn(move || {
+            let start = Instant::now();
+            let mut tree = PathTree::new();
+            for p in c.paths.iter() {
+                let (tx, rx) = channel::<PathTree>();
+                let walker = WalkBuilder::new(p)
+                    .hidden(c.ignore_hidden_files)
+                    // .git_ignore(c.respect_gitignore)
+                    // .git_global(c.respect_gitignore)
+                    // .git_exclude(c.i)
+                    .build_parallel();
+
+                walker.run(|| {
+                    let c = c.clone();
+                    let mut flush = Flush {
+                        tx: tx.clone(),
+                        tree: PathTree::new(),
+                    };
+                    Box::new(move |r| {
+                        if let Ok(entry) = r
+                            && let Ok(meta) = entry.metadata()
+                        {
+                            let path = entry.into_path();
+                            let is_file = meta.is_file();
+
+                            flush.tree.insert(&path, is_file);
+                            c.total_entries.fetch_add(1, Ordering::Relaxed);
+
+                            #[cfg(unix)]
+                            {
+                                c.total_size.fetch_add(meta.size(), Ordering::Relaxed);
+                            }
+
+                            #[cfg(not(unix))]
+                            {
+                                c.total_size.fetch_add(meta.len(), Ordering::Relaxed);
+                            }
+                        }
+                        if c.should_abort() {
+                            return ignore::WalkState::Quit;
+                        }
+                        ignore::WalkState::Continue
+                    })
+                });
+                if c.should_abort() {
+                    return;
+                }
+                drop(tx);
+                tree.merge(PathTree::merge_all(rx.iter()));
+            }
+
+            let compress = Instant::now();
+            let compressed = tree.compress();
+            *c.tree.lock().unwrap() = Some(compressed);
+            let compress_time = compress.elapsed();
+
+            tracing::trace!(
+                "Walker finished [{:?}]. Compressed in [{:?}]",
+                start.elapsed(),
+                compress_time
+            );
+
+            c.finished.store(true, Ordering::Release);
+        })
+    }
 }
 
-impl std::ops::Deref for WalkController {
+impl std::ops::Deref for Walker {
     type Target = WalkControllerInner;
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -84,72 +154,6 @@ impl Drop for Flush {
     fn drop(&mut self) {
         let _ = self.tx.send(std::mem::take(&mut self.tree));
     }
-}
-
-pub fn start_walker(c: WalkController) {
-    std::thread::spawn(move || {
-        let start = Instant::now();
-        let mut tree = PathTree::new();
-        for p in c.paths.iter() {
-            let (tx, rx) = channel::<PathTree>();
-            let walker = WalkBuilder::new(p)
-                .hidden(c.ignore_hidden_files)
-                // .git_ignore(c.respect_gitignore)
-                // .git_global(c.respect_gitignore)
-                // .git_exclude(c.respect_gitignore)
-                .build_parallel();
-
-            walker.run(|| {
-                let c = c.clone();
-                let mut flush = Flush {
-                    tx: tx.clone(),
-                    tree: PathTree::new(),
-                };
-                Box::new(move |r| {
-                    if let Ok(entry) = r
-                        && let Ok(meta) = entry.metadata()
-                    {
-                        let path = entry.into_path();
-                        let is_file = meta.is_file();
-
-                        flush.tree.insert(&path, is_file);
-                        c.total_entries.fetch_add(1, Ordering::Relaxed);
-
-                        #[cfg(unix)]
-                        {
-                            c.total_size.fetch_add(meta.size(), Ordering::Relaxed);
-                        }
-
-                        #[cfg(not(unix))]
-                        {
-                            c.total_size.fetch_add(meta.len(), Ordering::Relaxed);
-                        }
-                    }
-                    if c.should_abort() {
-                        return ignore::WalkState::Quit;
-                    }
-                    ignore::WalkState::Continue
-                })
-            });
-            if c.should_abort() {
-                return;
-            }
-            drop(tx);
-            tree.merge(PathTree::merge_all(rx.iter()));
-        }
-
-        let compress = Instant::now();
-        let compressed = tree.compress();
-        *c.tree.lock().unwrap() = Some(compressed);
-        let compress_time = compress.elapsed();
-
-        tracing::trace!(
-            "Walker finished [{:?}]. Compressed in [{:?}]",
-            start.elapsed(),
-            compress_time
-        );
-        c.finished.store(true, Ordering::Release);
-    });
 }
 
 #[cfg(test)]
