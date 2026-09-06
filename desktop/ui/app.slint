@@ -1,0 +1,218 @@
+import { Theme } from "theme.slint";
+import { IconButton, SvgIcon } from "elements.slint";
+
+
+export global WindowBridge {
+    in-out property <bool> sidebar-visible: true;
+    in-out property <length> sidebar-width: 200px;
+
+    callback drag-window();
+
+    callback minimize-window();
+    callback maximize-window();
+    callback close-window();
+}
+
+component TitleBar inherits Rectangle {
+
+    height: 40px;
+    background: Theme.colors.third-col;
+    TouchArea {
+        moved => {
+            WindowBridge.drag-window();
+        }
+        pointer-event(event) => {}
+    }
+
+    HorizontalLayout {
+        Rectangle {
+            width: 42px;
+            height: 42px;
+
+            IconButton {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+
+                width: 28px;
+                height: 28px;
+
+                SvgIcon {
+                    source: @image-url("icons/sidebar.svg");
+                    fg: Theme.colors.third-font;
+                    size: 18px;
+                }
+
+                clicked => { WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible; }
+            }
+        }
+
+        Rectangle {
+            width: WindowBridge.sidebar-visible ? WindowBridge.sidebar-width : 0;
+            animate width {
+                duration: 75ms;
+                easing: ease;
+            }
+        }
+
+        Rectangle { }
+
+        HorizontalLayout {
+            IconButton {
+                width: 40px;
+                height: 40px;
+                round: false;
+                transform: false;
+                SvgIcon {
+                    source: @image-url("icons/minimize.svg");
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    size: 18px;
+                }
+
+                clicked => {
+                    debug("minimize-window");
+                    WindowBridge.minimize-window();
+                }
+            }
+
+            IconButton {
+                width: 40px;
+                height: 40px;
+                round: false;
+                transform: false;
+                SvgIcon {
+                    source: @image-url("icons/maximize.svg");
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    size: 18px;
+                }
+
+                clicked => {
+                    WindowBridge.maximize-window();
+                }
+            }
+
+            IconButton {
+                width: 40px;
+                height: 40px;
+                round: false;
+                transform: false;
+                SvgIcon {
+                    source: @image-url("icons/close.svg");
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    size: 18px;
+                }
+
+                clicked => {
+                    WindowBridge.close-window();
+                }
+            }
+        }
+    }
+}
+
+
+component MainBody inherits VerticalLayout {
+
+    height: 100%;
+    width: 100%;
+
+    TitleBar { }
+	// MainBody
+    HorizontalLayout {
+        vertical-stretch: 1;
+        Rectangle {
+            width: 40px;
+            background: WindowBridge.sidebar-visible ? Theme.colors.secondary-col : Theme.colors.primary-col;
+
+            animate background {
+                duration: 75ms;
+                easing: ease;
+            }
+
+            VerticalLayout {
+                padding-top: 8px;
+                padding-bottom: 8px;
+                cross-axis-alignment: center;
+
+                Rectangle {
+                    height: 8px;
+                }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: @image-url("icons/tranfsers.svg");
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 18px;
+                    }
+
+                    clicked => {
+                        debug("Opening transfers");
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: @image-url("icons/settings.svg");
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 18px;
+                    }
+
+                    clicked => {
+                        debug("Open settings.");
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            background: Theme.colors.third-col;
+        }
+
+        // Sidebar
+        Rectangle {
+            width: WindowBridge.sidebar-visible ? WindowBridge.sidebar-width : 0px;
+            clip: true;
+            background: Theme.colors.secondary-col;
+            border-width: 1px;
+            border-color: Theme.colors.secondary-col;
+
+            animate width {
+                duration: 75ms;
+                easing: ease;
+            }
+        }
+    }
+}
+
+export component NectanWindow inherits Window {
+    no-frame: true;
+    background: transparent;
+    title: "Nectan";
+    preferred-width: 1128px;
+    preferred-height: 720px;
+    min-width: 400px;
+    min-height: 200px;
+    max-width: 20050px;
+    max-height: 20050px;
+    default-font-family: Theme.font-body;
+    resize-border-width: 8px;
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.colors.primary-col;
+        border-width: 1px;
+        border-color: #dddddd1b;
+        border-radius: 8px;
+        clip: true;
+        MainBody { }
+    }
+}

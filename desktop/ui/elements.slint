@@ -1,0 +1,54 @@
+import { Theme } from "theme.slint";
+
+export component SvgIcon inherits Image {
+    in property <color> fg: Theme.colors.primary-font;
+    in property <length> size: 20px;
+    colorize: root.fg;
+    width: root.size;
+    height: root.size;
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> text;
+    in property <color> fg: Theme.colors.third-font;
+    in property <bool> round: true;
+    in property <bool> transform: true;
+    in property <color> inner-bg: red;
+    out property <bool> hovered: area.has-hover;
+    out property <bool> pressed: area.pressed;
+    callback clicked <=> area.clicked;
+
+    inner := Rectangle {
+        width: root.width;
+        height: root.height;
+        border-radius: root.round ? 4px : 0px;
+        background: root.inner-bg != red ? root.inner-bg : (area.pressed ? Theme.colors.hover-col : (area.has-hover ? Theme.colors.hover-col : transparent));
+
+        animate width, height, y {
+            duration: 80ms;
+            easing: ease-out;
+        }
+
+        states [
+            pressed when area.pressed: {
+                width: root.transform ? root.width * 0.983 : root.width;
+                height: root.transform ? root.height * 0.983 : root.height;
+                y: 1.5px;
+            }
+        ]
+
+        content := Rectangle {
+
+            @children
+
+            animate width, height {
+                duration: 80ms;
+                easing: ease-out;
+            }
+        }
+    }
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+    }
+}

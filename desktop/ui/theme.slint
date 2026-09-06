@@ -1,0 +1,77 @@
+import "./fonts/Inter_18pt-Black.ttf";
+import "./fonts/Inter_18pt-Bold.ttf";
+import "./fonts/Inter_18pt-ExtraBold.ttf";
+import "./fonts/Inter_18pt-ExtraLight.ttf";
+import "./fonts/Inter_18pt-Light.ttf";
+import "./fonts/Inter_18pt-Medium.ttf";
+import "./fonts/Inter_18pt-Regular.ttf";
+import "./fonts/Inter_18pt-SemiBold.ttf";
+import "./fonts/Inter_18pt-Thin.ttf";
+
+import "./fonts/Rubik-Black.ttf";
+import "./fonts/Rubik-Bold.ttf";
+import "./fonts/Rubik-ExtraBold.ttf";
+import "./fonts/Rubik-Light.ttf";
+import "./fonts/Rubik-Medium.ttf";
+import "./fonts/Rubik-Regular.ttf";
+import "./fonts/Rubik-SemiBold.ttf";
+import "./fonts/RubikMono.ttf";
+
+export struct ThemeColors {
+    primary-col: color,
+    secondary-col: color,
+    third-col: color,
+    primary-font: color,
+    secondary-font: color,
+    third-font: color,
+    hover-col: color,
+    border-col: color,
+}
+
+export global Theme {
+    in-out property <string> mode: "light";
+
+    out property <ThemeColors> dark-theme: {
+        primary-col: #1a1a1a,
+        secondary-col: #1f1f1f,
+        third-col: #272727,
+        primary-font: #ffffff,
+        secondary-font: #ccc,
+        third-font: #aaa,
+        border-col: #88888822,
+        hover-col: #ffffff27,
+    };
+
+    out property <ThemeColors> light-theme: {
+        primary-col: #f1f1f1,
+        secondary-col: #ececec,
+        third-col: #dddddd,
+        primary-font: #1a1a1a,
+        secondary-font: #333333,
+        third-font: #555555,
+        fourth-font: #888,
+        border-col: #ccc,
+        hover-col: #00000022,
+    };
+
+    out property <ThemeColors> colors: root.mode == "dark" ? root.light-theme : root.dark-theme;
+
+    out property <string> font-heading: "Rubik";
+    out property <string> font-body: "Inter";
+    out property <string> font-mono: "Rubik Mono One";
+
+    public function toggle-mode() {
+        root.mode = root.mode == "light" ? "dark" : "light";
+    }
+
+    public function set-mode(new-mode: string) {
+        root.mode = new-mode;
+    }
+
+    public pure function is-light() -> bool {
+        root.mode == "light"
+    }
+    public pure function is-dark() -> bool {
+        root.mode == "dark"
+    }
+}
