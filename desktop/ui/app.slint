@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
-import { IconButton, SvgIcon } from "elements.slint";
+import { IconButton, SvgIcon, PrimaryButton } from "elements.slint";
+import { ListView } from "std-widgets.slint";
 
 
 export global WindowBridge {
@@ -196,15 +197,163 @@ component DevicesList { }
 
 component Settings { }
 
-component GeneralModal { }
+
+component GeneralModal inherits Rectangle {
+
+    in-out property <bool> open;
+    callback on-close();
+    callback on-enter();
+
+    forward-focus: focus-scope;
+
+    focus-scope := FocusScope {
+        enabled: open;
+        visible: open;
+
+        changed enabled => {
+            if (open) {
+                self.focus();
+            }
+        }
+
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                open = false;
+                on-close();
+                return accept;
+            }
+            if (event.text == "w"
+                && (event.modifiers.control || event.modifiers.meta)) {
+                open = false;
+                on-close();
+                return accept;
+            }
+            if (event.text == Key.Return) {
+                on-enter();
+                return accept;
+            }
+            return reject;
+        }
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: #00000077;
+        }
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            enabled: open;
+            clicked => {
+                open = false;
+                on-close();
+            }
+        }
+
+        @children
+    }
+}
 
 component FoundNearbyModal { }
 
-component IncomingTransferOfferModal { }
-
 component OutcomingTransferOfferModal { }
 
-export component NectanWindow inherits Window {
+
+component FileRow inherits Rectangle {
+    in property <string> name: "";
+    height: 36px;
+    background: touch-area.has-hover ? Theme.colors.third-col : transparent;
+    touch-area := TouchArea { }
+
+    HorizontalLayout {
+        Text {
+            text: name;
+        }
+    }
+}
+
+export global IncomingTransferOfferBridge {
+    in-out property <bool> open;
+    in-out property <[string]> files;
+
+    callback reject();
+    callback accept();
+}
+
+export component IncomingTransferOfferModal inherits Rectangle {
+    GeneralModal {
+        open <=> IncomingTransferOfferBridge.open;
+
+        Rectangle {
+            width: min(512px, parent.width - 40px);
+            height: min(256px,parent.height - 40px);
+            clip: true;
+
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                HorizontalLayout {
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: "New transfer offer";
+                            font-family: Theme.font-heading;
+                            font-size: 20px;
+                            font-weight: 600;
+                            color: Theme.colors.primary-font;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 8px;
+                }
+
+                ListView {
+
+                    vertical-scrollbar-policy: as-needed;
+                    for file in IncomingTransferOfferBridge.files: FileRow {
+                        name: file;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton {
+                        text: "Reject";
+                        clicked => {
+                        }
+                    }
+
+                    Rectangle {
+                        width: 12px;
+                    }
+
+                    PrimaryButton {
+                        text: "Accept";
+                        clicked => {
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+    export component NectanWindow inherits Window {
     no-frame: true;
     background: transparent;
     title: "Nectan";
@@ -226,5 +375,7 @@ export component NectanWindow inherits Window {
         border-radius: 8px;
         clip: true;
         MainBody { }
+
+        IncomingTransferOfferModal { }
     }
 }
