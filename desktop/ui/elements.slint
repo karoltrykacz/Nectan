@@ -8,6 +8,34 @@ export component SvgIcon inherits Image {
     height: root.size;
 }
 
+export component PlainLineEdit {
+    in-out property <string> input-text;
+    in property <string> placeholder-text;
+    Rectangle {
+        text-input := TextInput {
+            text <=> input-text;
+            x: 12px;
+            vertical-alignment: center;
+            selection-background-color: Theme.colors.third-font;
+            selection-foreground-color: Theme.colors.primary-font;
+        }
+
+        if input-text == "": Text {
+            text: root.placeholder-text;
+            x: 12px;
+            color: gray;
+        }
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: text;
+            clicked => {
+                text-input.focus();
+            }
+        }
+    }
+}
+
 export component IconButton inherits Rectangle {
     in property <string> text;
     in property <color> fg: Theme.colors.third-font;
@@ -114,5 +142,62 @@ export component PrimaryButton {
                 root.clicked();
             }
         }
+    }
+}
+
+export component GeneralModal inherits Rectangle {
+
+    in-out property <bool> open;
+    callback on-close();
+    callback on-enter();
+
+    forward-focus: focus-scope;
+
+    focus-scope := FocusScope {
+        enabled: open;
+        visible: open;
+
+        changed enabled => {
+            if (open) {
+                self.focus();
+            }
+        }
+
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                open = false;
+                on-close();
+                return accept;
+            }
+            if (event.text == "w"
+                && (event.modifiers.control || event.modifiers.meta)) {
+                open = false;
+                on-close();
+                return accept;
+            }
+            if (event.text == Key.Return) {
+                on-enter();
+                return accept;
+            }
+            return reject;
+        }
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: #00000077;
+        }
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            enabled: open;
+            clicked => {
+                open = false;
+                on-close();
+            }
+        }
+
+        @children
     }
 }

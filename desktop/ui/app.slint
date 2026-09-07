@@ -1,7 +1,82 @@
 import { Theme } from "theme.slint";
 import { IconButton, SvgIcon, PrimaryButton } from "elements.slint";
 import { ListView } from "std-widgets.slint";
+import { SettingsBridge, SettingsModal } from "settings.slint";
 
+export struct TreeNode {
+    filename: string,
+    path: string,
+    depth: int,
+    expanded: bool,
+    is-file: bool,
+}
+
+export component TreeList {
+
+    in property <[TreeNode]> nodes;
+    callback toggle-node(int, string);
+
+    ListView {
+        for node[i] in nodes: Rectangle {
+
+            background: touch.has-hover ? Theme.colors.secondary-col : transparent;
+
+            height: 28px;
+            Rectangle {
+                height: 4px;
+            }
+
+            HorizontalLayout {
+
+                padding-left: 12px + node.depth * 16px;
+                alignment: start;
+
+                if !node.is-file: SvgIcon {
+                    y: (28px - 12px) / 2;
+                    visible: true;
+                    source: node.expanded ? @image-url("icons/chevron-down.svg") : @image-url("icons/chevron-right.svg");
+                    fg: Theme.colors.third-font;
+                    size: 12px;
+                }
+
+                Rectangle {
+                    width: 4px;
+                }
+
+                SvgIcon {
+                    y: (28px - 14px) / 2;
+                    vertical-alignment: center;
+                    source: node.is-file ? @image-url("icons/file.svg") : @image-url("icons/folder.svg");
+                    fg: node.is-file ? Theme.colors.primary-font : #f4c255;
+                    size: 14px;
+                }
+
+                Rectangle {
+                    width: 8px;
+                }
+
+                Text {
+                    text: node.filename;
+                    vertical-alignment: center;
+                    font-family: Theme.font-body;
+                    font-size: 14px;
+                    color: Theme.colors.primary-font;
+                }
+            }
+
+            touch := TouchArea {
+                clicked => {
+                    root.toggle-node(i,node.path);
+                    debug("Node toggled!");
+                }
+                double-clicked => {
+                    debug("Node double click");
+		    // OPEN PREVIEw
+                }
+            }
+        }
+    }
+}
 
 export global WindowBridge {
     in-out property <bool> sidebar-visible: true;
@@ -111,6 +186,44 @@ component TitleBar inherits Rectangle {
 }
 
 
+component TransferSizeEntriesInfoHeader inherits Rectangle {
+    in property <int> total-entries;
+    in property <string> total-size;
+
+    VerticalLayout {
+        cross-axis-alignment: end;
+        alignment: start;
+        Text {
+            text: total-size;
+            font-size: 14px;
+            color: Theme.colors.primary-font;
+            font-family: Theme.font-heading;
+            font-weight: 600;
+        }
+
+        HorizontalLayout {
+            Text {
+                text: total-entries;
+                font-size: 14px;
+                color: Theme.colors.primary-font;
+                font-family: Theme.font-heading;
+                font-weight: 600;
+            }
+
+            Text {
+                text: " entries";
+                color: Theme.colors.secondary-font;
+                font-size: 13px;
+                font-weight: 500;
+            }
+        }
+    }
+}
+
+component DeviceItem { }
+
+component DevicesList { }
+
 component MainBody inherits VerticalLayout {
 
     height: 100%;
@@ -153,6 +266,60 @@ component MainBody inherits VerticalLayout {
                 }
 
                 Rectangle {
+                    height: 8px;
+                }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: @image-url("icons/tranfsers.svg");
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 18px;
+                    }
+
+                    clicked => {
+                        debug("Opening transfers");
+                    }
+                }
+
+                Rectangle {
+                    height: 8px;
+                }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: @image-url("icons/tranfsers.svg");
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 18px;
+                    }
+
+                    clicked => {
+                        debug("Opening transfers");
+                    }
+                }
+
+                Rectangle {
+                    height: 8px;
+                }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: @image-url("icons/tranfsers.svg");
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 18px;
+                    }
+
+                    clicked => {
+                        debug("Opening transfers");
+                    }
+                }
+
+                Rectangle {
                     vertical-stretch: 1;
                 }
 
@@ -166,7 +333,7 @@ component MainBody inherits VerticalLayout {
                     }
 
                     clicked => {
-                        debug("Open settings.");
+                        SettingsBridge.settings-open = true;
                     }
                 }
             }
@@ -177,7 +344,6 @@ component MainBody inherits VerticalLayout {
             background: Theme.colors.third-col;
         }
 
-        // Sidebar
         Rectangle {
             width: WindowBridge.sidebar-visible ? WindowBridge.sidebar-width : 0px;
             clip: true;
@@ -189,13 +355,12 @@ component MainBody inherits VerticalLayout {
                 duration: 75ms;
                 easing: ease;
             }
+	    // HERE SIDEBAR SHIT
+	    DevicesList { }
         }
     }
 }
 
-component DevicesList { }
-
-component Settings { }
 
 
 component GeneralModal inherits Rectangle {
@@ -259,39 +424,47 @@ component FoundNearbyModal { }
 
 component OutcomingTransferOfferModal { }
 
+export struct TransferOfferItem {
+    name: string,
+    size-text: string,
+}
 
-component FileRow inherits Rectangle {
-    in property <string> name: "";
-    height: 36px;
-    background: touch-area.has-hover ? Theme.colors.third-col : transparent;
-    touch-area := TouchArea { }
-
-    HorizontalLayout {
-        Text {
-            text: name;
-        }
-    }
+export struct IncomingTransferOffer {
+    transfer-id: string,
+    transfer-name: string,
+    from: string,
+    total-entries: int,
+    total-size: string,
 }
 
 export global IncomingTransferOfferBridge {
-    in-out property <bool> open;
-    in-out property <[string]> files;
+    in-out property <bool> is-open: false;
+    in-out property <IncomingTransferOffer> offer;
+    in-out property <[TreeNode]> nodes;
 
-    callback reject();
+    // Index, path 
+    callback toggle-node(int, string);
+
     callback accept();
+    callback reject();
 }
+
 
 export component IncomingTransferOfferModal inherits Rectangle {
     GeneralModal {
-        open <=> IncomingTransferOfferBridge.open;
+        open <=> IncomingTransferOfferBridge.is-open;
+
+        on-close => {
+            IncomingTransferOfferBridge.reject();
+        }
+        on-enter => {
+            IncomingTransferOfferBridge.accept();
+        }
 
         Rectangle {
-            width: min(512px, parent.width - 40px);
-            height: min(256px,parent.height - 40px);
+            width: min(820px, parent.width - 40px);
+            height: min(560px, parent.height - 40px);
             clip: true;
-
-            drop-shadow-color: #00000099;
-            drop-shadow-blur: 28px;
             background: Theme.colors.primary-col;
             border-radius: 12px;
             border-width: 1px;
@@ -305,46 +478,94 @@ export component IncomingTransferOfferModal inherits Rectangle {
 
             VerticalLayout {
                 padding: 20px;
-                HorizontalLayout {
-                    VerticalLayout {
-                        alignment: center;
-                        Text {
-                            text: "New transfer offer";
-                            font-family: Theme.font-heading;
-                            font-size: 20px;
-                            font-weight: 600;
-                            color: Theme.colors.primary-font;
+
+                VerticalLayout {
+                    spacing: 12px;
+
+                    HorizontalLayout {
+                        VerticalLayout {
+                            alignment: start;
+                            Text {
+                                text: IncomingTransferOfferBridge.offer.transfer-name;
+                                font-size: 20px;
+                                color: Theme.colors.primary-font;
+                                font-family: Theme.font-heading;
+                                font-weight: 600;
+                            }
+
+                            HorizontalLayout {
+                                alignment: start;
+                                Text {
+                                    text: "Incoming transfer from ";
+                                    font-size: 13px;
+                                    color: Theme.colors.secondary-font;
+                                }
+
+                                Text {
+                                    text: IncomingTransferOfferBridge.offer.from;
+                                    font-size: 13px;
+                                    color: Theme.colors.secondary-font;
+                                    font-weight: 600;
+                                }
+                            }
                         }
-                    }
-                }
 
-                Rectangle {
-                    height: 8px;
-                }
-
-                ListView {
-
-                    vertical-scrollbar-policy: as-needed;
-                    for file in IncomingTransferOfferBridge.files: FileRow {
-                        name: file;
-                    }
-                }
-
-                HorizontalLayout {
-                    alignment: end;
-                    PrimaryButton {
-                        text: "Reject";
-                        clicked => {
+                        TransferSizeEntriesInfoHeader {
+                            total-entries: IncomingTransferOfferBridge.offer.total-entries;
+                            total-size: IncomingTransferOfferBridge.offer.total-size;
                         }
                     }
 
                     Rectangle {
-                        width: 12px;
+                        border-radius: 12px;
+                        background: Theme.colors.third-col;
+
+                        VerticalLayout {
+                            Rectangle {
+                                height: 8px;
+                            }
+
+                            Text {
+                                x: 12px;
+                                text: "Contents";
+                                color: Theme.colors.primary-font;
+                                font-size: 13px;
+                                font-weight: 500;
+                                font-family: Theme.font-heading;
+                            }
+
+                            Rectangle {
+                                height: 8px;
+                            }
+
+                            TreeList {
+                                nodes: IncomingTransferOfferBridge.nodes;
+                                toggle-node(id, path) => {
+                                    IncomingTransferOfferBridge.toggle-node(id, path)
+                                }
+                            }
+                        }
                     }
 
-                    PrimaryButton {
-                        text: "Accept";
-                        clicked => {
+                    HorizontalLayout {
+                        alignment: end;
+                        PrimaryButton {
+                            text: "Reject";
+                            alt: true;
+                            clicked => {
+                                IncomingTransferOfferBridge.reject();
+                            }
+                        }
+
+                        Rectangle {
+                            width: 12px;
+                        }
+
+                        PrimaryButton {
+                            text: "Accept";
+                            clicked => {
+                                IncomingTransferOfferBridge.accept();
+                            }
                         }
                     }
                 }
@@ -353,7 +574,7 @@ export component IncomingTransferOfferModal inherits Rectangle {
     }
 }
 
-    export component NectanWindow inherits Window {
+export component NectanWindow inherits Window {
     no-frame: true;
     background: transparent;
     title: "Nectan";
@@ -374,8 +595,11 @@ export component IncomingTransferOfferModal inherits Rectangle {
         border-color: #dddddd1b;
         border-radius: 8px;
         clip: true;
+
         MainBody { }
 
         IncomingTransferOfferModal { }
+
+        SettingsModal { }
     }
 }
