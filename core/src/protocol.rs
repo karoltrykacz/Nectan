@@ -1,11 +1,15 @@
 use anyhow::Result;
+use base64::{Engine, engine::general_purpose::STANDARD};
 use core::str;
 use ed25519_dalek::VerifyingKey;
+use futures::StreamExt;
 use iroh::{
     Endpoint,
     endpoint::{Connection, RecvStream, SendStream, presets},
+    endpoint_info::UserData,
     protocol::{AcceptError, ProtocolHandler},
 };
+use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use n0_error::e;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -227,15 +231,29 @@ pub struct NectanState {
     app_event_tx: tokio::sync::broadcast::Sender<AppEvent>,
     incoming_transfer_offer: Arc<Mutex<Option<TransferOffer>>>,
     devices: DevicesPool,
+    pub mdns: MdnsAddressLookup,
 }
 
 impl NectanState {
-    pub fn new() -> Self {
+    pub async fn new(client_id: DeviceId) -> Self {
+        let user_data: UserData = STANDARD.encode(client_id.to_bytes()).parse().unwrap();
+        let builder = Endpoint::builder(presets::N0).user_data_for_address_lookup(user_data);
+        let endpoint = builder.bind().await.expect("Failed to bind endpoint");
+
+        let mdns = MdnsAddressLookup::builder()
+            .service_name("nectan_user")
+            .advertise(true)
+            .build(endpoint.id())
+            .unwrap();
+
+        endpoint.address_lookup().unwrap().add(mdns.clone());
+
         NectanState {
             pending_transfers: PendingTransfers::new(),
             app_event_tx: tokio::sync::broadcast::Sender::new(16),
             incoming_transfer_offer: Arc::new(Mutex::new(None)),
             devices: DevicesPool::new(None).expect("Failed to create devices pool."),
+            mdns,
         }
     }
 
@@ -315,3 +333,38 @@ pub async fn start_addr_watcher() {
 //     fn send_stream(&self, stream: iroh::endpoint::SendStream) -> impl SendStream + Sync + 'static;
 // }
 //
+//
+pub fn start_mdns_discovery(state: &NectanState) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        tracing::trace!("Started local discovery");
+
+        let mut events = state.mdns.subscribe().await;
+
+        while let Some(event) = events.next().await {
+            match event {
+                DiscoveryEvent::Discovered { endpoint_info, .. } => {
+                    let Some(device_id) = endpoint_info
+                        .user_data()
+                        .and_then(|data| STANDARD.decode(data.as_ref()).ok())
+                        .and_then(|bytes| bytes.as_slice().try_into().ok())
+                        .and_then(|arr: [u8; 32]| VerifyingKey::from_bytes(&arr).ok())
+                    else {
+                        tracing::error!("Discovery error. Failed to decode user data.");
+                        continue;
+                    };
+
+                    let _ = state.app_event_tx.send(AppEvent::FoundNearby);
+                    tracing::info!("Discovery event. Found new device.");
+                    let addr = endpoint_info.to_endpoint_addr();
+                    tracing::info!("Address {addr:#?}");
+                    // TODO connect here
+                }
+                DiscoveryEvent::Expired { endpoint_id } => {
+                    // TODO
+                }
+                _ => {}
+            }
+        }
+    });
+}
