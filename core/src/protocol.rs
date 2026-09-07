@@ -16,6 +16,7 @@ use std::{
 use uuid::Uuid;
 
 use crate::{
+    devices::DevicesPool,
     messages::{
         AppEvent,
         NetMessage::{self, Hello, TransferStream},
@@ -225,6 +226,7 @@ pub struct NectanState {
     pending_transfers: PendingTransfers,
     app_event_tx: tokio::sync::broadcast::Sender<AppEvent>,
     incoming_transfer_offer: Arc<Mutex<Option<TransferOffer>>>,
+    devices: DevicesPool,
 }
 
 impl NectanState {
@@ -233,6 +235,7 @@ impl NectanState {
             pending_transfers: PendingTransfers::new(),
             app_event_tx: tokio::sync::broadcast::Sender::new(16),
             incoming_transfer_offer: Arc::new(Mutex::new(None)),
+            devices: DevicesPool::new(None).expect("Failed to create devices pool."),
         }
     }
 
@@ -311,3 +314,4 @@ pub async fn start_addr_watcher() {
 //     fn recv_stream(&self, stream: iroh::endpoint::RecvStream) -> impl RecvStream + Sync + 'static;
 //     fn send_stream(&self, stream: iroh::endpoint::SendStream) -> impl SendStream + Sync + 'static;
 // }
+//

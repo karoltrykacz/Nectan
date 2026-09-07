@@ -1,14 +1,9 @@
-use futures::StreamExt;
 use iroh::{Endpoint, EndpointAddr, Watcher, endpoint::presets, protocol::Router};
 use nectan_core::{
     messages::{NetMessage, write_message},
-    path_tree::CompressedPathTree,
     protocol::{ALPN, NectanProtocol, NectanState},
-    transfers::{TransferItem, send_item},
-    walker::Walker,
 };
-use std::{fs::metadata, os::unix::fs::MetadataExt, path::PathBuf, time::Duration};
-use uuid::Uuid;
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
