@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -15,10 +17,13 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::protocol::Message;
-use crate::protocol::write_message;
+use crate::messages::NetMessage;
+use crate::messages::write_message;
+use crate::path_tree::CompressedPathTree;
+use crate::path_tree::PathTree;
 
 #[derive(Debug)]
 struct FileTransferHeader<'a> {
@@ -249,7 +254,7 @@ pub async fn send_item(
     let path_str = item.path.to_string_lossy();
     let path_bytes = path_str.as_bytes();
 
-    write_message(stream_tx, &Message::TransferStream { transfer_id })
+    write_message(stream_tx, &NetMessage::TransferStream { transfer_id })
         .await
         .map_err(|_| TransferItemError::StreamError)?;
 
@@ -298,4 +303,32 @@ pub async fn send_item(
     stream_tx.stopped();
 
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum TransferDirection {
+    Outcoming,
+    Incoming,
+}
+
+#[derive(Clone)]
+pub struct PendingTransfer {
+    id: Uuid,
+    direction: TransferDirection,
+}
+
+#[derive(Clone)]
+pub struct PendingTransfers {
+    inner: Arc<std::sync::RwLock<HashMap<Uuid, PendingTransfer>>>,
+}
+
+impl PendingTransfers {
+    pub fn new() -> Self {
+        PendingTransfers {
+            inner: Arc::new(std::sync::RwLock::new(HashMap::new())),
+        }
+    }
+    pub fn get(&self, id: Uuid) -> Option<PendingTransfer> {
+        self.inner.read().unwrap().get(&id).cloned()
+    }
 }

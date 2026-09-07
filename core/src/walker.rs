@@ -26,7 +26,8 @@ pub struct WalkControllerInner {
     /// The initial selected paths. May contain both paths and files
     pub paths: Vec<PathBuf>,
     /// Processed path tree / to be sent to remote device
-    pub tree: Mutex<Option<CompressedPathTree>>,
+    pub comp_tree: Mutex<Option<CompressedPathTree>>,
+    pub tree: Mutex<Option<PathTree>>,
 }
 
 #[derive(Clone)]
@@ -45,7 +46,7 @@ impl Walker {
         self.stop_token.load(Ordering::Relaxed)
     }
 
-    pub fn take_tree(&self) -> Option<CompressedPathTree> {
+    pub fn take_tree(&self) -> Option<PathTree> {
         self.tree.lock().unwrap().take()
     }
 
@@ -65,6 +66,7 @@ impl Walker {
             total_size: AtomicU64::new(0),
             stop_token: AtomicBool::new(false),
             finished: AtomicBool::new(false),
+            comp_tree: Mutex::new(None),
             tree: Mutex::new(None),
             paths,
         }))
@@ -124,8 +126,9 @@ impl Walker {
             }
 
             let compress = Instant::now();
+            *c.tree.lock().unwrap() = Some(tree.clone());
             let compressed = tree.compress();
-            *c.tree.lock().unwrap() = Some(compressed);
+            *c.comp_tree.lock().unwrap() = Some(compressed);
             let compress_time = compress.elapsed();
 
             tracing::trace!(

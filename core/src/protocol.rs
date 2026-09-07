@@ -1,34 +1,36 @@
 use anyhow::Result;
 use core::str;
-use futures::channel::oneshot::Receiver;
+use ed25519_dalek::VerifyingKey;
 use iroh::{
     Endpoint,
     endpoint::{Connection, RecvStream, SendStream, presets},
     protocol::{AcceptError, ProtocolHandler},
 };
 use n0_error::e;
-use serde::{Deserialize, Serialize, de};
+use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     path::PathBuf,
-    sync::{Arc, RwLock, atomic::Ordering::Relaxed},
+    sync::{Arc, Mutex, atomic::Ordering::Relaxed},
     time::Duration,
 };
 use uuid::Uuid;
 
 use crate::{
-    path_tree::CompressedPathTree,
-    protocol::{
-        Message::{AcceptOffer, Hello, RejectOffer, TransferOffer, TransferStream},
-        TransferDirection::Outcoming,
+    messages::{
+        AppEvent,
+        NetMessage::{self, Hello, TransferStream},
+        UiResponse, read_message, write_message,
     },
-    transfers::recieve_item,
+    path_tree::{CompressedPathTree, PathTree},
+    transfers::{PendingTransfers, recieve_item},
     walker::Walker,
 };
 
 pub const ONLINE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const PROTOCOL_VERSION: u64 = 0;
 pub const ALPN: &[u8] = b"nectan/0";
+
+pub type DeviceId = VerifyingKey;
 
 #[derive(Clone, Debug)]
 pub struct NectanProtocol {
@@ -50,49 +52,6 @@ impl NectanProtocol {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Message {
-    Hello {
-        username: String,
-    },
-    TransferOffer {
-        transfer_id: Uuid,
-        tree: CompressedPathTree,
-    },
-    AcceptOffer,
-    RejectOffer {
-        reason: Option<String>,
-    },
-    TransferStream {
-        transfer_id: Uuid,
-    },
-}
-
-pub async fn write_message(tx: &mut SendStream, msg: &Message) -> Result<()> {
-    let raw_msg = postcard::to_allocvec(msg).unwrap();
-    let len = raw_msg.len() as u32;
-
-    // Write length prefix
-    tx.write_all(&len.to_be_bytes()).await?;
-    // Write payload
-    tx.write_all(&raw_msg).await?;
-
-    Ok(())
-}
-
-pub async fn read_message(rx: &mut RecvStream) -> Result<Message> {
-    // Read length prefix
-    let mut len_buf = [0u8; 4];
-    rx.read_exact(&mut len_buf).await?;
-    let len = u32::from_be_bytes(len_buf) as usize;
-
-    // Read payload
-    let mut buf = vec![0u8; len];
-    rx.read_exact(&mut buf).await?;
-
-    Ok(postcard::from_bytes(&buf)?)
-}
-
 impl ProtocolHandler for NectanProtocol {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let (mut tx, mut rx) = connection.accept_bi().await?;
@@ -101,7 +60,7 @@ impl ProtocolHandler for NectanProtocol {
             return Err(e!(AcceptError::NotAllowed));
         };
 
-        let Message::Hello { username } = msg else {
+        let NetMessage::Hello { username } = msg else {
             println!("Msg not allowed.");
             return Err(e!(AcceptError::NotAllowed));
         };
@@ -111,27 +70,22 @@ impl ProtocolHandler for NectanProtocol {
             return Err(e!(AcceptError::NotAllowed));
         };
 
-        let Message::TransferOffer {
-            transfer_id: id,
-            tree,
-        } = msg
-        else {
-            println!("Msg not allowed.");
+        let NetMessage::TransferOfferMsg { offer } = msg else {
             return Err(e!(AcceptError::NotAllowed));
         };
 
-        let paths_list = tree.decompress().unwrap().to_vec();
-        let preview: Vec<_> = paths_list.iter().take(4).collect();
-        println!("Got transfer offer: {preview:#?}");
-
         println!("Accepting");
-        write_message(&mut tx, &Message::AcceptOffer).await.unwrap();
+        write_message(&mut tx, &NetMessage::OfferAccepted)
+            .await
+            .unwrap();
         // let _ = tx.finish();
 
         tracing::debug!("Wrote accept steam msg.");
         let state = self.state.clone();
+        let sender_name = "ghuj".to_string();
+        // let sender_id = SigningKey::generate()
         tokio::spawn(async move {
-            handle_connection(state, connection).await;
+            handle_connection(state, connection, sender_name).await;
         });
 
         Ok(())
@@ -139,15 +93,21 @@ impl ProtocolHandler for NectanProtocol {
     async fn shutdown(&self) {}
 }
 
-async fn handle_connection(state: NectanState, conn: Connection) {
+async fn handle_connection(
+    state: NectanState,
+    conn: Connection,
+    sender_name: String,
+    // sender_id: DeviceId,
+) {
+    let sender_name: Arc<str> = sender_name.into();
     loop {
-        tracing::info!("Accepting bidi stream.");
         match conn.accept_bi().await {
             Ok((tx, rx)) => {
-                tracing::info!("New stream opened;");
                 let state = state.clone();
+                let name = sender_name.clone();
+
                 tokio::spawn(async move {
-                    let _ = handle_stream(state, tx, rx).await;
+                    let _ = handle_stream(state, tx, rx, name).await;
                 });
             }
             Err(e) => {
@@ -157,63 +117,140 @@ async fn handle_connection(state: NectanState, conn: Connection) {
         }
     }
 }
-async fn handle_stream(state: NectanState, tx: SendStream, mut rx: RecvStream) -> Result<()> {
+
+async fn handle_stream(
+    state: NectanState,
+    tx: SendStream,
+    mut rx: RecvStream,
+    sender_name: Arc<str>,
+) -> Result<()> {
     let msg = read_message(&mut rx).await?;
 
-    tracing::info!("READ NEW STREAM MSG {msg:#?}");
-
     match msg {
-        Hello { .. } => {}
-        TransferOffer {
-            transfer_id: id,
-            tree,
-        } => {}
-        AcceptOffer => {}
-        RejectOffer { reason } => {}
-        TransferStream { transfer_id } => {
-            println!("New transfer stream.");
-            handle_transfer_stream(state, transfer_id, tx, rx).await;
+        NetMessage::TransferOfferMsg { offer } => {
+            handle_transfer_offer(state, tx, sender_name, offer).await?;
+        }
+        _ => {
+            tracing::error!("Forbidden message in stream handler. {msg:#?}");
         }
     }
 
     Ok(())
 }
-#[derive(Clone, Copy)]
-enum TransferDirection {
-    Outcoming,
-    Incoming,
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TransferOfferInner<T> {
+    pub transfer_name: String,
+    pub transfer_id: Uuid,
+    pub entries_num: u64,
+    pub total_size: u64,
+    pub tree: Arc<T>,
+}
+
+impl TransferOfferInner<CompressedPathTree> {
+    pub fn decompress(self) -> anyhow::Result<TransferOfferInner<PathTree>> {
+        let tree = Arc::new(self.tree.as_ref().decompress()?);
+
+        Ok(TransferOfferInner {
+            transfer_name: self.transfer_name,
+            transfer_id: self.transfer_id,
+            entries_num: self.entries_num,
+            total_size: self.total_size,
+            tree,
+        })
+    }
 }
 
 #[derive(Clone)]
-pub struct PendingTransfer {
-    id: Uuid,
-    direction: TransferDirection,
+pub struct TransferOffer {
+    // sender_id: DeviceId,
+    pub sender_name: String,
+    pub inner: TransferOfferInner<PathTree>,
+    pub respond: tokio::sync::mpsc::Sender<UiResponse>,
 }
 
-#[derive(Clone)]
-pub struct PendingTransfers {
-    inner: Arc<std::sync::RwLock<HashMap<Uuid, PendingTransfer>>>,
-}
+async fn handle_transfer_offer(
+    state: NectanState,
+    mut tx: SendStream,
+    sender_name: Arc<str>,
+    offer: TransferOfferInner<CompressedPathTree>,
+) -> Result<()> {
+    let (respond, mut rx) = tokio::sync::mpsc::channel(1);
 
-impl PendingTransfers {
-    pub fn new() -> Self {
-        PendingTransfers {
-            inner: Arc::new(RwLock::new(HashMap::new())),
+    // Reject the offer if we already have some offer
+    let offer = {
+        let mut lock = state.incoming_transfer_offer.lock().unwrap();
+        if lock.is_some() {
+            None
+        } else {
+            let inner = offer.decompress()?;
+            let offer = TransferOffer {
+                sender_name: sender_name.to_string(),
+                inner,
+                respond,
+            };
+            *lock = Some(offer.clone());
+            Some(offer)
         }
+    };
+
+    if offer.is_none() {
+        let _ = write_message(
+            &mut tx,
+            &NetMessage::OfferRejeted {
+                reason: Some("Receiver is busy with another offer.".to_string()),
+            },
+        )
+        .await;
+        let _ = tx.finish();
+        return Ok(());
     }
-    pub fn get(&self, id: Uuid) -> Option<PendingTransfer> {
-        self.inner.read().unwrap().get(&id).cloned()
+    let offer = offer.unwrap();
+
+    let _ = state
+        .app_event_tx
+        .send(AppEvent::IncomingTransferOffer { offer });
+
+    if let Some(r) = rx.recv().await {
+        let msg = NetMessage::from(r);
+        let _ = write_message(&mut tx, &msg).await;
+        let _ = tx.finish();
     }
+
+    Ok(())
 }
 
 #[derive(Clone)]
 pub struct NectanState {
     pending_transfers: PendingTransfers,
+    app_event_tx: tokio::sync::broadcast::Sender<AppEvent>,
+    incoming_transfer_offer: Arc<Mutex<Option<TransferOffer>>>,
 }
+
 impl NectanState {
     pub fn new() -> Self {
         NectanState {
             pending_transfers: PendingTransfers::new(),
+            app_event_tx: tokio::sync::broadcast::Sender::new(16),
+            incoming_transfer_offer: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn subscribe_to_events(&self) -> tokio::sync::broadcast::Receiver<AppEvent> {
+        self.app_event_tx.subscribe()
+    }
+
+    pub fn sender(&self) -> tokio::sync::broadcast::Sender<AppEvent> {
+        self.app_event_tx.clone()
+    }
+
+    // pub fn clear_offer(&self) {
+    //     *self.incoming_transfer_offer.lock().unwrap() = None;
+    // }
+
+    pub fn respond_to_offer(&self, r: UiResponse) {
+        if let Some(offer) = self.incoming_transfer_offer.lock().unwrap().take() {
+            let _ = offer.respond.send(r);
         }
     }
 }
@@ -233,17 +270,13 @@ async fn handle_transfer_stream(
     // let Some(pending) = state.pending_transfers.get(transfer_id) else {
     //     return;
     // };
-    //
+
     println!("Receiving item");
     let result = recieve_item(tx, rx).await;
     println!("Receiver item result {result:#?}");
 }
 
-struct Device {
-    username: String,
-}
-
-pub fn build_offer() -> CompressedPathTree {
+pub fn build_offer() -> PathTree {
     let paths = vec![PathBuf::from("/home/karol/Documents")];
     let walker = Walker::new(paths, true, true);
     walker.walk().join().unwrap();
@@ -270,3 +303,11 @@ pub async fn start_addr_watcher() {
     //     }
     // });
 }
+// struct CompressedSendStream(Lz4Encoder<iroh::endpoint::SendStream>);
+// struct CompressedRecvStream(Lz4Decoder<BufReader<iroh::endpoint::RecvStream>>);
+//
+// trait Compression: Clone + Send + Sync + Debug + 'static {
+//     const ALPN: &'static [u8];
+//     fn recv_stream(&self, stream: iroh::endpoint::RecvStream) -> impl RecvStream + Sync + 'static;
+//     fn send_stream(&self, stream: iroh::endpoint::SendStream) -> impl SendStream + Sync + 'static;
+// }

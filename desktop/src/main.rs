@@ -4,8 +4,7 @@ slint::include_modules!();
 
 use anyhow::Result;
 use nectan_core::common::format_bytes;
-use nectan_core::messages::{AppEvent, NetMessage, UiResponse};
-use nectan_core::path_tree::PathTree;
+use nectan_core::messages::{AppEvent, UiResponse};
 use nectan_core::protocol::{NectanState, TransferOffer, TransferOfferInner, build_offer};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ModelRc, ToSharedString, VecModel, Weak};
