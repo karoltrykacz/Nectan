@@ -83,8 +83,12 @@ export component IconButton inherits Rectangle {
 
 export component PrimaryButton {
     in property <string> text;
+    in property <bool> button-enabled: true;
+    in property <bool> button-loading: false;
+    in property <bool> animate-width;
     in property <bool> alt: false;
     callback clicked;
+    property <bool> is-disabled: !root.button-enabled || root.button-loading;
     in property <image> image;
 
     height: 30px;
@@ -99,7 +103,15 @@ export component PrimaryButton {
         height: 100%;
         width: 100%;
         border-radius: 6px;
-        background: Theme.colors.primary-font;
+        background: root.alt
+            ? (touch.pressed
+            ? Theme.colors.third-col
+            : (touch.has-hover ? Theme.colors.secondary-col : transparent))
+            : (root.is-disabled
+            ? Theme.colors.third-font
+            : (touch.pressed
+            ? Theme.colors.third-font
+            : (touch.has-hover ? Theme.colors.secondary-font : Theme.colors.primary-font)));
         border-width: root.alt ? 1px : 0px;
         border-color: Theme.colors.hover-col;
 
@@ -107,6 +119,17 @@ export component PrimaryButton {
             duration: 100ms;
             easing: ease-out;
         }
+        animate width, height, y {
+            duration: 20ms;
+            easing: ease-out;
+        }
+        states [
+            pressed when touch.pressed: {
+                width: animate-width ? 98.5% : 100%;
+                height: 99.0%;
+                y: 1px;
+            }
+        ]
         layout := HorizontalLayout {
             padding-left: 12px;
             padding-right: 12px;
@@ -130,20 +153,29 @@ export component PrimaryButton {
                 font-size: 12px;
                 font-weight: 600;
                 vertical-alignment: center;
-                color: Theme.colors.primary-col;
+                color: root.alt
+                    ? Theme.colors.primary-font
+                    : (root.is-disabled ? Theme.colors.third-col : Theme.colors.primary-col);
             }
+
+            // if root.button-loading: HorizontalLayout {
+            //
+            // }
         }
 
         touch := TouchArea {
             width: 100%;
             height: 100%;
-            mouse-cursor: pointer;
+            mouse-cursor: root.button-loading ? wait : pointer;
             clicked => {
-                root.clicked();
+                if (root.button-loading ? false : (root.is-disabled ? false : true)) {
+                    root.clicked();
+                }
             }
         }
     }
 }
+
 
 export component GeneralModal inherits Rectangle {
 
