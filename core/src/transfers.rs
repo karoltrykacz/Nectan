@@ -1,29 +1,30 @@
 use std::collections::HashMap;
+use std::io;
 use std::io::ErrorKind;
 use std::io::Seek;
-use std::io::SeekFrom;
 use std::io::Write;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
 
 use anyhow::Result;
 use anyhow::bail;
-use iroh::endpoint::RecvStream;
-use iroh::endpoint::SendStream;
+use bytes::Bytes;
+use iroh::endpoint::Connection;
+use iroh::endpoint::ReadExactError;
+use iroh::endpoint::VarInt;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
-use tokio::sync::RwLock;
+use tokio::io::AsyncSeekExt;
+use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::messages::NetMessage;
 use crate::messages::write_message;
-use crate::path_tree::CompressedPathTree;
-use crate::path_tree::PathTree;
 
 #[derive(Debug)]
 struct FileTransferHeader<'a> {
@@ -129,8 +130,8 @@ pub enum TransferItemError {
 impl Eq for TransferItemError {}
 
 pub async fn recieve_item(
-    mut stream_tx: SendStream,
-    mut stream_rx: RecvStream,
+    mut stream_tx: iroh::endpoint::SendStream,
+    mut stream_rx: iroh::endpoint::RecvStream,
 ) -> Result<(), TransferItemError> {
     let root_path = "/home/karol/Videos/Destination";
     let raw_bytes = FileTransferHeader::read_bytes_from_stream(&mut stream_rx)
@@ -139,7 +140,6 @@ pub async fn recieve_item(
 
     let header =
         FileTransferHeader::from_bytes(&raw_bytes).map_err(|_| TransferItemError::BadHeader)?;
-    tracing::info!("Read header. {header:#?} ");
 
     let file_size = header.file_size;
     let path_str = String::from_utf8_lossy(header.path_bytes);
@@ -151,27 +151,28 @@ pub async fn recieve_item(
 
     let full_path = PathBuf::from(format!("{}.NectanLock", original_file.display()));
 
-    tracing::info!("Receiveing item {full_path:?}");
-
     if let Some(parent) = full_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|_| TransferItemError::FileIOError)?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|_| TransferItemError::FileIOError)?;
     }
 
-    let mut out_file = std::fs::OpenOptions::new()
+    let mut out_file = tokio::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(false)
         .open(&full_path)
+        .await
         .map_err(|_| TransferItemError::FileIOError)?;
 
     out_file
-        .seek(std::io::SeekFrom::Start(header.sent_bytes))
+        .seek(tokio::io::SeekFrom::Start(header.sent_bytes))
+        .await
         .map_err(|_| TransferItemError::FileIOError)?;
 
-    let _ = out_file.lock();
+    // let _ = out_file.lock();
 
     const CHUNK_SIZE: usize = 128 * 1024;
-
     let mut total_written = header.sent_bytes;
 
     loop {
@@ -184,6 +185,7 @@ pub async fn recieve_item(
             if total_written < file_size {
                 out_file
                     .flush()
+                    .await
                     .map_err(|_| TransferItemError::FileIOError)?;
                 return Err(TransferItemError::StreamError);
             }
@@ -192,6 +194,7 @@ pub async fn recieve_item(
 
         out_file
             .write_all(&chunk)
+            .await
             .map_err(|_| TransferItemError::FileIOError)?;
 
         let len = chunk.len() as u64;
@@ -202,6 +205,7 @@ pub async fn recieve_item(
 
     out_file
         .flush()
+        .await
         .map_err(|_| TransferItemError::StreamError)?;
 
     stream_tx
@@ -226,8 +230,8 @@ pub async fn recieve_item(
 pub async fn send_item(
     transfer_id: Uuid,
     mut item: TransferItem,
-    stream_tx: &mut SendStream,
-    stream_rx: &mut RecvStream,
+    stream_tx: &mut iroh::endpoint::SendStream,
+    stream_rx: &mut iroh::endpoint::RecvStream,
 ) -> Result<(), TransferItemError> {
     let root_path = "/home/karol/Videos/Source";
     let full_path = Path::new(&root_path).join(&item.path);
@@ -272,25 +276,26 @@ pub async fn send_item(
         .map_err(|_| TransferItemError::StreamError)?;
 
     let mut buf = Vec::with_capacity(64 * 1024);
-    let mut file_eof = false;
+    // let mut file_eof = false;
 
     // let mut buf_a = Vec::with_capacity(64 * 1024);
     // let mut buf_b = Vec::with_capacity(64 * 1024);
-    // let mut use_a = true;
+    let mut use_a = true;
 
     loop {
-        if file_eof && item.sent_bytes >= item.file_size {
-            break;
-        }
+        // if file_eof && item.sent_bytes == item.file_size {
+        //     break;
+        // }
 
         tokio::select! {
-            result = file.read_buf(&mut buf),if !file_eof => {
+            result = file.read_buf(&mut buf) => {
                 let n = result.map_err(|_| TransferItemError::FileIOError)?;
 
                 if n == 0 {
-                    file_eof = true;
+                    // file_eof = true;
                     break;
                 }
+
                 item.sent_bytes += n as u64;
                 let chunk = std::mem::replace(&mut buf, Vec::with_capacity(64 * 1024));
                 stream_tx.write_chunk(chunk.into()).await.map_err(|_| TransferItemError::StreamError)?;

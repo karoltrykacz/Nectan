@@ -21,11 +21,7 @@ use uuid::Uuid;
 
 use crate::{
     devices::DevicesPool,
-    messages::{
-        AppEvent,
-        NetMessage::{self, Hello, TransferStream},
-        UiResponse, read_message, write_message,
-    },
+    messages::{AppEvent, NetMessage, UiResponse, read_message, write_message},
     path_tree::{CompressedPathTree, PathTree},
     transfers::{PendingTransfers, recieve_item},
     walker::Walker,
@@ -324,15 +320,6 @@ pub async fn start_addr_watcher() {
     //     }
     // });
 }
-// struct CompressedSendStream(Lz4Encoder<iroh::endpoint::SendStream>);
-// struct CompressedRecvStream(Lz4Decoder<BufReader<iroh::endpoint::RecvStream>>);
-//
-// trait Compression: Clone + Send + Sync + Debug + 'static {
-//     const ALPN: &'static [u8];
-//     fn recv_stream(&self, stream: iroh::endpoint::RecvStream) -> impl RecvStream + Sync + 'static;
-//     fn send_stream(&self, stream: iroh::endpoint::SendStream) -> impl SendStream + Sync + 'static;
-// }
-//
 //
 pub fn start_mdns_discovery(state: &NectanState) {
     let state = state.clone();
@@ -367,4 +354,12 @@ pub fn start_mdns_discovery(state: &NectanState) {
             }
         }
     });
+}
+
+fn validate_path_component(component: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !component.contains('/'),
+        "path components must not contain the only correct path separator, /"
+    );
+    Ok(())
 }
