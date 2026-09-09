@@ -13,16 +13,19 @@ use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use n0_error::e;
 use serde::{Deserialize, Serialize};
 use std::{
+    mem::type_info::Str,
     path::PathBuf,
     sync::{Arc, Mutex, atomic::Ordering::Relaxed},
     time::Duration,
 };
+use tracing::debug_span;
 use uuid::Uuid;
 
 use crate::{
     devices::DevicesPool,
     messages::{AppEvent, NetMessage, UiResponse, read_message, write_message},
     path_tree::{CompressedPathTree, PathTree},
+    stream::StreamPair,
     transfers::{PendingTransfers, recieve_item},
     walker::Walker,
 };
@@ -101,28 +104,54 @@ async fn handle_connection(
     // sender_id: DeviceId,
 ) {
     let sender_name: Arc<str> = sender_name.into();
-    loop {
-        match conn.accept_bi().await {
-            Ok((tx, rx)) => {
-                let state = state.clone();
-                let name = sender_name.clone();
-
-                tokio::spawn(async move {
-                    let _ = handle_stream(state, tx, rx, name).await;
-                });
-            }
-            Err(e) => {
-                tracing::error!("Stream failed: {e:#?}");
-                break;
-            }
-        }
+    while let Ok(pair) = StreamPair::accept(&conn).await {
+        tokio::spawn(handle_stream(state.clone(), pair, sender_name.clone()));
     }
+
+    // loop {
+    //     match StreamPair::accept(&conn).await {
+    //         Ok(stream) => {
+    //             let state = state.clone();
+    //             let name = sender_name.clone();
+    //
+    //             tokio::spawn(async move {
+    //                 let _ = handle_stream(state, tx, rx, name).await;
+    //             });
+    //         }
+    //         Err(e) => {
+    //             tracing::error!("Stream failed: {e:#?}");
+    //             break;
+    //         }
+    //     }
+    // }
+    //
+    // let span = debug_span!("connection", connection_id);
+    // if let Err(cause) = progress
+    //     .client_connected(|| ClientConnected {
+    //         connection_id,
+    //         endpoint_id: Some(connection.remote_id()),
+    //     })
+    //     .await
+    // {
+    //     connection.close(cause.code(), cause.reason());
+    //     debug!("closing connection: {cause}");
+    //     return;
+    // }
+    //
+    // while let Ok(pair) = StreamPair::accept(&connection, progress.clone()).await {
+    //     let span = debug_span!("stream", stream_id = %pair.stream_id());
+    //     let store = store.clone();
+    //     n0_future::task::spawn(handle_stream(pair, store).instrument(span));
+    // }
+    // progress
+    //     .connection_closed(|| ConnectionClosed { connection_id })
+    //     .await
+    //     .ok();
 }
 
 async fn handle_stream(
     state: NectanState,
-    tx: SendStream,
-    mut rx: RecvStream,
+    stream: StreamPair,
     sender_name: Arc<str>,
 ) -> Result<()> {
     let msg = read_message(&mut rx).await?;

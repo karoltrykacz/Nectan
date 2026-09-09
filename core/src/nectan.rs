@@ -1,9 +1,17 @@
+use ed25519_dalek::{SigningKey, rand_core::UnwrapErr};
+use getrandom::{SysRng, rand_core::TryRng};
 use iroh::{Endpoint, EndpointAddr, Watcher, endpoint::presets, protocol::Router};
 use nectan_core::{
     messages::{NetMessage, write_message},
-    protocol::{ALPN, NectanProtocol, NectanState},
+    protocol::{ALPN, DeviceId, NectanProtocol, NectanState},
 };
 use std::time::Duration;
+
+fn gen_device_id() -> DeviceId {
+    let mut csprng = UnwrapErr(SysRng);
+    let key = SigningKey::generate(&mut csprng);
+    key.verifying_key()
+}
 
 #[tokio::main]
 async fn main() {
@@ -12,7 +20,9 @@ async fn main() {
     let builder = Endpoint::builder(presets::N0);
     let endpoint = builder.bind().await.unwrap();
 
-    let state1 = NectanState::new();
+    let device_id = gen_device_id();
+
+    let state1 = NectanState::new(device_id).await;
     let prot = NectanProtocol::new(endpoint.clone(), state1);
 
     let router1 = Router::builder(endpoint).accept(ALPN, prot).spawn();
@@ -21,7 +31,9 @@ async fn main() {
     tokio::spawn(async move {
         let builder = Endpoint::builder(presets::N0);
         let endpoint = builder.bind().await.unwrap();
-        let state2 = NectanState::new();
+
+        let device_id = gen_device_id();
+        let state2 = NectanState::new(device_id).await;
         let prot = NectanProtocol::new(endpoint.clone(), state2);
         println!("Ep2 {}", endpoint.id().to_string());
         let router = Router::builder(endpoint.clone()).accept(ALPN, prot).spawn();
