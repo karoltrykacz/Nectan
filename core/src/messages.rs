@@ -1,5 +1,4 @@
 use anyhow::Result;
-use iroh::endpoint::{RecvStream, SendStream};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -14,7 +13,6 @@ pub enum NetMessage {
     Hello {
         username: String,
     },
-    // Message sent by remote device
     TransferOfferMsg {
         offer: TransferOfferInner<CompressedPathTree>,
     },
@@ -26,30 +24,34 @@ pub enum NetMessage {
         transfer_id: Uuid,
     },
 }
+impl NetMessage {
+    pub async fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> Result<Self> {
+        // Read length prefix
+        let mut len_buf = [0u8; 4];
+        rx.recv_exact(&mut len_buf).await?;
+        let len = u32::from_be_bytes(len_buf) as usize;
 
-pub async fn write_message(tx: &mut SendStream, msg: &NetMessage) -> Result<()> {
-    let raw_msg = postcard::to_allocvec(msg).unwrap();
-    let len = raw_msg.len() as u32;
+        // Read payload
+        let mut buf = vec![0u8; len];
+        rx.recv_exact(&mut buf).await?;
 
-    // Write length prefix
-    tx.write_all(&len.to_be_bytes()).await?;
-    // Write payload
-    tx.write_all(&raw_msg).await?;
+        Ok(postcard::from_bytes(&buf)?)
+    }
 
-    Ok(())
-}
+    pub async fn write<T: crate::stream::SendStream + tokio::io::AsyncWriteExt + Unpin>(
+        &self,
+        tx: &mut T,
+    ) -> Result<()> {
+        let raw_msg = postcard::to_allocvec(self).unwrap();
+        let len = raw_msg.len() as u32;
 
-pub async fn read_message(rx: &mut RecvStream) -> Result<NetMessage> {
-    // Read length prefix
-    let mut len_buf = [0u8; 4];
-    rx.read_exact(&mut len_buf).await?;
-    let len = u32::from_be_bytes(len_buf) as usize;
+        // Write length prefix
+        tx.write_all(&len.to_be_bytes()).await?;
+        // Write payload
+        tx.write_all(&raw_msg).await?;
 
-    // Read payload
-    let mut buf = vec![0u8; len];
-    rx.read_exact(&mut buf).await?;
-
-    Ok(postcard::from_bytes(&buf)?)
+        Ok(())
+    }
 }
 
 #[derive(Clone)]

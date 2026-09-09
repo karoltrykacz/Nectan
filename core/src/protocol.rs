@@ -2,7 +2,7 @@ use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use core::str;
 use ed25519_dalek::VerifyingKey;
-use futures::StreamExt;
+use futures::{Stream, StreamExt, stream};
 use iroh::{
     Endpoint,
     endpoint::{Connection, RecvStream, SendStream, presets},
@@ -13,17 +13,16 @@ use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use n0_error::e;
 use serde::{Deserialize, Serialize};
 use std::{
-    mem::type_info::Str,
     path::PathBuf,
     sync::{Arc, Mutex, atomic::Ordering::Relaxed},
     time::Duration,
 };
-use tracing::debug_span;
+use tracing::{Instrument, debug_span};
 use uuid::Uuid;
 
 use crate::{
     devices::DevicesPool,
-    messages::{AppEvent, NetMessage, UiResponse, read_message, write_message},
+    messages::{AppEvent, NetMessage, UiResponse},
     path_tree::{CompressedPathTree, PathTree},
     stream::StreamPair,
     transfers::{PendingTransfers, recieve_item},
@@ -60,7 +59,7 @@ impl ProtocolHandler for NectanProtocol {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let (mut tx, mut rx) = connection.accept_bi().await?;
 
-        let Ok(msg) = read_message(&mut rx).await else {
+        let Ok(msg) = NetMessage::read_async(&mut rx).await else {
             return Err(e!(AcceptError::NotAllowed));
         };
 
@@ -69,7 +68,7 @@ impl ProtocolHandler for NectanProtocol {
             return Err(e!(AcceptError::NotAllowed));
         };
 
-        let Ok(msg) = read_message(&mut rx).await else {
+        let Ok(msg) = NetMessage::read_async(&mut rx).await else {
             println!("Msg not allowed.");
             return Err(e!(AcceptError::NotAllowed));
         };
@@ -79,9 +78,10 @@ impl ProtocolHandler for NectanProtocol {
         };
 
         println!("Accepting");
-        write_message(&mut tx, &NetMessage::OfferAccepted)
-            .await
-            .unwrap();
+        NetMessage::OfferAccepted.write(&mut tx).await;
+        // write_message(&mut tx, &NetMessage::OfferAccepted)
+        //     .await
+        //     .unwrap();
         // let _ = tx.finish();
 
         tracing::debug!("Wrote accept steam msg.");
@@ -103,62 +103,25 @@ async fn handle_connection(
     sender_name: String,
     // sender_id: DeviceId,
 ) {
+    let id = conn.stable_id().to_string();
+    let span = debug_span!("connection", id);
     let sender_name: Arc<str> = sender_name.into();
     while let Ok(pair) = StreamPair::accept(&conn).await {
-        tokio::spawn(handle_stream(state.clone(), pair, sender_name.clone()));
+        let span = debug_span!("stream", stream_id = %pair.stream_id());
+        tokio::spawn(handle_stream(state.clone(), pair, sender_name.clone()).instrument(span));
     }
-
-    // loop {
-    //     match StreamPair::accept(&conn).await {
-    //         Ok(stream) => {
-    //             let state = state.clone();
-    //             let name = sender_name.clone();
-    //
-    //             tokio::spawn(async move {
-    //                 let _ = handle_stream(state, tx, rx, name).await;
-    //             });
-    //         }
-    //         Err(e) => {
-    //             tracing::error!("Stream failed: {e:#?}");
-    //             break;
-    //         }
-    //     }
-    // }
-    //
-    // let span = debug_span!("connection", connection_id);
-    // if let Err(cause) = progress
-    //     .client_connected(|| ClientConnected {
-    //         connection_id,
-    //         endpoint_id: Some(connection.remote_id()),
-    //     })
-    //     .await
-    // {
-    //     connection.close(cause.code(), cause.reason());
-    //     debug!("closing connection: {cause}");
-    //     return;
-    // }
-    //
-    // while let Ok(pair) = StreamPair::accept(&connection, progress.clone()).await {
-    //     let span = debug_span!("stream", stream_id = %pair.stream_id());
-    //     let store = store.clone();
-    //     n0_future::task::spawn(handle_stream(pair, store).instrument(span));
-    // }
-    // progress
-    //     .connection_closed(|| ConnectionClosed { connection_id })
-    //     .await
-    //     .ok();
 }
 
 async fn handle_stream(
     state: NectanState,
-    stream: StreamPair,
+    mut stream: StreamPair,
     sender_name: Arc<str>,
 ) -> Result<()> {
-    let msg = read_message(&mut rx).await?;
+    let msg = stream.read_request().await?;
 
     match msg {
         NetMessage::TransferOfferMsg { offer } => {
-            handle_transfer_offer(state, tx, sender_name, offer).await?;
+            handle_transfer_offer(state, stream, sender_name, offer).await?;
         }
         _ => {
             tracing::error!("Forbidden message in stream handler. {msg:#?}");
@@ -201,7 +164,7 @@ pub struct TransferOffer {
 
 async fn handle_transfer_offer(
     state: NectanState,
-    mut tx: SendStream,
+    mut stream: StreamPair,
     sender_name: Arc<str>,
     offer: TransferOfferInner<CompressedPathTree>,
 ) -> Result<()> {
@@ -225,14 +188,11 @@ async fn handle_transfer_offer(
     };
 
     if offer.is_none() {
-        let _ = write_message(
-            &mut tx,
-            &NetMessage::OfferRejeted {
-                reason: Some("Receiver is busy with another offer.".to_string()),
-            },
-        )
+        &NetMessage::OfferRejeted {
+            reason: Some("Receiver is busy with another offer.".to_string()),
+        }
+        .write(stream.tx())
         .await;
-        let _ = tx.finish();
         return Ok(());
     }
     let offer = offer.unwrap();
@@ -242,9 +202,9 @@ async fn handle_transfer_offer(
         .send(AppEvent::IncomingTransferOffer { offer });
 
     if let Some(r) = rx.recv().await {
-        let msg = NetMessage::from(r);
-        let _ = write_message(&mut tx, &msg).await;
-        let _ = tx.finish();
+        // let msg = NetMessage::from(r).write(&mut stream.tx());
+        // let _ = write_message(&mut pair, &msg).await;
+        // stream.tx().finish();
     }
 
     Ok(())
