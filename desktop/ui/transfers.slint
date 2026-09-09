@@ -1,0 +1,462 @@
+import { Theme } from "theme.slint";
+import {
+    PrimaryButton,
+    IconButton,
+    SvgIcon,
+} from "elements.slint";
+import { ScrollView, ListView } from "std-widgets.slint";
+import { GeneralModal } from "elements.slint";
+
+export struct TransferFile {
+    name: string,
+    size-text: string,
+    percent-text: string,
+    progress: float,
+}
+
+export struct TransferItem {
+    id: string,
+    title: string,
+    status: string,
+    progress: float,
+    size-text: string,
+    percent-text: string,
+    speed-text: string,
+    files: [TransferFile],
+    receiver-name: string,
+    outcoming: bool
+}
+
+export global TransfersBridge {
+    in-out property <[TransferItem]> transfers: [];
+    in-out property <int> selected-transfer: -1;
+
+    callback delete-transfer(string);
+    callback pause-resume-transfer(string);
+}
+
+export component TransferTile inherits Rectangle {
+    in property <TransferItem> self;
+
+    callback clicked;
+
+    background: touch.has-hover ? Theme.colors.third-col : Theme.colors.secondary-col;
+
+    border-radius: 8px;
+    height: 81px;
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    VerticalLayout {
+        padding-top: 12px;
+        padding-bottom: 12px;
+        padding-left: 20px;
+        padding-right: 20px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 8px;
+            cross-axis-alignment: center;
+            Image {
+                vertical-alignment: center;
+                source: @image-url("icons/download.svg");
+                width: 13px;
+                height: 13px;
+                colorize: Theme.colors.third-font;
+            }
+
+            Text {
+                text: root.self.title;
+                font-family: Theme.font-heading;
+                font-weight: 700;
+                font-size: 16px;
+                color: Theme.colors.primary-font;
+                vertical-alignment: center;
+            }
+
+            Rectangle { }
+
+            Text {
+                text: root.self.status;
+                color: Theme.colors.primary-font;
+                font-weight: 600;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+
+            IconButton {
+                width: 13px;
+                height: 13px;
+                inner-bg: transparent;
+                SvgIcon {
+                    source: @image-url("icons/play.svg");
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    size: 13px;
+                }
+
+                clicked => {
+                    TransfersBridge.pause-resume-transfer(root.self.id);
+                }
+            }
+
+            IconButton {
+                width: 13px;
+                height: 13px;
+                inner-bg: transparent;
+                SvgIcon {
+                    source: @image-url("icons/trash.svg");
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    size: 13px;
+                }
+
+                clicked => {
+                    TransfersBridge.delete-transfer(root.self.id);
+                }
+            }
+        }
+
+        Rectangle {
+            height: 2.5px;
+            border-radius: 2px;
+            background: Theme.colors.third-col;
+            Rectangle {
+                animate width {
+                    duration: 100ms;
+                    easing: linear;
+                }
+                x: 0;
+                width: parent.width * root.self.progress;
+                height: parent.height;
+                border-radius: 2px;
+                background: Theme.colors.third-font;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 4px;
+            Text {
+                text: root.self.size-text;
+                font-weight: 600;
+                color: Theme.colors.third-font;
+                font-size: 12px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            Text {
+                text: root.self.percent-text;
+                font-weight: 600;
+                color: Theme.colors.primary-font;
+                font-family: Theme.font-heading;
+                font-size: 13px;
+            }
+        }
+    }
+}
+
+component FileRow inherits Rectangle {
+    in property <string> name: "";
+    in property <string> size-text: "";
+    in property <string> percent-text: "";
+    in property <float> progress: 0.0;
+    in property <length> row-padding-right;
+    in property <length> row-padding-left;
+    in property <bool> is-last;
+    height: 36px;
+    background: touch-area.has-hover ? Theme.colors.third-col : transparent;
+
+    HorizontalLayout {
+        padding-left: row-padding-left;
+        padding-right: row-padding-right;
+
+        Image {
+            source: @image-url("icons/file.svg");
+            width: 16px;
+            height: 16px;
+            colorize: Theme.colors.third-font;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Rectangle {
+            width: 8px;
+        }
+
+        Text {
+            text: name;
+            color: Theme.colors.primary-font;
+            font-size: 14px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        Rectangle {
+            width: 180px;
+            height: 3px;
+            border-radius: 2px;
+            background: Theme.colors.third-col;
+            y: (parent.height - self.height) / 2;
+            Rectangle {
+                x: 0;
+                width: parent.width * progress;
+                height: parent.height;
+                border-radius: 2px;
+                background: Theme.colors.secondary-font;
+            }
+        }
+
+        Text {
+            text: size-text;
+            color: Theme.colors.secondary-font;
+            font-size: 13px;
+            vertical-alignment: center;
+            width: 70px;
+            horizontal-alignment: right;
+        }
+
+        Rectangle {
+            width: 16px;
+        }
+
+        Text {
+            text: percent-text;
+            color: Theme.colors.primary-font;
+            font-family: Theme.font-heading;
+            font-weight: 600;
+            font-size: 14px;
+            vertical-alignment: center;
+            width: 45px;
+            horizontal-alignment: right;
+        }
+    }
+
+    if !is-last: Rectangle {
+        y: parent.height;
+        height: 1px;
+        background: Theme.colors.border-col;
+        width: parent.width - 40px;
+    }
+
+    touch-area := TouchArea { }
+}
+
+
+export component TransferDetails inherits Rectangle {
+    in property <TransferItem> item;
+    property <bool> search-open: false;
+    callback back;
+    init => { search-open = false; }
+
+    VerticalLayout {
+
+        HorizontalLayout {
+            padding: 20px;
+            padding-bottom: 0;
+            HorizontalLayout {
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: @image-url("icons/arrow-left.svg");
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 16px;
+                    }
+
+                    clicked => {
+                        TransfersBridge.selected-transfer = -1;
+                    }
+                }
+
+                Rectangle {
+                    width: 8px;
+                }
+
+                Text {
+                    text: item.title;
+                    font-family: Theme.font-heading;
+                    font-weight: 700;
+                    font-size: 22px;
+                    color: Theme.colors.primary-font;
+                }
+            }
+
+            Text {
+                text: item.percent-text;
+                font-family: Theme.font-heading;
+                color: Theme.colors.primary-font;
+                font-weight: 700;
+                font-size: 20px;
+                vertical-alignment: top;
+                horizontal-alignment: right;
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-bottom: 16px;
+            spacing: 8px;
+
+            Text {
+                color: Theme.colors.third-font;
+                font-size: 13px;
+                font-weight: 500;
+                text: item.outcoming ?
+                    "Sending to \{item.receiver-name}" :
+                    "Receiving from \{item.receiver-name}";
+            }
+
+            Text {
+                horizontal-alignment: right;
+                text: item.status;
+                color: Theme.colors.primary-font;
+                font-weight: 500;
+                font-size: 13px;
+            }
+        }
+
+        Rectangle {
+            x: 20px;
+            width: root.width - 40px;
+            height: 3px;
+            border-radius: 2px;
+            background: Theme.colors.third-col;
+            Rectangle {
+                animate width {
+                    duration: 200ms;
+                    easing: ease;
+                }
+                x: 0;
+                width: parent.width * item.progress;
+                height: parent.height;
+                border-radius: 2px;
+                background: Theme.colors.secondary-font;
+            }
+        }
+
+        Rectangle {
+            height: 8px;
+        }
+
+        HorizontalLayout {
+            padding-right: 20px;
+            padding-left: 20px;
+
+            Text {
+                text: item.size-text;
+                color: Theme.colors.secondary-font;
+                font-size: 13px;
+                horizontal-stretch: 1;
+                font-family: Theme.font-heading;
+                font-weight: 500;
+            }
+
+            Text {
+                text: item.speed-text;
+                color: Theme.colors.secondary-font;
+                font-size: 13px;
+                font-family: Theme.font-heading;
+                font-weight: 500;
+            }
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            Rectangle {
+                background: Theme.colors.secondary-col;
+                border-radius: 8px;
+                VerticalLayout {
+                    padding-top: 12px;
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 12px;
+                        padding-left: 12px;
+
+                        Text {
+                            text: "Contents (\{round(item.files.length)})";
+                            color: Theme.colors.primary-font;
+                            font-size: 13px;
+                            font-weight: 500;
+                            font-family: Theme.font-heading;
+                        }
+
+                        // IconButton {
+                        //     y: -2px;
+                        //     width: 20px;
+                        //     height: 20px;
+                        //     SvgIcon {
+                        //         source: @image-url("icons/search.svg");
+                        //         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        //         size: 16px;
+                        //     }
+                        //
+                        //     clicked => {
+                        //         search-open = !search-open;
+                        //     }
+                        // }
+                    }
+
+                    Rectangle {
+                        height: 8px;
+                    }
+
+                    ListView {
+                        vertical-scrollbar-policy: as-needed;
+                        for f[i] in item.files: FileRow {
+                            row-padding-right: 12px;
+                            row-padding-left: 12px;
+                            name: f.name;
+                            size-text: f.size-text;
+                            percent-text: f.percent-text;
+                            progress: f.progress;
+                            is-last: i == item.files.length - 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component Transfers inherits Rectangle {
+    if TransfersBridge.selected-transfer < 0: VerticalLayout {
+        padding: 12px;
+        ListView {
+            for item[i] in TransfersBridge.transfers: VerticalLayout {
+                TransferTile {
+                    self: item;
+                    clicked => { TransfersBridge.selected-transfer = i; }
+                }
+
+                Rectangle {
+                    height: 10px;
+                }
+            }
+        }
+    }
+    if TransfersBridge.transfers.length == 0:VerticalLayout {
+        padding: 20px;
+
+        Rectangle {
+            background: Theme.colors.secondary-col;
+            border-radius: 8px;
+            height: 81px;
+
+            Text {
+                text: "No ongoing transfers.";
+                font-family: Theme.font-heading;
+            }
+        }
+    }
+
+    if TransfersBridge.selected-transfer >= 0: TransferDetails {
+        item: TransfersBridge.transfers[TransfersBridge.selected-transfer];
+        back => { TransfersBridge.selected-transfer = -1; }
+    }
+}

@@ -2,6 +2,7 @@ import { Theme } from "theme.slint";
 import { IconButton, SvgIcon, PrimaryButton } from "elements.slint";
 import { ListView } from "std-widgets.slint";
 import { SettingsBridge, SettingsModal } from "settings.slint";
+import { TransfersBridge, Transfers } from "transfers.slint";
 
 export struct TreeNode {
     filename: string,
@@ -279,7 +280,6 @@ component MainBody inherits VerticalLayout {
                     }
 
                     clicked => {
-                        debug("Opening transfers");
                     }
                 }
 
@@ -600,5 +600,7 @@ export component NectanWindow inherits Window {
         IncomingTransferOfferModal { }
 
         SettingsModal { }
+
+        Transfers { }
     }
 }
