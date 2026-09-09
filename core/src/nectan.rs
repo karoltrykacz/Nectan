@@ -2,12 +2,12 @@ use ed25519_dalek::{SigningKey, rand_core::UnwrapErr};
 use getrandom::{SysRng, rand_core::TryRng};
 use iroh::{Endpoint, EndpointAddr, Watcher, endpoint::presets, protocol::Router};
 use nectan_core::{
-    messages::{NetMessage, write_message},
+    messages::NetMessage,
     protocol::{ALPN, DeviceId, NectanProtocol, NectanState},
 };
 use std::time::Duration;
 
-fn gen_device_id() -> DeviceId {
+pub fn gen_device_id() -> DeviceId {
     let mut csprng = UnwrapErr(SysRng);
     let key = SigningKey::generate(&mut csprng);
     key.verifying_key()

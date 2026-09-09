@@ -1,8 +1,9 @@
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use core::str;
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{Stream, StreamExt, stream};
+use getrandom::{SysRng, rand_core::UnwrapErr};
 use iroh::{
     Endpoint,
     endpoint::{Connection, RecvStream, SendStream, presets},
@@ -351,4 +352,10 @@ fn validate_path_component(component: &str) -> anyhow::Result<()> {
         "path components must not contain the only correct path separator, /"
     );
     Ok(())
+}
+
+pub fn gen_device_id() -> DeviceId {
+    let mut csprng = UnwrapErr(SysRng);
+    let key = SigningKey::generate(&mut csprng);
+    key.verifying_key()
 }

@@ -3,11 +3,14 @@
 slint::include_modules!();
 
 use anyhow::Result;
-use nectan_core::common::format_bytes;
+
+use nectan_core::format::DecimalBytes;
 use nectan_core::messages::{AppEvent, UiResponse};
-use nectan_core::protocol::{NectanState, TransferOffer, TransferOfferInner, build_offer};
+use nectan_core::protocol::{
+    NectanState, TransferOffer, TransferOfferInner, build_offer, gen_device_id,
+};
 use slint::winit_030::WinitWindowAccessor;
-use slint::{ModelRc, ToSharedString, VecModel, Weak};
+use slint::{ModelRc, VecModel, Weak};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -15,9 +18,10 @@ use uuid::Uuid;
 async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
 
-    let state = NectanState::new();
-    start_event_listener(&w, state.clone());
+    let device_id = gen_device_id();
+    let state = NectanState::new(device_id).await;
 
+    start_event_listener(&w, state.clone());
     handle_window_controls(&w);
 
     let tree = build_offer();
@@ -206,7 +210,7 @@ fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOffer) {
 
         let offer = IncomingTransferOffer {
             from: offer.sender_name.into(),
-            total_size: format_bytes(offer.inner.total_size).into(),
+            total_size: format!("{}", DecimalBytes(1_500)).into(),
             transfer_name: offer.inner.transfer_name.into(),
             total_entries: offer.inner.entries_num as i32,
         };

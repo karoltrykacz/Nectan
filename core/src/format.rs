@@ -1,7 +1,482 @@
-use std::fmt;
+use core::{
+    fmt,
+    ops::{Div, Neg},
+};
 use std::time::Duration;
 
-use unit_prefix::NumberPrefix;
+/// A numeric prefix, either binary or decimal.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum Prefix {
+    /// _kilo_, 10<sup>3</sup> or 1000<sup>1</sup>.
+    /// From the Greek ‘χίλιοι’ (‘chilioi’), meaning ‘thousand’.
+    Kilo,
+
+    /// _mega_, 10<sup>6</sup> or 1000<sup>2</sup>.
+    /// From the Ancient Greek ‘μέγας’ (‘megas’), meaning ‘great’.
+    Mega,
+
+    /// _giga_, 10<sup>9</sup> or 1000<sup>3</sup>.
+    /// From the Greek ‘γίγας’ (‘gigas’), meaning ‘giant’.
+    Giga,
+
+    /// _tera_, 10<sup>12</sup> or 1000<sup>4</sup>.
+    /// From the Greek ‘τέρας’ (‘teras’), meaning ‘monster’.
+    Tera,
+
+    /// _peta_, 10<sup>15</sup> or 1000<sup>5</sup>.
+    /// From the Greek ‘πέντε’ (‘pente’), meaning ‘five’.
+    Peta,
+
+    /// _exa_, 10<sup>18</sup> or 1000<sup>6</sup>.
+    /// From the Greek ‘ἕξ’ (‘hex’), meaning ‘six’.
+    Exa,
+
+    /// _zetta_, 10<sup>21</sup> or 1000<sup>7</sup>.
+    /// From the Latin ‘septem’, meaning ‘seven’.
+    Zetta,
+
+    /// _yotta_, 10<sup>24</sup> or 1000<sup>8</sup>.
+    /// From the Green ‘οκτώ’ (‘okto’), meaning ‘eight’.
+    Yotta,
+
+    /// _kibi_, 2<sup>10</sup> or 1024<sup>1</sup>.
+    /// The binary version of _kilo_.
+    Kibi,
+
+    /// _mebi_, 2<sup>20</sup> or 1024<sup>2</sup>.
+    /// The binary version of _mega_.
+    Mebi,
+
+    /// _gibi_, 2<sup>30</sup> or 1024<sup>3</sup>.
+    /// The binary version of _giga_.
+    Gibi,
+
+    /// _tebi_, 2<sup>40</sup> or 1024<sup>4</sup>.
+    /// The binary version of _tera_.
+    Tebi,
+
+    /// _pebi_, 2<sup>50</sup> or 1024<sup>5</sup>.
+    /// The binary version of _peta_.
+    Pebi,
+
+    /// _exbi_, 2<sup>60</sup> or 1024<sup>6</sup>.
+    /// The binary version of _exa_.
+    Exbi,
+    // you can download exa binaries at https://exa.website/#installation
+    /// _zebi_, 2<sup>70</sup> or 1024<sup>7</sup>.
+    /// The binary version of _zetta_.
+    Zebi,
+
+    /// _yobi_, 2<sup>80</sup> or 1024<sup>8</sup>.
+    /// The binary version of _yotta_.
+    Yobi,
+}
+
+/// The result of trying to apply a prefix to a floating-point value.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum NumberPrefix<F> {
+    /// A **standalone** value is returned when the number is too small to
+    /// have any prefixes applied to it. This is commonly a special case, so
+    /// is handled separately.
+    Standalone(F),
+
+    /// A **prefixed** value *is* large enough for prefixes. This holds the
+    /// prefix, as well as the resulting value.
+    Prefixed(Prefix, F),
+}
+
+impl<F: Amounts> NumberPrefix<F> {
+    /// Formats the given floating-point number using **decimal** prefixes.
+    ///
+    /// This function accepts both `f32` and `f64` values. If you’re trying to
+    /// format an integer, you’ll have to cast it first.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use unit_prefix::{NumberPrefix, Prefix};
+    ///
+    /// assert_eq!(
+    ///     NumberPrefix::decimal(1_000_000_000_f32),
+    ///     NumberPrefix::Prefixed(Prefix::Giga, 1_f32)
+    /// );
+    /// ```
+    pub fn decimal(amount: F) -> Self {
+        use self::Prefix::*;
+        Self::format_number(
+            amount,
+            Amounts::NUM_1000,
+            [Kilo, Mega, Giga, Tera, Peta, Exa, Zetta, Yotta],
+        )
+    }
+
+    /// Formats the given floating-point number using **binary** prefixes.
+    ///
+    /// This function accepts both `f32` and `f64` values. If you’re trying to
+    /// format an integer, you’ll have to cast it first.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use unit_prefix::{NumberPrefix, Prefix};
+    ///
+    /// assert_eq!(
+    ///     NumberPrefix::binary(1_073_741_824_f64),
+    ///     NumberPrefix::Prefixed(Prefix::Gibi, 1_f64)
+    /// );
+    /// ```
+    pub fn binary(amount: F) -> Self {
+        use self::Prefix::*;
+        Self::format_number(
+            amount,
+            Amounts::NUM_1024,
+            [Kibi, Mebi, Gibi, Tebi, Pebi, Exbi, Zebi, Yobi],
+        )
+    }
+
+    fn format_number(mut amount: F, kilo: F, prefixes: [Prefix; 8]) -> Self {
+        // For negative numbers, flip it to positive, do the processing, then
+        // flip it back to negative again afterwards.
+        let was_negative = if amount.is_negative() {
+            amount = -amount;
+            true
+        } else {
+            false
+        };
+
+        let mut prefix = 0;
+        while amount >= kilo && prefix < 8 {
+            amount = amount / kilo;
+            prefix += 1;
+        }
+
+        if was_negative {
+            amount = -amount;
+        }
+
+        if prefix == 0 {
+            NumberPrefix::Standalone(amount)
+        } else {
+            NumberPrefix::Prefixed(prefixes[prefix - 1], amount)
+        }
+    }
+}
+
+impl fmt::Display for Prefix {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.symbol())
+    }
+}
+
+impl Prefix {
+    /// Returns the name in uppercase, such as “KILO”.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use unit_prefix::Prefix;
+    ///
+    /// assert_eq!("GIGA", Prefix::Giga.upper());
+    /// assert_eq!("GIBI", Prefix::Gibi.upper());
+    /// ```
+    pub fn upper(self) -> &'static str {
+        use self::Prefix::*;
+        match self {
+            Kilo => "KILO",
+            Mega => "MEGA",
+            Giga => "GIGA",
+            Tera => "TERA",
+            Peta => "PETA",
+            Exa => "EXA",
+            Zetta => "ZETTA",
+            Yotta => "YOTTA",
+            Kibi => "KIBI",
+            Mebi => "MEBI",
+            Gibi => "GIBI",
+            Tebi => "TEBI",
+            Pebi => "PEBI",
+            Exbi => "EXBI",
+            Zebi => "ZEBI",
+            Yobi => "YOBI",
+        }
+    }
+
+    /// Returns the name with the first letter capitalised, such as “Mega”.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use unit_prefix::Prefix;
+    ///
+    /// assert_eq!("Giga", Prefix::Giga.caps());
+    /// assert_eq!("Gibi", Prefix::Gibi.caps());
+    /// ```
+    pub fn caps(self) -> &'static str {
+        use self::Prefix::*;
+        match self {
+            Kilo => "Kilo",
+            Mega => "Mega",
+            Giga => "Giga",
+            Tera => "Tera",
+            Peta => "Peta",
+            Exa => "Exa",
+            Zetta => "Zetta",
+            Yotta => "Yotta",
+            Kibi => "Kibi",
+            Mebi => "Mebi",
+            Gibi => "Gibi",
+            Tebi => "Tebi",
+            Pebi => "Pebi",
+            Exbi => "Exbi",
+            Zebi => "Zebi",
+            Yobi => "Yobi",
+        }
+    }
+
+    /// Returns the name in lowercase, such as “giga”.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use unit_prefix::Prefix;
+    ///
+    /// assert_eq!("giga", Prefix::Giga.lower());
+    /// assert_eq!("gibi", Prefix::Gibi.lower());
+    /// ```
+    pub fn lower(self) -> &'static str {
+        use self::Prefix::*;
+        match self {
+            Kilo => "kilo",
+            Mega => "mega",
+            Giga => "giga",
+            Tera => "tera",
+            Peta => "peta",
+            Exa => "exa",
+            Zetta => "zetta",
+            Yotta => "yotta",
+            Kibi => "kibi",
+            Mebi => "mebi",
+            Gibi => "gibi",
+            Tebi => "tebi",
+            Pebi => "pebi",
+            Exbi => "exbi",
+            Zebi => "zebi",
+            Yobi => "yobi",
+        }
+    }
+
+    /// Returns the short-hand symbol, such as “T” (for “tera”).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use unit_prefix::Prefix;
+    ///
+    /// assert_eq!("G", Prefix::Giga.symbol());
+    /// assert_eq!("Gi", Prefix::Gibi.symbol());
+    /// ```
+    pub fn symbol(self) -> &'static str {
+        use self::Prefix::*;
+        match self {
+            Kilo => "k",
+            Mega => "M",
+            Giga => "G",
+            Tera => "T",
+            Peta => "P",
+            Exa => "E",
+            Zetta => "Z",
+            Yotta => "Y",
+            Kibi => "Ki",
+            Mebi => "Mi",
+            Gibi => "Gi",
+            Tebi => "Ti",
+            Pebi => "Pi",
+            Exbi => "Ei",
+            Zebi => "Zi",
+            Yobi => "Yi",
+        }
+    }
+}
+
+/// Traits for floating-point values for both the possible multipliers. They
+/// need to be Copy, have defined 1000 and 1024s, and implement a bunch of
+/// operators.
+pub trait Amounts: Copy + Sized + PartialOrd + Div<Output = Self> + Neg<Output = Self> {
+    /// The constant representing 1000, for decimal prefixes.
+    const NUM_1000: Self;
+
+    /// The constant representing 1024, for binary prefixes.
+    const NUM_1024: Self;
+
+    /// Whether this number is negative.
+    /// This is used internally.
+    fn is_negative(self) -> bool;
+}
+
+impl Amounts for f32 {
+    const NUM_1000: Self = 1000_f32;
+    const NUM_1024: Self = 1024_f32;
+
+    fn is_negative(self) -> bool {
+        self.is_sign_negative()
+    }
+}
+
+impl Amounts for f64 {
+    const NUM_1000: Self = 1000_f64;
+    const NUM_1024: Self = 1024_f64;
+
+    fn is_negative(self) -> bool {
+        self.is_sign_negative()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{NumberPrefix, Prefix};
+
+    #[test]
+    fn decimal_minus_one_billion() {
+        assert_eq!(
+            NumberPrefix::decimal(-1_000_000_000_f64),
+            NumberPrefix::Prefixed(Prefix::Giga, -1f64)
+        )
+    }
+
+    #[test]
+    fn decimal_minus_one() {
+        assert_eq!(
+            NumberPrefix::decimal(-1f64),
+            NumberPrefix::Standalone(-1f64)
+        )
+    }
+
+    #[test]
+    fn decimal_0() {
+        assert_eq!(NumberPrefix::decimal(0f64), NumberPrefix::Standalone(0f64))
+    }
+
+    #[test]
+    fn decimal_999() {
+        assert_eq!(
+            NumberPrefix::decimal(999f32),
+            NumberPrefix::Standalone(999f32)
+        )
+    }
+
+    #[test]
+    fn decimal_1000() {
+        assert_eq!(
+            NumberPrefix::decimal(1000f32),
+            NumberPrefix::Prefixed(Prefix::Kilo, 1f32)
+        )
+    }
+
+    #[test]
+    fn decimal_1030() {
+        assert_eq!(
+            NumberPrefix::decimal(1030f32),
+            NumberPrefix::Prefixed(Prefix::Kilo, 1.03f32)
+        )
+    }
+
+    #[test]
+    fn decimal_1100() {
+        assert_eq!(
+            NumberPrefix::decimal(1100f64),
+            NumberPrefix::Prefixed(Prefix::Kilo, 1.1f64)
+        )
+    }
+
+    #[test]
+    fn decimal_1111() {
+        assert_eq!(
+            NumberPrefix::decimal(1111f64),
+            NumberPrefix::Prefixed(Prefix::Kilo, 1.111f64)
+        )
+    }
+
+    #[test]
+    fn binary_126456() {
+        assert_eq!(
+            NumberPrefix::binary(126_456f32),
+            NumberPrefix::Prefixed(Prefix::Kibi, 123.492_19f32)
+        )
+    }
+
+    #[test]
+    fn binary_1048576() {
+        assert_eq!(
+            NumberPrefix::binary(1_048_576f64),
+            NumberPrefix::Prefixed(Prefix::Mebi, 1f64)
+        )
+    }
+
+    #[test]
+    fn binary_1073741824() {
+        assert_eq!(
+            NumberPrefix::binary(2_147_483_648f32),
+            NumberPrefix::Prefixed(Prefix::Gibi, 2f32)
+        )
+    }
+
+    #[test]
+    fn giga() {
+        assert_eq!(
+            NumberPrefix::decimal(1_000_000_000f64),
+            NumberPrefix::Prefixed(Prefix::Giga, 1f64)
+        )
+    }
+
+    #[test]
+    fn tera() {
+        assert_eq!(
+            NumberPrefix::decimal(1_000_000_000_000f64),
+            NumberPrefix::Prefixed(Prefix::Tera, 1f64)
+        )
+    }
+
+    #[test]
+    fn peta() {
+        assert_eq!(
+            NumberPrefix::decimal(1_000_000_000_000_000f64),
+            NumberPrefix::Prefixed(Prefix::Peta, 1f64)
+        )
+    }
+
+    #[test]
+    fn exa() {
+        assert_eq!(
+            NumberPrefix::decimal(1_000_000_000_000_000_000f64),
+            NumberPrefix::Prefixed(Prefix::Exa, 1f64)
+        )
+    }
+
+    #[test]
+    fn zetta() {
+        assert_eq!(
+            NumberPrefix::decimal(1_000_000_000_000_000_000_000f64),
+            NumberPrefix::Prefixed(Prefix::Zetta, 1f64)
+        )
+    }
+
+    #[test]
+    fn yotta() {
+        assert_eq!(
+            NumberPrefix::decimal(1_000_000_000_000_000_000_000_000f64),
+            NumberPrefix::Prefixed(Prefix::Yotta, 1f64)
+        )
+    }
+
+    #[test]
+    fn and_so_on() {
+        // When you hit yotta, don't keep going
+        assert_eq!(
+            NumberPrefix::decimal(1_000_000_000_000_000_000_000_000_000f64),
+            NumberPrefix::Prefixed(Prefix::Yotta, 1000f64)
+        )
+    }
+}
 
 const SECOND: Duration = Duration::from_secs(1);
 const MINUTE: Duration = Duration::from_secs(60);

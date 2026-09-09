@@ -1,20 +1,12 @@
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
-use std::io::Seek;
-use std::io::Write;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
 use anyhow::bail;
-use bytes::Bytes;
-use iroh::endpoint::Connection;
-use iroh::endpoint::ReadExactError;
-use iroh::endpoint::VarInt;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::io::AsyncRead;
@@ -24,7 +16,7 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::messages::NetMessage;
-use crate::messages::write_message;
+use crate::stream::StreamPair;
 
 #[derive(Debug)]
 struct FileTransferHeader<'a> {
@@ -230,8 +222,7 @@ pub async fn recieve_item(
 pub async fn send_item(
     transfer_id: Uuid,
     mut item: TransferItem,
-    stream_tx: &mut iroh::endpoint::SendStream,
-    stream_rx: &mut iroh::endpoint::RecvStream,
+    mut stream: StreamPair,
 ) -> Result<(), TransferItemError> {
     let root_path = "/home/karol/Videos/Source";
     let full_path = Path::new(&root_path).join(&item.path);
@@ -258,7 +249,8 @@ pub async fn send_item(
     let path_str = item.path.to_string_lossy();
     let path_bytes = path_str.as_bytes();
 
-    write_message(stream_tx, &NetMessage::TransferStream { transfer_id })
+    NetMessage::TransferStream { transfer_id }
+        .write(&mut stream.tx())
         .await
         .map_err(|_| TransferItemError::StreamError)?;
 
@@ -270,7 +262,13 @@ pub async fn send_item(
         path_bytes,
     };
 
-    stream_tx
+    // NetMessage::TransferStream { transfer_id }
+    //     .write(&mut stream.tx())
+    //     .await
+    //     .map_err(|_| TransferItemError::StreamError)?;
+
+    stream
+        .tx()
         .write_all(&header.to_bytes())
         .await
         .map_err(|_| TransferItemError::StreamError)?;
@@ -280,7 +278,7 @@ pub async fn send_item(
 
     // let mut buf_a = Vec::with_capacity(64 * 1024);
     // let mut buf_b = Vec::with_capacity(64 * 1024);
-    let mut use_a = true;
+    // let mut use_a = true;
 
     loop {
         // if file_eof && item.sent_bytes == item.file_size {
@@ -292,20 +290,17 @@ pub async fn send_item(
                 let n = result.map_err(|_| TransferItemError::FileIOError)?;
 
                 if n == 0 {
-                    // file_eof = true;
                     break;
                 }
 
                 item.sent_bytes += n as u64;
                 let chunk = std::mem::replace(&mut buf, Vec::with_capacity(64 * 1024));
-                stream_tx.write_chunk(chunk.into()).await.map_err(|_| TransferItemError::StreamError)?;
+                stream.tx().write_chunk(chunk.into()).await.map_err(|_| TransferItemError::StreamError)?;
             }
         }
     }
 
-    let _ = stream_tx.finish();
-
-    stream_tx.stopped();
+    stream.tx();
 
     Ok(())
 }

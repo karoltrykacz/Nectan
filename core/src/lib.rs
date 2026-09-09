@@ -1,5 +1,6 @@
 pub mod common;
 pub mod devices;
+pub mod format;
 pub mod messages;
 pub mod path_tree;
 pub mod protocol;
