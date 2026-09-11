@@ -1,14 +1,14 @@
 use anyhow::{Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use core::str;
-use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{Stream, StreamExt, stream};
 use getrandom::{SysRng, rand_core::UnwrapErr};
 use iroh::{
     Endpoint, EndpointAddr, EndpointId,
     endpoint::{Connection, RecvStream, SendStream, presets},
     endpoint_info::UserData,
-    protocol::{AcceptError, ProtocolHandler, Router},
+    protocol::{AcceptError, ProtocolHandler},
 };
 use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use n0_error::e;
@@ -18,11 +18,11 @@ use std::{
     sync::{Arc, Mutex, atomic::Ordering::Relaxed},
     time::Duration,
 };
-use tracing::{Instrument, debug_span, error, warn};
+use tracing::{Instrument, debug_span};
 use uuid::Uuid;
 
 use crate::{
-    devices::{Device, DeviceId, DeviceStatus::Online, DevicesPool, UserInfo},
+    devices::{Device, DevicesPool},
     messages::{AppEvent, NetMessage, UiResponse},
     path_tree::{CompressedPathTree, PathTree},
     stream::StreamPair,
@@ -33,6 +33,8 @@ use crate::{
 pub const ONLINE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const PROTOCOL_VERSION: u64 = 0;
 pub const ALPN: &[u8] = b"nectan/0";
+
+pub type DeviceId = VerifyingKey;
 
 #[derive(Clone, Debug)]
 pub struct NectanProtocol {
@@ -56,40 +58,40 @@ impl NectanProtocol {
 
 impl ProtocolHandler for NectanProtocol {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
-        // let (mut tx, mut rx) = connection.accept_bi().await?;
-        //
-        // let Ok(msg) = NetMessage::read_async(&mut rx).await else {
-        //     return Err(e!(AcceptError::NotAllowed));
-        // };
-        //
-        // let NetMessage::Hello { username } = msg else {
-        //     println!("Msg not allowed.");
-        //     return Err(e!(AcceptError::NotAllowed));
-        // };
-        //
-        // let Ok(msg) = NetMessage::read_async(&mut rx).await else {
-        //     println!("Msg not allowed.");
-        //     return Err(e!(AcceptError::NotAllowed));
-        // };
-        //
-        // let NetMessage::TransferOfferMsg { offer } = msg else {
-        //     return Err(e!(AcceptError::NotAllowed));
-        // };
-        //
-        // println!("Accepting");
-        // NetMessage::OfferAccepted.write(&mut tx).await;
-        // // write_message(&mut tx, &NetMessage::OfferAccepted)
-        // //     .await
-        // //     .unwrap();
-        // // let _ = tx.finish();
-        //
-        // tracing::debug!("Wrote accept steam msg.");
-        // let state = self.state.clone();
-        // let sender_name = "ghuj".to_string();
-        // // let sender_id = SigningKey::generate()
-        // tokio::spawn(async move {
-        //     handle_connection(state, connection, sender_name).await;
-        // });
+        let (mut tx, mut rx) = connection.accept_bi().await?;
+
+        let Ok(msg) = NetMessage::read_async(&mut rx).await else {
+            return Err(e!(AcceptError::NotAllowed));
+        };
+
+        let NetMessage::Hello { username } = msg else {
+            println!("Msg not allowed.");
+            return Err(e!(AcceptError::NotAllowed));
+        };
+
+        let Ok(msg) = NetMessage::read_async(&mut rx).await else {
+            println!("Msg not allowed.");
+            return Err(e!(AcceptError::NotAllowed));
+        };
+
+        let NetMessage::TransferOfferMsg { offer } = msg else {
+            return Err(e!(AcceptError::NotAllowed));
+        };
+
+        println!("Accepting");
+        NetMessage::OfferAccepted.write(&mut tx).await;
+        // write_message(&mut tx, &NetMessage::OfferAccepted)
+        //     .await
+        //     .unwrap();
+        // let _ = tx.finish();
+
+        tracing::debug!("Wrote accept steam msg.");
+        let state = self.state.clone();
+        let sender_name = "ghuj".to_string();
+        // let sender_id = SigningKey::generate()
+        tokio::spawn(async move {
+            handle_connection(state, connection, sender_name).await;
+        });
 
         Ok(())
     }
@@ -216,20 +218,10 @@ pub struct NectanState {
     incoming_transfer_offer: Arc<Mutex<Option<TransferOffer>>>,
     devices: DevicesPool,
     pub mdns: MdnsAddressLookup,
-    pub router: Router,
-    pub signing_key: SigningKey,
-    userinfo: UserInfo,
-    device_id: DeviceId,
 }
 
 impl NectanState {
-    pub async fn new(
-        userinfo: UserInfo,
-        device_id: DeviceId,
-        signing_key: SigningKey,
-        router: Router,
-        client_id: DeviceId,
-    ) -> Self {
+    pub async fn new(client_id: DeviceId) -> Self {
         let user_data: UserData = STANDARD.encode(client_id.to_bytes()).parse().unwrap();
         let builder = Endpoint::builder(presets::N0).user_data_for_address_lookup(user_data);
         let endpoint = builder.bind().await.expect("Failed to bind endpoint");
@@ -248,10 +240,6 @@ impl NectanState {
             incoming_transfer_offer: Arc::new(Mutex::new(None)),
             devices: DevicesPool::new(None).expect("Failed to create devices pool."),
             mdns,
-            router,
-            signing_key,
-            userinfo,
-            device_id,
         }
     }
 
@@ -358,90 +346,126 @@ pub fn start_mdns_discovery(state: &NectanState) {
     });
 }
 
+pub fn is_connection_alive(state: &NectanState, ep_id: EndpointId) -> bool {
+    let devices = state.devices_pool.get_read_lock();
+    devices.iter().any(|(_, device)| {
+        device
+            .connection
+            .as_ref()
+            .is_some_and(|c| c.inner.remote_id() == ep_id && c.inner.close_reason().is_none())
+    })
+}
+
 pub async fn connect(state: &NectanState, target: EndpointAddr) -> Result<Device> {
-    let connection = state
-        .router
-        // .as_ref()
-        // .unwrap()
-        .endpoint()
-        .connect(target, ALPN)
-        .await?;
-    // .map_err(|e| {
-    //     tracing::error!("Connecting to the device failed. {e:#?}",);
-    //     e!(NectanProtocolError::ConnectionFailed)
-    // })?;
-    bail!("Not implemented");
+    bail!("Not implemented")
+    // if is_connection_alive(state, target_endpoint_addr.id) {
+    //     return Err(e!(NectanProtocolError::AlreadyConnected));
+    // }
 
-    let (mut tx, mut rx) = connection.open_bi().await?;
-
-    let signature = state.signing_key.sign(target.id.as_bytes());
-    let username = state.userinfo.username();
-
-    NetMessage::Hello {
-        id: state.device_id,
-        username,
-        signature,
-    }
-    .write(&mut tx)
-    .await?;
-
-    match NetMessage::read_async(&mut rx).await? {
-        NetMessage::Hello {
-            id,
-            username,
-            signature,
-            ..
-        } => {
-            id.verify(state.router.endpoint().id().as_bytes(), &signature)?;
-
-            let stored_remote_device: Option<Device> = state.devices.get(&id);
-
-            let remote_device = Device {
-                username: username.clone(),
-                id,
-                endpoint_addr: Some(target.clone()),
-                connection: Some(connection),
-                deleted: false,
-                status: Online,
-                completed_transfers: stored_remote_device
-                    .as_ref()
-                    .map(|d| d.completed_transfers)
-                    .unwrap_or(0),
-                total_exchanged_data: stored_remote_device
-                    .as_ref()
-                    .map(|d| d.total_exchanged_data)
-                    .unwrap_or(0),
-                fav: stored_remote_device
-                    .as_ref()
-                    .map(|d| d.fav)
-                    .unwrap_or(false),
-            };
-
-            // let devices_pool: DevicesPool = state.devices_pool.clone();
-            // let _ = devices_pool.insert(id, remote_device.clone());
-            // let msg = Message::new(MessagePayload::DeviceWentOnline {
-            //     device_id: id,
-            //     on_local_network: on_local,
-            // });
-            // let _ = state.event_broadcast.send(msg);
-            // let transfers_pool = state.transfers_pool.clone();
-            //
-            // let state = state.clone();
-            // tokio::spawn(async move {
-            //     stream_acceptor(id, connection, state.into(), username).await;
-            // });
-
-            Ok(remote_device)
-        }
-        NetMessage::RejectConnection => {
-            warn!("Remote device rejected connection");
-            bail!("Remote device rejected connection.")
-        }
-        _ => {
-            error!("Bad remote device response");
-            bail!("Failed to connect. Remote device responded with unexpected message.")
-        }
-    }
+    // let connection = state
+    //     .router
+    //     .as_ref()
+    //     .unwrap()
+    //     .endpoint()
+    //     .connect(target_endpoint_addr.clone(), ALPN)
+    //     .await
+    //     .map_err(|e| {
+    //         tracing::error!("Connecting to the device failed. {e:#?}",);
+    //         e!(NectanProtocolError::ConnectionFailed)
+    //     })?;
+    //
+    // let (mut stream_tx, mut stream_rx) = connection.open_bi().await?;
+    //
+    // let remote_ep_signature = state.signing_key.sign(target_endpoint_addr.id.as_bytes());
+    // let username = state.user_info.username();
+    //
+    // let payload = MessagePayload::Hello {
+    //     id: state.client_id,
+    //     username,
+    //     signed_endpoint_id: remote_ep_signature,
+    // };
+    //
+    // write_message(&mut stream_tx, &payload).await?;
+    //
+    // let msg = Message::new(MessagePayload::ConnectionRequestDelivered);
+    // state.event_broadcast.send(msg).unwrap();
+    //
+    // let Ok(res) = read_message(&mut stream_rx).await else {
+    //     return Err(e!(NectanProtocolError::UserRejected));
+    // };
+    //
+    // match res {
+    //     // TODO DETELETD
+    //     // MessagePayload::Deleted => Err(e!(NectanProtocolError::Deleted)),
+    //     MessagePayload::Hello {
+    //         id,
+    //         username,
+    //         signed_endpoint_id: my_ep_id_signed_by_remote,
+    //         ..
+    //     } => {
+    //         id.verify(
+    //             state.router.as_ref().unwrap().endpoint().id().as_bytes(),
+    //             &my_ep_id_signed_by_remote,
+    //         )
+    //         .map_err(|_| e!(NectanProtocolError::ConnectionFailed))?;
+    //
+    //         let conn = NectanConnection {
+    //             inner: connection.clone(),
+    //         };
+    //
+    //         let stored_remote_device: Option<Device> = state.devices_pool.get(&id);
+    //         let on_local = state.devices_pool.is_in_local(&target_endpoint_addr.id);
+    //
+    //         let remote_device = Device {
+    //             username: username.clone(),
+    //             id,
+    //             endpoint_addr: Some(target_endpoint_addr.clone()),
+    //             connection: Some(conn),
+    //             on_local,
+    //             online: true,
+    //             deleted: false,
+    //
+    //             completed_transfers: stored_remote_device
+    //                 .as_ref()
+    //                 .map(|d| d.completed_transfers)
+    //                 .unwrap_or(0),
+    //             total_exchanged_data: stored_remote_device
+    //                 .as_ref()
+    //                 .map(|d| d.total_exchanged_data)
+    //                 .unwrap_or(0),
+    //             fav: stored_remote_device
+    //                 .as_ref()
+    //                 .map(|d| d.fav)
+    //                 .unwrap_or(false),
+    //         };
+    //
+    //         let devices_pool: DevicesPool = state.devices_pool.clone();
+    //         let _ = devices_pool.insert(id, remote_device.clone());
+    //         let msg = Message::new(MessagePayload::DeviceWentOnline {
+    //             device_id: id,
+    //             on_local_network: on_local,
+    //         });
+    //         let _ = state.event_broadcast.send(msg);
+    //         let transfers_pool = state.transfers_pool.clone();
+    //
+    //         let state = state.clone();
+    //         tokio::spawn(async move {
+    //             stream_acceptor(id, connection, state.into(), username).await;
+    //         });
+    //
+    //         transfers_pool.notify_workers();
+    //
+    //         Ok(remote_device)
+    //     }
+    //     MessagePayload::RejectConnection => {
+    //         tracing::warn!("Remote device rejected connection");
+    //         Err(e!(NectanProtocolError::UserRejected))
+    //     }
+    //     _ => {
+    //         tracing::error!("Bad remote device response");
+    //         Err(e!(NectanProtocolError::UnexpectedMessage))
+    //     }
+    // }
 }
 
 fn validate_path_component(component: &str) -> anyhow::Result<()> {

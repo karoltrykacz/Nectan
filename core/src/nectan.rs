@@ -7,12 +7,6 @@ use nectan_core::{
 };
 use std::time::Duration;
 
-pub fn gen_device_id() -> DeviceId {
-    let mut csprng = UnwrapErr(SysRng);
-    let key = SigningKey::generate(&mut csprng);
-    key.verifying_key()
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();

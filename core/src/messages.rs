@@ -1,8 +1,10 @@
 use anyhow::Result;
+use ed25519_dalek::Signature;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    devices::{DeviceId, Username},
     path_tree::CompressedPathTree,
     protocol::{TransferOffer, TransferOfferInner},
 };
@@ -11,7 +13,9 @@ use crate::{
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NetMessage {
     Hello {
-        username: String,
+        id: DeviceId,
+        username: Username,
+        signature: Signature,
     },
     TransferOfferMsg {
         offer: TransferOfferInner<CompressedPathTree>,
@@ -23,6 +27,7 @@ pub enum NetMessage {
     TransferStream {
         transfer_id: Uuid,
     },
+    RejectConnection,
 }
 impl NetMessage {
     pub async fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> Result<Self> {
