@@ -1,12 +1,5 @@
 import { Theme } from "theme.slint";
-
-export component SvgIcon inherits Image {
-    in property <color> fg: Theme.colors.primary-font;
-    in property <length> size: 20px;
-    colorize: root.fg;
-    width: root.size;
-    height: root.size;
-}
+import { VerticalBox } from "std-widgets.slint";
 
 export component PlainLineEdit {
     in-out property <string> input-text;
@@ -36,48 +29,229 @@ export component PlainLineEdit {
     }
 }
 
-export component IconButton inherits Rectangle {
-    in property <string> text;
-    in property <color> fg: Theme.colors.third-font;
-    in property <bool> round: true;
-    in property <bool> transform: true;
-    in property <color> inner-bg: red;
-    out property <bool> hovered: area.has-hover;
-    out property <bool> pressed: area.pressed;
-    callback clicked <=> area.clicked;
 
-    inner := Rectangle {
-        width: root.width;
-        height: root.height;
-        border-radius: root.round ? 4px : 0px;
-        background: root.inner-bg != red ? root.inner-bg : (area.pressed ? Theme.colors.hover-col : (area.has-hover ? Theme.colors.hover-col : transparent));
 
-        animate width, height, y {
-            duration: 80ms;
-            easing: ease-out;
+export component GeneralModal inherits Rectangle {
+
+    in-out property <bool> open;
+    callback on-close();
+    callback on-enter();
+
+    forward-focus: focus-scope;
+
+    focus-scope := FocusScope {
+        enabled: open;
+        visible: open;
+
+        changed enabled => {
+            if (open) {
+                self.focus();
+            }
         }
 
-        states [
-            pressed when area.pressed: {
-                width: root.transform ? root.width * 0.983 : root.width;
-                height: root.transform ? root.height * 0.983 : root.height;
-                y: 1.5px;
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                open = false;
+                on-close();
+                return accept;
             }
-        ]
+            if (event.text == "w"
+                && (event.modifiers.control || event.modifiers.meta)) {
+                open = false;
+                on-close();
+                return accept;
+            }
+            if (event.text == Key.Return) {
+                on-enter();
+                return accept;
+            }
+            return reject;
+        }
 
-        content := Rectangle {
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: #00000077;
+        }
 
-            @children
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            enabled: open;
+            clicked => {
+                open = false;
+                on-close();
+            }
+        }
 
-            animate width, height {
-                duration: 80ms;
-                easing: ease-out;
+        @children
+    }
+}
+
+
+export component QRApp inherits Rectangle {
+    in property <image> qr-image;
+
+    VerticalBox {
+        Text {
+            text: "Scan QR Code:";
+        }
+
+        Image {
+            source: root.qr-image;
+            width: 200px;
+            height: 200px;
+        }
+    }
+}
+
+
+export component Spinner inherits Rectangle {
+    in property <length> size: 18px;
+    in property <color> spinner-color: Theme.colors.secondary-font;
+
+    width: root.size;
+    height: root.size;
+
+    property <angle> rot: 0deg;
+    animate rot {
+        duration: 350ms;
+        iteration-count: -1;
+        easing: linear;
+    }
+    init => { root.rot = 360deg; }
+
+    Image {
+        source: @image-url("icons/spinner_ring.svg");
+        colorize: root.spinner-color;
+        width: 100%;
+        height: 100%;
+        transform-rotation: root.rot;
+    }
+}
+
+
+export component GeneralFocusScope inherits FocusScope {
+
+    callback on-close();
+    callback on-enter();
+    callback on-anykey();
+
+    init => { self.focus(); }
+
+    key-pressed(event) => {
+        if (event.text == Key.Escape) {
+            on-enter();
+            return accept;
+        }
+        if (event.text == "w"
+            && (event.modifiers.control || event.modifiers.meta)) {
+            on-close();
+            return accept;
+        }
+        if (event.text == Key.Return) {
+            on-close();
+            return accept;
+        }
+        return reject;
+    }
+    @children
+}
+
+export component Switch {
+    in-out property <bool> checked: false;
+    callback toggled(bool);
+
+    width: 44px;
+    height: 22px;
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        background: Theme.is-dark() ?
+            root.checked ? Theme.colors.primary-font : Theme.colors.hover-col :
+            root.checked ? Theme.colors.primary-font : Theme.colors.hover-col;
+
+        animate background {
+            duration: 100ms;
+            easing: ease;
+        }
+
+        Rectangle {
+
+            x: root.checked ? parent.width - self.width - 1px : 1px;
+            y: (parent.height - self.height) / 2;
+            width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            background: Theme.is-dark() ? (root.checked ? Theme.colors.primary-col : Theme.colors.primary-font) : (root.checked ? Theme.colors.third-col : Theme.colors.primary-font);
+
+            animate x {
+                duration: 100ms;
+                easing: ease;
             }
         }
     }
 
-    area := TouchArea {
-        mouse-cursor: pointer;
+    TouchArea {
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+export component PrimarySmallButton {
+    in property <string> text;
+    in property <bool> button-enabled: true;
+    callback clicked;
+
+    height: 28px;
+    opacity: root.button-enabled ? 1.0 : 0.4;
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.button-enabled;
+        mouse-cursor: root.button-enabled ? pointer : default;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 6px;
+        background: Theme.colors.primary-font;
+
+        animate width, height, y {
+            duration: 20ms;
+            easing: ease-out;
+        }
+        states [
+            pressed when touch.pressed: {
+                width: 98.5%;
+                height: 98.5%;
+                y: 1px;
+            }
+        ]
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            alignment: center;
+
+            Text {
+                text: root.text;
+                font-family: "Inter";
+                font-weight: 500;
+                font-size: 12px;
+                color: Theme.colors.primary-col;
+                vertical-alignment: center;
+            }
+        }
     }
 }
 
@@ -158,9 +332,18 @@ export component PrimaryButton {
                     : (root.is-disabled ? Theme.colors.third-col : Theme.colors.primary-col);
             }
 
-            // if root.button-loading: HorizontalLayout {
-            //
-            // }
+            if root.button-loading: HorizontalLayout {
+                Rectangle {
+                    width: 12px;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Spinner {
+                        spinner-color: root.alt ? Theme.colors.primary-font : Theme.colors.primary-col;
+                    }
+                }
+            }
         }
 
         touch := TouchArea {
@@ -176,60 +359,187 @@ export component PrimaryButton {
     }
 }
 
+export component SvgIcon inherits Image {
+    in property <color> fg: Theme.colors.primary-font;
+    in property <length> size: 20px;
+    colorize: root.fg;
+    width: root.size;
+    height: root.size;
+}
 
-export component GeneralModal inherits Rectangle {
+export component IconButton inherits Rectangle {
+    in property <string> text;
+    in property <color> fg: Theme.colors.third-font;
+    in property <bool> round: true;
+    in property <bool> transform: true;
+    in property <color> inner-bg: red;
+    out property <bool> hovered: area.has-hover;
+    out property <bool> pressed: area.pressed;
+    callback clicked <=> area.clicked;
 
-    in-out property <bool> open;
-    callback on-close();
-    callback on-enter();
+    inner := Rectangle {
+        width: root.width;
+        height: root.height;
+        border-radius: root.round ? 4px : 0px;
+        background: root.inner-bg != red ? root.inner-bg : (area.pressed ? Theme.colors.hover-col : (area.has-hover ? Theme.colors.hover-col : transparent));
 
-    forward-focus: focus-scope;
-
-    focus-scope := FocusScope {
-        enabled: open;
-        visible: open;
-
-        changed enabled => {
-            if (open) {
-                self.focus();
-            }
+        animate width, height, y {
+            duration: 80ms;
+            easing: ease-out;
         }
 
-        key-pressed(event) => {
-            if (event.text == Key.Escape) {
-                open = false;
-                on-close();
-                return accept;
+        states [
+            pressed when area.pressed: {
+                width: root.transform ? root.width * 0.983 : root.width;
+                height: root.transform ? root.height * 0.983 : root.height;
+                y: 1.5px;
             }
-            if (event.text == "w"
-                && (event.modifiers.control || event.modifiers.meta)) {
-                open = false;
-                on-close();
-                return accept;
+        ]
+
+        content := Rectangle {
+
+            @children
+
+            animate width, height {
+                duration: 80ms;
+                easing: ease-out;
             }
-            if (event.text == Key.Return) {
-                on-enter();
-                return accept;
+        }
+    }
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+    }
+}
+
+export component StyledInput inherits Rectangle {
+    in property <string> placeholder-text: "";
+    in-out property <string> text: "";
+    out property <bool> has-focus: input.has-focus;
+
+    callback accepted();
+
+    width: 320px;
+    height: 42px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.colors.hover-col : Theme.colors.hover-col;
+    background: Theme.colors.secondary-col;
+
+    TouchArea {
+        clicked => { input.focus(); }
+    }
+
+    Text {
+        x: 14px;
+        width: parent.width - 28px;
+        height: parent.height;
+        vertical-alignment: center;
+        text: root.placeholder-text;
+        color: Theme.colors.secondary-font;
+        font-size: 15px;
+        visible: root.text == "";
+    }
+
+    input := TextInput {
+        x: 14px;
+        width: parent.width - 28px;
+        height: parent.height;
+        vertical-alignment: center;
+        text <=> root.text;
+        font-size: 15px;
+        color: Theme.colors.primary-font;
+        single-line: true;
+        accepted => { root.accepted(); }
+    }
+}
+
+    export global BlurBridge {
+    in-out property <image> blur-bg;
+    in-out property <length> blur-bg-w: 0px;
+    in-out property <length> blur-bg-h: 0px;
+    callback take-snapshot();
+}
+
+    export component SelectionOverlay inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    z: 1;
+    in-out property <bool> dragging: false;
+    in-out property <length> start-x: 0px;
+    in-out property <length> start-y: 0px;
+    in-out property <length> cur-x: 0px;
+    in-out property <length> cur-y: 0px;
+    property <length> box-x: min(start-x, cur-x);
+    property <length> box-y: min(start-y, cur-y);
+    property <length> box-w: max(start-x, cur-x) - box-x;
+    property <length> box-h: max(start-y, cur-y) - box-y;
+
+    TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.dragging = true;
+                root.start-x = self.mouse-x;
+                root.start-y = self.mouse-y;
+                root.cur-x = self.mouse-x;
+                root.cur-y = self.mouse-y;
+                BlurBridge.take-snapshot();
             }
-            return reject;
+            if (event.kind == PointerEventKind.up) {
+                root.dragging = false;
+            }
+        }
+        moved => {
+            if (root.dragging) {
+                root.cur-x = self.mouse-x;
+                root.cur-y = self.mouse-y;
+            }
+        }
+    }
+
+    if root.dragging: Rectangle {
+        x: root.box-x;
+        y: root.box-y;
+        width: root.box-w;
+        height: root.box-h;
+        clip: true;
+        border-width: 1px;
+        border-radius: 3px;
+        border-color: Theme.colors.hover-col;
+        Image {
+            x: -root.box-x;
+            y: -root.box-y;
+            width: BlurBridge.blur-bg-w;
+            height: BlurBridge.blur-bg-h;
+            source: BlurBridge.blur-bg;
         }
 
         Rectangle {
-            width: 100%;
-            height: 100%;
-            background: #00000077;
+            background: Theme.colors.hover-col.with-alpha(0.30);
         }
+    }
+}
 
-        TouchArea {
-            width: 100%;
-            height: 100%;
-            enabled: open;
-            clicked => {
-                open = false;
-                on-close();
-            }
+    export component HeaderText inherits Text {
+    font-family: Theme.font-heading;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+    export component LinkButton inherits Text {
+    callback clicked;
+
+    font-family: Theme.font-body;
+    color: touch.has-hover ? #ffffff : #b8b8b8;
+    font-size: 14px;
+    font-weight: 500;
+    horizontal-alignment: center;
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+
+        clicked => {
+            root.clicked();
         }
-
-        @children
     }
 }

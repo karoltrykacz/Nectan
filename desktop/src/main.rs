@@ -4,8 +4,11 @@ slint::include_modules!();
 
 use anyhow::Result;
 
+use nectan_core::devices::UserInfo;
+use nectan_core::devices::Username;
 use nectan_core::format::DecimalBytes;
 use nectan_core::messages::{AppEvent, UiResponse};
+use nectan_core::protocol::make_router;
 use nectan_core::protocol::{
     NectanState, TransferOffer, TransferOfferInner, build_offer, gen_device_id,
 };
@@ -18,8 +21,12 @@ use uuid::Uuid;
 async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
 
-    let device_id = gen_device_id();
-    let state = NectanState::new(device_id).await;
+    let (device_id, key) = gen_device_id();
+
+    let router = make_router().await;
+    let username = Username::new("Siema").unwrap();
+    let info = UserInfo::new(username);
+    let state = NectanState::new(info, device_id, key, router).await;
 
     start_event_listener(&w, state.clone());
     handle_window_controls(&w);

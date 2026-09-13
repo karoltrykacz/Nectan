@@ -1,0 +1,78 @@
+import { Theme } from "theme.slint";
+import { ListView } from "std-widgets.slint";
+import { SvgIcon } from "elements.slint";
+
+export struct TreeNode {
+    filename: string,
+    path: string,
+    depth: int,
+    expanded: bool,
+    is-file: bool,
+}
+
+export component TreeList {
+
+    /// Common parent of all paths in the tree
+    in property <[TreeNode]> nodes;
+    callback toggle-node(int, string);
+
+    ListView {
+        for node[i] in nodes: Rectangle {
+
+            background: touch.has-hover ? Theme.colors.secondary-col : transparent;
+
+            height: 28px;
+            Rectangle {
+                height: 4px;
+            }
+
+            HorizontalLayout {
+
+                padding-left: 12px + node.depth * 16px;
+                alignment: start;
+
+                if !node.is-file: SvgIcon {
+                    y: (28px - 12px) / 2;
+                    visible: true;
+                    source: node.expanded ? @image-url("icons/chevron-down.svg") : @image-url("icons/chevron-right.svg");
+                    fg: Theme.colors.third-font;
+                    size: 12px;
+                }
+
+                Rectangle {
+                    width: 4px;
+                }
+
+                SvgIcon {
+                    y: (28px - 14px) / 2;
+                    vertical-alignment: center;
+                    source: node.is-file ? @image-url("icons/file.svg") : @image-url("icons/folder.svg");
+                    fg: node.is-file ? Theme.colors.primary-font : #f4c255;
+                    size: 14px;
+                }
+
+                Rectangle {
+                    width: 8px;
+                }
+
+                Text {
+                    text: node.filename;
+                    vertical-alignment: center;
+                    font-family: Theme.font-body;
+                    font-size: 14px;
+                    color: Theme.colors.primary-font;
+                }
+            }
+
+            touch := TouchArea {
+                clicked => {
+                    root.toggle-node(i,node.path);
+                    debug("Node toggled!");
+                }
+                double-clicked => {
+                    debug("Node double click");
+                }
+            }
+        }
+    }
+}
