@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use anyhow::{Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
@@ -17,8 +18,9 @@ use std::{
     sync::{Arc, Mutex, atomic::Ordering::Relaxed},
     time::Duration,
 };
+use tokio::sync::OnceCell;
 use tokio::sync::oneshot;
-use tracing::{Instrument, debug_span, error, warn};
+use tracing::{Instrument, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -67,8 +69,10 @@ impl ProtocolHandler for NectanProtocol {
         let singing_key = &state.signing_key;
         let my_device_id = state.device_id;
 
-        let remote_device_endpoint_id = connection.remote_id();
-        let remote_addr = EndpointAddr::new(remote_device_endpoint_id);
+        let remote_ep_id = connection.remote_id();
+        let remote_addr = EndpointAddr::new(remote_ep_id);
+
+        trace!("Accepting new connection from {}", remote_ep_id.to_string());
 
         let (mut stream_tx, mut stream_rx) = connection.accept_bi().await?;
 
@@ -83,7 +87,7 @@ impl ProtocolHandler for NectanProtocol {
             ..
         } = msg
         else {
-            tracing::error!("Accepting connection. Bad message.");
+            error!("Accepting connection. Bad message.");
             return Err(e!(AcceptError::NotAllowed));
         };
 
@@ -91,23 +95,22 @@ impl ProtocolHandler for NectanProtocol {
             .verify(endpoint.id().as_bytes(), &remote_signature)
             .is_err()
         {
-            tracing::error!("Bad signature");
+            error!("Bad signature");
             return Err(e!(AcceptError::NotAllowed));
         }
 
-        let signature = singing_key.sign(remote_device_endpoint_id.as_bytes());
+        let signature = singing_key.sign(remote_ep_id.as_bytes());
         let stored = devices.get(&remote_device_id);
 
         // If device is unknown, user needs to explicitly accept.
         if stored.is_none() {
             let (respond, rx) = oneshot::channel();
-
             state
                 .emit(AppEvent::NewConnectionRequest {
                     request_id: Uuid::new_v4(),
                     username: remote_username.clone(),
                     remote_device_id,
-                    nearby: devices.is_nearby(&remote_device_endpoint_id),
+                    nearby: devices.is_nearby(&remote_ep_id),
                     respond,
                 })
                 .await;
@@ -115,14 +118,13 @@ impl ProtocolHandler for NectanProtocol {
             let Ok(r) = rx.await else {
                 return Err(e!(AcceptError::NotAllowed));
             };
-
-            let _ = NetMessage::from(r).write(&mut stream_tx).await;
-
             match r {
-                // Continue
                 UiResponse::Accept => {}
                 UiResponse::Reject { reason } => {
                     error!("new connection rejected. Reason [{:?}]", reason);
+                    let _ = NetMessage::Rejected { reason: None }
+                        .write(&mut stream_tx)
+                        .await;
                     return Err(e!(AcceptError::NotAllowed));
                 }
             }
@@ -157,6 +159,7 @@ impl ProtocolHandler for NectanProtocol {
             })
             .await;
 
+        info!("Accepted new connection from {}", remote_username);
         tokio::task::spawn(handle_connection(state, connection, remote_username));
 
         Ok(())
@@ -196,7 +199,7 @@ async fn handle_stream(
             handle_transfer_offer(state, stream, sender_name, offer).await?;
         }
         _ => {
-            tracing::error!("Forbidden message in stream handler. {msg:#?}");
+            error!("Forbidden message in stream handler. {msg:#?}");
         }
     }
 
@@ -226,7 +229,7 @@ impl TransferOfferInner<CompressedPathTree> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TransferOffer {
     // sender_id: DeviceId,
     pub sender_name: String,
@@ -260,7 +263,7 @@ async fn handle_transfer_offer(
     };
 
     if offer.is_none() {
-        &NetMessage::OfferRejeted {
+        &NetMessage::Rejected {
             reason: Some("Receiver is busy with another offer.".to_string()),
         }
         .write(stream.tx())
@@ -288,19 +291,19 @@ pub struct NectanState {
     app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     incoming_transfer_offer: Arc<Mutex<Option<TransferOffer>>>,
     devices: DevicesPool,
-    pub mdns: MdnsAddressLookup,
-    pub router: Router,
+    mdns: MdnsAddressLookup,
+    router: OnceCell<Router>,
     pub signing_key: SigningKey,
     userinfo: UserInfo,
     device_id: DeviceId,
 }
 
 impl NectanState {
-    pub async fn new(
+    pub async fn build(
         userinfo: UserInfo,
         device_id: DeviceId,
         signing_key: SigningKey,
-        router: Router,
+        devices: DevicesPool,
         app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     ) -> Self {
         let user_data: UserData = STANDARD.encode(device_id.to_bytes()).parse().unwrap();
@@ -319,13 +322,21 @@ impl NectanState {
             pending_transfers: PendingTransfers::new(),
             app_event_tx,
             incoming_transfer_offer: Arc::new(Mutex::new(None)),
-            devices: DevicesPool::new(None).expect("Failed to create devices pool."),
+            devices,
             mdns,
-            router,
+            router: OnceCell::new(),
             signing_key,
             userinfo,
             device_id,
         }
+    }
+    pub fn attach_router(&self, router: &Router) {
+        self.router
+            .set(router.clone())
+            .expect("Router already attached");
+    }
+    pub fn router(&self) -> Router {
+        self.router.get().unwrap().clone()
     }
     pub fn sender(&self) -> tokio::sync::mpsc::Sender<AppEvent> {
         self.app_event_tx.clone()
@@ -384,7 +395,7 @@ pub async fn start_addr_watcher() {
     // tokio::spawn(async move {
     //     let mut updates = watcher.stream();
     //     while let Some(addr) = updates.next().await {
-    //         tracing::trace!("EP1 changed {addr:#?}");
+    //         trace!("EP1 changed {addr:#?}");
     //     }
     // });
 }
@@ -392,7 +403,7 @@ pub async fn start_addr_watcher() {
 pub fn start_mdns_discovery(state: &NectanState) {
     let state = state.clone();
     tokio::spawn(async move {
-        tracing::trace!("Started local discovery");
+        trace!("Started local discovery");
 
         let mut events = state.mdns.subscribe().await;
 
@@ -405,14 +416,14 @@ pub fn start_mdns_discovery(state: &NectanState) {
                         .and_then(|bytes| bytes.as_slice().try_into().ok())
                         .and_then(|arr: [u8; 32]| VerifyingKey::from_bytes(&arr).ok())
                     else {
-                        tracing::error!("Discovery error. Failed to decode user data.");
+                        error!("Discovery error. Failed to decode user data.");
                         continue;
                     };
 
                     let _ = state.app_event_tx.send(AppEvent::FoundNearby);
-                    tracing::info!("Discovery event. Found new device.");
+                    info!("Discovery event. Found new device.");
                     let addr = endpoint_info.to_endpoint_addr();
-                    tracing::info!("Address {addr:#?}");
+                    info!("Address {addr:#?}");
                     // TODO connect here
                 }
                 DiscoveryEvent::Expired { endpoint_id } => {
@@ -426,47 +437,51 @@ pub fn start_mdns_discovery(state: &NectanState) {
 
 pub async fn connect(state: &NectanState, target: EndpointAddr) -> Result<Device> {
     let connection = state
-        .router
-        // .as_ref()
-        // .unwrap()
+        .router()
         .endpoint()
-        .connect(target, ALPN)
-        .await?;
-    // .map_err(|e| {
-    //     tracing::error!("Connecting to the device failed. {e:#?}",);
-    //     e!(NectanProtocolError::ConnectionFailed)
-    // })?;
-    bail!("Not implemented");
+        .connect(target.clone(), ALPN)
+        .await
+        .map_err(|e| {
+            error!("Connecting to the device failed. {e:#?}",);
+            anyhow!("Connection failed. {}", e)
+        })?;
 
-    let (mut tx, mut rx) = connection.open_bi().await?;
+    let (mut stream_tx, mut stream_rx) = connection.open_bi().await?;
 
     let signature = state.signing_key.sign(target.id.as_bytes());
     let username = state.userinfo.username();
 
     NetMessage::Hello {
         id: state.device_id,
-        username,
+        username: username.clone(),
         signature,
     }
-    .write(&mut tx)
+    .write(&mut stream_tx)
     .await?;
 
-    match NetMessage::read_async(&mut rx).await? {
+    let Ok(res) = NetMessage::read_async(&mut stream_rx).await else {
+        bail!("Failed to read response.")
+    };
+
+    match res {
         NetMessage::Hello {
-            id,
-            username,
-            signature,
+            id: remote_device_id,
+            username: remote_username,
+            signature: remote_signature,
             ..
         } => {
-            id.verify(state.router.endpoint().id().as_bytes(), &signature)?;
+            remote_device_id
+                .verify(state.router().endpoint().id().as_bytes(), &remote_signature)
+                .map_err(|_| anyhow!("Failed to verify signature."))?;
 
-            let stored_remote_device: Option<Device> = state.devices.get(&id);
+            let stored_remote_device: Option<Device> = state.devices.get(&remote_device_id);
+            // let on_local = state.devices.is_nearby(&target.id);
 
             let remote_device = Device {
-                username: username.clone(),
-                id,
+                username: remote_username.clone(),
+                id: remote_device_id,
                 endpoint_addr: Some(target.clone()),
-                connection: Some(connection),
+                connection: Some(connection.clone()),
                 deleted: false,
                 status: Online,
                 completed_transfers: stored_remote_device
@@ -483,29 +498,23 @@ pub async fn connect(state: &NectanState, target: EndpointAddr) -> Result<Device
                     .unwrap_or(false),
             };
 
-            // let devices_pool: DevicesPool = state.devices_pool.clone();
-            // let _ = devices_pool.insert(id, remote_device.clone());
-            // let msg = Message::new(MessagePayload::DeviceWentOnline {
-            //     device_id: id,
-            //     on_local_network: on_local,
-            // });
-            // let _ = state.event_broadcast.send(msg);
-            // let transfers_pool = state.transfers_pool.clone();
-            //
-            // let state = state.clone();
-            // tokio::spawn(async move {
-            //     stream_acceptor(id, connection, state.into(), username).await;
-            // });
+            state
+                .emit(AppEvent::Connected {
+                    device_id: remote_device_id,
+                })
+                .await;
 
+            let state = state.clone();
+            tokio::spawn(handle_connection(state.into(), connection, username));
             Ok(remote_device)
         }
-        NetMessage::RejectConnection => {
-            warn!("Remote device rejected connection");
+        NetMessage::Rejected { reason } => {
+            warn!("Remote device rejected connection. [{:?}]", reason);
             bail!("Remote device rejected connection.")
         }
-        _ => {
-            error!("Bad remote device response");
-            bail!("Failed to connect. Remote device responded with unexpected message.")
+        r => {
+            error!("Bad remote device response. {:#?}", r);
+            bail!("Remote device sent bad message.")
         }
     }
 }

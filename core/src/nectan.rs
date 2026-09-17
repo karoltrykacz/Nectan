@@ -1,91 +1,83 @@
-use ed25519_dalek::{SigningKey, rand_core::UnwrapErr};
-use getrandom::{SysRng, rand_core::TryRng};
 use iroh::{Endpoint, EndpointAddr, Watcher, endpoint::presets, protocol::Router};
 use nectan_core::{
-    messages::NetMessage,
-    protocol::{ALPN, DeviceId, NectanProtocol, NectanState},
+    devices::{DevicesPool, UserInfo, Username},
+    messages::{AppEvent, UiResponse},
+    protocol::{ALPN, NectanProtocol, NectanState, connect, gen_device_id},
 };
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
+use tracing::{debug, info, trace};
+use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,nectan_playground=trace"));
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let prot = NectanProtocol::new(endpoint.clone(), state1);
     let builder = Endpoint::builder(presets::N0);
     let endpoint = builder.bind().await.unwrap();
-    let router1 = Router::builder(endpoint).accept(ALPN, prot).spawn();
+    let userinfo = UserInfo::new(Username::new("Simea2").unwrap());
+    let (device_id, key) = gen_device_id();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+
+    tokio::spawn(async move {
+        while let Some(m) = rx.recv().await {
+            match m {
+                AppEvent::NewConnectionRequest {
+                    request_id,
+                    username,
+                    remote_device_id,
+                    nearby,
+                    respond,
+                } => {
+                    let _ = respond.send(UiResponse::Accept);
+                    println!("New connection request from {}", username);
+                }
+                e => {
+                    println!("#1. Got new app_event: {e:#?}");
+                }
+            }
+        }
+    });
+
+    let tmp = std::env::temp_dir().join(Uuid::new_v4().to_string());
+    let devices = DevicesPool::new(Some(tmp)).expect("Failed to create devices pool.");
+    let state1 = NectanState::build(userinfo, device_id, key, devices, tx).await;
+    let prot = NectanProtocol::new(endpoint.clone(), Arc::new(state1.clone()));
+    let router1 = Router::builder(endpoint.clone()).accept(ALPN, prot).spawn();
     let ep1_addr = router1.endpoint().addr();
 
-    let device_id = gen_device_id();
-
-    let state1 = NectanState::new(device_id).await;
+    state1.attach_router(&router1);
 
     tokio::spawn(async move {
         let builder = Endpoint::builder(presets::N0);
         let endpoint = builder.bind().await.unwrap();
+        let userinfo = UserInfo::new(Username::new("Simea").unwrap());
+        let (device_id, key) = gen_device_id();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
 
-        let device_id = gen_device_id();
-        let state2 = NectanState::new(device_id).await;
-        let prot = NectanProtocol::new(endpoint.clone(), state2);
+        tokio::spawn(async move {
+            while let Some(m) = rx.recv().await {
+                match m {
+                    e => {
+                        debug!("#2. Got new app_event: {e:#?}");
+                    }
+                }
+            }
+        });
+
+        let tmp = std::env::temp_dir().join(Uuid::new_v4().to_string());
+        let devices = DevicesPool::new(Some(tmp)).expect("Failed to create devices pool.");
+        let state2 = NectanState::build(userinfo, device_id, key, devices, tx).await;
+        let prot = NectanProtocol::new(endpoint.clone(), Arc::new(state2.clone()));
+        let router2 = Router::builder(endpoint.clone()).accept(ALPN, prot).spawn();
+
+        state2.attach_router(&router2);
+
         println!("Ep2 {}", endpoint.id().to_string());
-        let router = Router::builder(endpoint.clone()).accept(ALPN, prot).spawn();
-
         println!("Connecting.. ");
-        let r = endpoint.connect(ep1_addr, ALPN).await;
-        match r {
-            Ok(c) => {
-                println!("Connected");
-                let (mut tx, mut rx) = c.open_bi().await.unwrap();
-                println!("Opened bi");
-                write_message(
-                    &mut tx,
-                    &NetMessage::Hello {
-                        username: String::from("Zbyszek"),
-                    },
-                )
-                .await
-                .unwrap();
-
-                // let tree = build_offer();
-                // println!("Sending offer.");
-                // let transfer_id = Uuid::new_v4();
-                // // Send transfer offer
-                // write_message(&mut tx, &Message::TransferOfferMsg { transfer_id, tree })
-                //     .await
-                //     .unwrap();
-
-                // println!("Waiting for response to offer.");
-
-                // Read response
-                // let response = read_message(&mut rx).await.unwrap();
-                // println!("Response to offer: {response:?}");
-                //
-                // // After the transfer stream msg was sent the remote device will accept the file
-                //
-                // // let _ = tx.finish();
-                // // println!("Finished");
-                //
-                // // Open new stream for the transfer
-                // let (mut tx, mut rx) = c.open_bi().await.unwrap();
-                // let file_size = std::fs::metadata("/home/karol/Videos/Source/test.zip")
-                //     .unwrap()
-                //     .size();
-                // let item = TransferItem {
-                //     path: PathBuf::from("test.zip"),
-                //     id: 0,
-                //     file_size,
-                //     sent_bytes: 0,
-                //     err: None,
-                //     is_file: true,
-                // };
-                // let r = send_item(transfer_id, item, &mut tx, &mut rx).await;
-                // println!("{r:#?}");
-            }
-            Err(e) => {
-                println!("Failed to connect {e:#?}");
-            }
-        }
+        println!("Connect result {:?}", connect(&state2, ep1_addr).await);
     });
 
     loop {

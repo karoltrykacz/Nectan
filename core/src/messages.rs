@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::Signature;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -20,14 +21,13 @@ pub enum NetMessage {
     TransferOfferMsg {
         offer: TransferOfferInner<CompressedPathTree>,
     },
-    OfferAccepted,
-    OfferRejeted {
-        reason: Option<String>,
-    },
     TransferStream {
         transfer_id: Uuid,
     },
-    RejectConnection,
+    Accepted,
+    Rejected {
+        reason: Option<String>,
+    },
 }
 impl NetMessage {
     pub async fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> Result<Self> {
@@ -76,7 +76,36 @@ pub enum AppEvent {
     },
 }
 
-#[derive(Clone, Copy)]
+impl std::fmt::Debug for AppEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FoundNearby => f.debug_struct("FoundNearby").finish(),
+            Self::Connected { device_id } => {
+                f.debug_struct("Connected").field("device_id", &STANDARD.encode(&device_id)).finish()
+            }
+            Self::NewConnectionRequest {
+                request_id,
+                username,
+                remote_device_id,
+                nearby,
+                .. // This ignores the 'respond' field
+            } => {
+                f.debug_struct("NewConnectionRequest")
+                    .field("request_id", request_id)
+                    .field("username", &username.to_string())
+                    .field("remote_device_id", &STANDARD.encode(&remote_device_id))
+                    .field("nearby", nearby)
+                    .field("respond", &"Sender { .. }") // Optional placeholder
+                    .finish()
+            }
+            Self::IncomingTransferOffer { offer } => {
+                f.debug_struct("IncomingTransferOffer").field("offer", offer).finish()
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
 pub enum UiResponse {
     Accept,
     Reject { reason: Option<String> },
@@ -85,8 +114,8 @@ pub enum UiResponse {
 impl From<UiResponse> for NetMessage {
     fn from(resp: UiResponse) -> Self {
         match resp {
-            UiResponse::Accept => NetMessage::OfferAccepted,
-            UiResponse::Reject { reason } => NetMessage::OfferRejeted { reason },
+            UiResponse::Accept => NetMessage::Accepted,
+            UiResponse::Reject { reason } => NetMessage::Rejected { reason },
         }
     }
 }

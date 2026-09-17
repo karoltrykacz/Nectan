@@ -13,6 +13,9 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
+use tracing::error;
+use tracing::info;
+use tracing::trace;
 use uuid::Uuid;
 
 use crate::messages::NetMessage;
@@ -193,8 +196,6 @@ pub async fn recieve_item(
         total_written += len;
     }
 
-    tracing::info!("Finished writing the file. {total_written} {file_size}");
-
     out_file
         .flush()
         .await
@@ -233,15 +234,15 @@ pub async fn send_item(
         Ok(file) => file,
         Err(e) => match e.kind() {
             ErrorKind::PermissionDenied => {
-                tracing::error!("Failed to open file {full_path:?}");
+                error!("Failed to open file {full_path:?}");
                 return Err(TransferItemError::FileOpenPermissionDenied);
             }
             ErrorKind::NotFound => {
-                tracing::error!("File not found {full_path:?}");
+                error!("File not found {full_path:?}");
                 return Err(TransferItemError::FileNotFound);
             }
             _ => {
-                tracing::error!("Unhandled send item error - {e}");
+                error!("Unhandled send item error - {e}");
                 return Err(TransferItemError::OpenFail);
             }
         },
