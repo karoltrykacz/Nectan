@@ -4,17 +4,21 @@ slint::include_modules!();
 
 use anyhow::Result;
 
+use nectan_core::devices::Devices;
 use nectan_core::devices::UserInfo;
 use nectan_core::devices::Username;
 use nectan_core::format::DecimalBytes;
 use nectan_core::messages::{AppEvent, UiResponse};
-use nectan_core::protocol::make_router;
+use nectan_core::protocol::NectanProtocol;
+use nectan_core::protocol::setup;
 use nectan_core::protocol::{
     NectanState, TransferOffer, TransferOfferInner, build_offer, gen_device_id,
 };
+use nectan_core::setup_core;
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ModelRc, VecModel, Weak};
 use std::sync::Arc;
+use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
 #[tokio::main]
@@ -22,41 +26,40 @@ async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
 
     let (device_id, key) = gen_device_id();
+    let userinfo = UserInfo::new(Username::new("Default User").unwrap());
+    let tmp = std::env::temp_dir().join(Uuid::new_v4().to_string());
+    let devices = Devices::new(Some(tmp)).expect("Failed to create devices pool.");
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+    let state = setup_core(tx, device_id, userinfo, key, devices)
+        .await
+        .unwrap();
 
-    let router = make_router().await;
-    let username = Username::new("Siema").unwrap();
-    let info = UserInfo::new(username);
-    let state = NectanState::new(info, device_id, key, router).await;
-
-    start_event_listener(&w, state.clone());
+    start_event_listener(&w, rx);
     handle_window_controls(&w);
 
-    let tree = build_offer();
-    let inner = TransferOfferInner {
-        transfer_name: "Siema".to_string(),
-        transfer_id: Uuid::new_v4(),
-        total_size: 123123,
-        entries_num: 123,
-        tree: Arc::new(tree),
-    };
-
-    let (respond, mut rx) = tokio::sync::mpsc::channel(1);
-
-    let offer = TransferOffer {
-        sender_name: "Lujec".to_string(),
-        inner,
-        respond: respond.clone(),
-    };
-
-    let _ = state
-        .sender()
-        .send(AppEvent::IncomingTransferOffer { offer });
-
-    tokio::spawn(async move {
-        if let Some(r) = rx.recv().await {
-            println!("GOT RESPONSE ");
-        }
-    });
+    // let tree = build_offer();
+    // let inner = TransferOfferInner {
+    //     transfer_name: "Siema".to_string(),
+    //     transfer_id: Uuid::new_v4(),
+    //     total_size: 123123,
+    //     entries_num: 123,
+    //     tree: Arc::new(tree),
+    // };
+    // let (respond, mut rx) = tokio::sync::mpsc::channel(1);
+    // let offer = TransferOffer {
+    //     sender_name: "Lujec".to_string(),
+    //     inner,
+    //     respond: respond.clone(),
+    // };
+    //
+    // let _ = state
+    //     .sender()
+    //     .send(AppEvent::IncomingTransferOffer { offer });
+    // tokio::spawn(async move {
+    //     if let Some(r) = rx.recv().await {
+    //         println!("GOT RESPONSE ");
+    //     }
+    // });
 
     w.run()
 }
@@ -96,11 +99,10 @@ pub fn handle_window_controls(w: &NectanWindow) {
     });
 }
 
-pub fn start_event_listener(w: &NectanWindow, state: NectanState) {
-    let mut event_rx = state.subscribe_to_events();
+pub fn start_event_listener(w: &NectanWindow, mut rx: Receiver<AppEvent>) {
     let w = w.as_weak();
     tokio::spawn(async move {
-        while let Ok(msg) = event_rx.recv().await {
+        while let Some(msg) = rx.recv().await {
             match msg {
                 AppEvent::IncomingTransferOffer { offer } => {
                     show_transfer_offer(&w, offer);
