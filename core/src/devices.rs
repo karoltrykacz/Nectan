@@ -8,7 +8,7 @@ use std::{
 use anyhow::bail;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::VerifyingKey;
-use iroh::{EndpointAddr, endpoint::Connection};
+use iroh::{EndpointAddr, EndpointId, endpoint::Connection};
 use serde::{Deserialize, Serialize};
 
 use crate::storage_utils::DataWriter;
@@ -54,6 +54,9 @@ impl Username {
     pub fn to_string(&self) -> String {
         self.inner.clone()
     }
+    pub fn as_string(self) -> String {
+        self.inner
+    }
 }
 
 impl Default for Username {
@@ -72,11 +75,11 @@ pub struct UserInfoInner {
 pub struct UserInfo(Arc<std::sync::Mutex<UserInfoInner>>);
 
 impl UserInfo {
-    pub fn username(&self) -> Username {
-        self.0.lock().unwrap().username.clone()
-    }
     pub fn new(username: Username) -> Self {
         UserInfo(Arc::new(std::sync::Mutex::new(UserInfoInner { username })))
+    }
+    pub fn username(&self) -> Username {
+        self.0.lock().unwrap().username.clone()
     }
     pub fn set_username(&self, username: Username) {
         self.0.lock().unwrap().username = username;
@@ -147,6 +150,7 @@ impl fmt::Display for Device {
 #[derive(Clone)]
 pub struct DevicesPool {
     inner: Arc<RwLock<HashMap<DeviceId, Device>>>,
+    nearby_endpoints: Arc<RwLock<HashMap<EndpointId, DeviceId>>>,
     writer: DataWriter,
 }
 
@@ -171,7 +175,8 @@ impl DevicesPool {
             .unwrap_or_default();
 
         Ok(Self {
-            inner: Arc::new(std::sync::RwLock::new(initial)),
+            inner: Arc::new(RwLock::new(initial)),
+            nearby_endpoints: Arc::new(RwLock::new(HashMap::new())),
             writer: store,
         })
     }
@@ -186,5 +191,41 @@ impl DevicesPool {
 
     pub fn get(&self, target: &DeviceId) -> Option<Device> {
         self.inner.read().unwrap().get(target).cloned()
+    }
+
+    pub fn is_nearby(&self, endpoint_id: &EndpointId) -> bool {
+        self.nearby_endpoints
+            .read()
+            .unwrap()
+            .get(endpoint_id)
+            .is_some()
+    }
+
+    pub fn left_local(&self, endpoint_id: &EndpointId) -> Option<DeviceId> {
+        if let Some(device_id) = self.nearby_endpoints.write().unwrap().remove(endpoint_id)
+            && let Some(d) = self.inner.write().unwrap().get_mut(&device_id)
+        {
+            // d.on_local = false;
+            return Some(device_id);
+        };
+        None
+    }
+    pub fn new_nearby(&self, endpoint_id: EndpointId, device_id: DeviceId) -> Option<VerifyingKey> {
+        // if let Some(device) = self.inner.write().unwrap().get_mut(&device_id) {
+        // // status upadet?
+        // };
+        self.nearby_endpoints
+            .write()
+            .unwrap()
+            .insert(endpoint_id, device_id)
+    }
+    pub fn insert(
+        &self,
+        target: DeviceId,
+        device: Device,
+    ) -> Result<Option<Device>, std::io::Error> {
+        let old = self.inner.write().unwrap().insert(target, device);
+        self.persist()?;
+        Ok(old)
     }
 }

@@ -11,16 +11,15 @@ use std::time::Duration;
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    let prot = NectanProtocol::new(endpoint.clone(), state1);
     let builder = Endpoint::builder(presets::N0);
     let endpoint = builder.bind().await.unwrap();
+    let router1 = Router::builder(endpoint).accept(ALPN, prot).spawn();
+    let ep1_addr = router1.endpoint().addr();
 
     let device_id = gen_device_id();
 
     let state1 = NectanState::new(device_id).await;
-    let prot = NectanProtocol::new(endpoint.clone(), state1);
-
-    let router1 = Router::builder(endpoint).accept(ALPN, prot).spawn();
-    let ep1_addr = router1.endpoint().addr();
 
     tokio::spawn(async move {
         let builder = Endpoint::builder(presets::N0);

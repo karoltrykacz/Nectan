@@ -59,15 +59,24 @@ impl NetMessage {
     }
 }
 
-#[derive(Clone)]
 pub enum AppEvent {
-    // TODO
     FoundNearby,
-    // TODO
-    NewConnectionRequest,
-    IncomingTransferOffer { offer: TransferOffer },
+    Connected {
+        device_id: DeviceId,
+    },
+    NewConnectionRequest {
+        request_id: Uuid,
+        username: Username,
+        remote_device_id: DeviceId,
+        nearby: bool,
+        respond: tokio::sync::oneshot::Sender<UiResponse>,
+    },
+    IncomingTransferOffer {
+        offer: TransferOffer,
+    },
 }
 
+#[derive(Clone, Copy)]
 pub enum UiResponse {
     Accept,
     Reject { reason: Option<String> },
