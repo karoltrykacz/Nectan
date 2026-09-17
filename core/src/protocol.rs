@@ -13,6 +13,9 @@ use iroh::{
 use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use n0_error::e;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering::SeqCst;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex, atomic::Ordering::Relaxed},
@@ -24,7 +27,7 @@ use tracing::{Instrument, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::{
-    devices::{Device, DeviceId, DeviceStatus::Online, DevicesPool, UserInfo, Username},
+    devices::{Device, DeviceId, DeviceStatus::Online, Devices, UserInfo, Username},
     messages::{AppEvent, NetMessage, UiResponse},
     path_tree::{CompressedPathTree, PathTree},
     stream::StreamPair,
@@ -290,10 +293,10 @@ pub struct NectanState {
     pending_transfers: PendingTransfers,
     app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     incoming_transfer_offer: Arc<Mutex<Option<TransferOffer>>>,
-    devices: DevicesPool,
+    devices: Devices,
     mdns: MdnsAddressLookup,
     router: OnceCell<Router>,
-    pub signing_key: SigningKey,
+    signing_key: SigningKey,
     userinfo: UserInfo,
     device_id: DeviceId,
 }
@@ -303,7 +306,7 @@ impl NectanState {
         userinfo: UserInfo,
         device_id: DeviceId,
         signing_key: SigningKey,
-        devices: DevicesPool,
+        devices: Devices,
         app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     ) -> Self {
         let user_data: UserData = STANDARD.encode(device_id.to_bytes()).parse().unwrap();
@@ -387,6 +390,7 @@ pub fn build_offer() -> PathTree {
 pub async fn setup() -> Result<()> {
     let builder = Endpoint::builder(presets::N0);
     let endpoint = builder.bind().await?;
+
     Ok(())
 }
 

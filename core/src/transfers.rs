@@ -263,11 +263,6 @@ pub async fn send_item(
         path_bytes,
     };
 
-    // NetMessage::TransferStream { transfer_id }
-    //     .write(&mut stream.tx())
-    //     .await
-    //     .map_err(|_| TransferItemError::StreamError)?;
-
     stream
         .tx()
         .write_all(&header.to_bytes())
@@ -275,8 +270,8 @@ pub async fn send_item(
         .map_err(|_| TransferItemError::StreamError)?;
 
     let mut buf = Vec::with_capacity(64 * 1024);
-    // let mut file_eof = false;
 
+    // let mut file_eof = false;
     // let mut buf_a = Vec::with_capacity(64 * 1024);
     // let mut buf_b = Vec::with_capacity(64 * 1024);
     // let mut use_a = true;

@@ -148,13 +148,13 @@ impl fmt::Display for Device {
 }
 
 #[derive(Clone)]
-pub struct DevicesPool {
+pub struct Devices {
     inner: Arc<RwLock<HashMap<DeviceId, Device>>>,
     nearby_endpoints: Arc<RwLock<HashMap<EndpointId, DeviceId>>>,
     writer: DataWriter,
 }
 
-impl DevicesPool {
+impl Devices {
     pub fn new(path: Option<PathBuf>) -> Result<Self, std::io::Error> {
         let mut base_path = match path {
             Some(p) => p,
