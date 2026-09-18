@@ -9,6 +9,8 @@ use tracing::{debug, error, info, warn};
 use crate::protocol::DISCOVERY_URL;
 use crate::{devices::DeviceId, protocol::NectanState};
 
+pub const CODE_SESSION_TTL: Duration = Duration::from_secs(120);
+
 pub enum CodeLookupError {
     NotFound,
     ConnectionFailed,
