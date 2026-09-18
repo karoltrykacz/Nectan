@@ -226,4 +226,16 @@ impl Devices {
         self.persist()?;
         Ok(old)
     }
+    pub fn get_unresolved_devices(&self) -> Vec<DeviceId> {
+        let mut unresolved_devices = Vec::new();
+        let read_lock = self.inner.read().unwrap();
+        for (device_id, device) in &*read_lock {
+            if let None = device.connection
+                && !device.deleted
+            {
+                unresolved_devices.push(*device_id);
+            }
+        }
+        unresolved_devices
+    }
 }

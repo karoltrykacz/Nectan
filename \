@@ -748,16 +748,25 @@ pub async fn resolve_devices(
     };
     let payload = postcard::to_allocvec(&payload).unwrap();
 
-    let response = client
+    let res = client
         .post(format!("{DISCOVERY_URL}/resolve_devices"))
         .body(payload)
         .send()
-        .await?;
+        .await;
 
-    info!("Resolve devices response status {}", response.status());
-    let bytes = response.bytes().await?;
-    let response: ResolveDevicesResponse = postcard::from_bytes(&bytes)?;
+    match res {
+        Ok(response) => {
+            info!("Resolve devices response status {}", response.status());
+            // let payload = response.json::<types::ResolveDevicesResponse>().await?;
+            let bytes = response.bytes().await?;
+            let response: ResolveDevicesResponse = postcard::from_bytes(&bytes)?;
 
-    info!("Resolved devices");
-    Ok(response)
+            info!("Resolved devices");
+            Ok(response)
+        }
+        Err(error) => {
+            error!("Remote devices resolver. Network error: {error}");
+            bail!(error)
+        }
+    }
 }
