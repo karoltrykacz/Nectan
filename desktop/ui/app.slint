@@ -10,6 +10,7 @@ import { SettingsBridge, SettingsModal } from "settings.slint";
 import { TransfersBridge, Transfers } from "transfers.slint";
 import { MainBody, WindowBridge, TabDragGhost } from "tabs.slint";
 import { AddRemoteDeviceModal, AddDeviceBridge } from "add_remote_modal.slint";
+import { ErrorModal } from "error_modal.slint";
 
 export { WindowBridge, AddDeviceBridge }
 export struct TreeNode {
@@ -330,7 +331,17 @@ export component NectanWindow inherits Window {
 
             if IncomingTransferOfferBridge.is-open: IncomingTransferOfferModal { }
 
-            if AddDeviceBridge.add_device_open: AddRemoteDeviceModal { }
+            AddRemoteDeviceModal { }
+
+            if root.error_open: ErrorModal {
+                open: root.error_open;
+                title: root.error_title;
+                message: root.error_message;
+
+                closed => {
+                    root.error_open = false;
+                }
+            }
 
             TabDragGhost { }
         }

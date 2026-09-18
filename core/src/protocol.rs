@@ -3,7 +3,7 @@ use anyhow::{Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use futures::StreamExt;
-use iroh::EndpointId;
+pub use iroh::EndpointId;
 use iroh::{
     Endpoint, EndpointAddr,
     endpoint::{Connection, RecvStream, SendStream, presets},

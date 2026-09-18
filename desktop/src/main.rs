@@ -23,6 +23,7 @@ mod handlers;
 #[tokio::main]
 async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
+    tracing_subscriber::fmt().init();
 
     let (device_id, key) = gen_device_id();
     let userinfo = UserInfo::new(Username::new("Default User").unwrap());

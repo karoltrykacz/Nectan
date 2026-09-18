@@ -1,0 +1,77 @@
+import { Theme } from "theme.slint";
+import { PrimaryButton } from "elements.slint";
+
+export component ErrorModal inherits Rectangle {
+    in-out property <bool> open: false;
+
+    in-out property <string> title: "";
+    in-out property <string> message: "";
+
+    callback closed();
+
+    visible: root.open;
+
+    width: 100%;
+    height: 100%;
+
+    background: #00000088;
+    border-radius: 8px;
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+
+        clicked => {
+            root.closed();
+        }
+    }
+
+    Rectangle {
+        width: 420px;
+        height: 196px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+
+            Text {
+                text: root.title;
+                color: Theme.colors.primary-font;
+                font-size: 20px;
+                font-weight: 600;
+                font-family: Theme.font-heading;
+            }
+
+            Text {
+                text: root.message;
+                color: Theme.colors.secondary-font;
+                font-size: 14px;
+                wrap: word-wrap;
+                vertical-stretch: 1;
+            }
+
+            HorizontalLayout {
+                horizontal-stretch: 1;
+                alignment: end;
+
+                PrimaryButton {
+                    text: "Close";
+                    clicked => {
+                        root.closed();
+                    }
+                }
+            }
+        }
+    }
+}

@@ -71,6 +71,7 @@ pub struct CodeIssueRequest {
 
 pub async fn issue_code(state: &NectanState, code: String) -> Result<String> {
     let Some(seq_n) = state.seq_num.get_and_inc() else {
+        error!("Endpoint not announced.");
         bail!("Connection error. Make sure you are connected to the internet and try again.")
     };
 
