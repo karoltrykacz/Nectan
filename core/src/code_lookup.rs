@@ -89,6 +89,7 @@ pub async fn issue_code(state: &NectanState, code: String) -> Result<String> {
         seq_num: seq_n,
         signature,
     };
+    let payload = postcard::to_allocvec(&payload).unwrap();
 
     let url = format!("{DISCOVERY_URL}/issue_code");
     let max_attempts = 3;
@@ -96,8 +97,7 @@ pub async fn issue_code(state: &NectanState, code: String) -> Result<String> {
 
     for attempt in 1..=max_attempts {
         info!("Attempting to issue code");
-        let payload = postcard::to_allocvec(&payload).unwrap();
-        match state.http().post(&url).body(payload).send().await {
+        match state.http().post(&url).body(payload.clone()).send().await {
             Ok(response) => match response.status() {
                 StatusCode::ACCEPTED => {
                     info!("Code issued {:?}", code);

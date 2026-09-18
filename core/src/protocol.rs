@@ -26,9 +26,12 @@ use std::{
 };
 use tokio::sync::OnceCell;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
 use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
+use crate::storage_utils::KvStore;
 use crate::{
     devices::{Device, DeviceId, DeviceStatus::Online, Devices, UserInfo, Username},
     messages::{AppEvent, NetMessage, UiResponse},
@@ -642,4 +645,62 @@ pub async fn announce_endpoint(state: &NectanState) {
 
     trace!("Endpoint announced. Recovered sequence number {seq}");
     state.seq_num.set(seq + 1);
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct DeviceCreateRequest {
+    pub device_id: DeviceId,
+}
+
+pub fn start_registration_loop(
+    store: KvStore,
+    device_id: DeviceId,
+    client: Client,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let payload = DeviceCreateRequest { device_id };
+        let payload = postcard::to_allocvec(&payload).unwrap();
+
+        loop {
+            let registered = store
+                .get("registered")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            if registered {
+                trace!("User is already registered.");
+                break;
+            }
+
+            match client
+                .post(format!("{DISCOVERY_URL}/create_device"))
+                .body(payload.clone())
+                .send()
+                .await
+            {
+                Ok(response) => match response.status() {
+                    StatusCode::CREATED => {
+                        if store
+                            .set("registered", serde_json::Value::Bool(true))
+                            .is_ok()
+                        {
+                            info!("Device succesfully registered");
+                            break;
+                        }
+                    }
+                    StatusCode::OK => {
+                        break;
+                    }
+                    status => {
+                        warn!("Unexpected register status: {}, retrying...", status);
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                },
+                Err(e) => {
+                    error!("Register request failed: {:?}, retrying...", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+            }
+        }
+    })
 }
