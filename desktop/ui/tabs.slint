@@ -3,6 +3,7 @@ import { IconButton, SvgIcon, Spinner, PrimaryButton } from "elements.slint";
 import { Transfers } from "transfers.slint";
 import { SettingsBridge } from "settings.slint";
 import { DeviceRow, DeviceScreen, DevicesBridge } from "devices.slint";
+import { AddDeviceBridge } from "add_remote_modal.slint";
 
 // Containers, search
 export enum selected-window { transfers, device, vpn }
@@ -361,7 +362,7 @@ export component MainBody inherits VerticalLayout {
                     }
 
                     clicked => {
-                        // AddDeviceBridge.add_device_open = true;
+                        AddDeviceBridge.add_device_open = true;
                     }
                 }
 

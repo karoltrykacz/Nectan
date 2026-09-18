@@ -95,8 +95,6 @@ pub struct Device {
     )]
     pub id: DeviceId,
     #[serde(skip)]
-    pub endpoint_addr: Option<EndpointAddr>,
-    #[serde(skip)]
     pub connection: Option<Connection>,
     #[serde(skip)]
     pub status: DeviceStatus,

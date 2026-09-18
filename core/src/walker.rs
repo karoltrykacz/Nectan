@@ -11,6 +11,7 @@ use std::{
     thread::JoinHandle,
     time::Instant,
 };
+use tracing::trace;
 
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
@@ -131,7 +132,7 @@ impl Walker {
             *c.comp_tree.lock().unwrap() = Some(compressed);
             let compress_time = compress.elapsed();
 
-            tracing::trace!(
+            trace!(
                 "Walker finished [{:?}]. Compressed in [{:?}]",
                 start.elapsed(),
                 compress_time

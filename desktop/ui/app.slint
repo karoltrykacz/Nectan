@@ -9,8 +9,9 @@ import { ListView } from "std-widgets.slint";
 import { SettingsBridge, SettingsModal } from "settings.slint";
 import { TransfersBridge, Transfers } from "transfers.slint";
 import { MainBody, WindowBridge, TabDragGhost } from "tabs.slint";
+import { AddRemoteDeviceModal, AddDeviceBridge } from "add_remote_modal.slint";
 
-export { WindowBridge }
+export { WindowBridge, AddDeviceBridge }
 export struct TreeNode {
     filename: string,
     path: string,
@@ -85,103 +86,6 @@ export component TreeList {
         }
     }
 }
-
-component TitleBar inherits Rectangle {
-
-    height: 40px;
-    background: Theme.colors.third-col;
-    TouchArea {
-        moved => {
-            WindowBridge.drag-window();
-        }
-        pointer-event(event) => {}
-    }
-
-    HorizontalLayout {
-        Rectangle {
-            width: 42px;
-            height: 42px;
-
-            IconButton {
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-
-                width: 28px;
-                height: 28px;
-
-                SvgIcon {
-                    source: @image-url("icons/sidebar.svg");
-                    fg: Theme.colors.third-font;
-                    size: 18px;
-                }
-
-                clicked => { WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible; }
-            }
-        }
-
-        Rectangle {
-            width: WindowBridge.sidebar-visible ? WindowBridge.sidebar-width : 0;
-            animate width {
-                duration: 75ms;
-                easing: ease;
-            }
-        }
-
-        Rectangle { }
-
-        HorizontalLayout {
-            IconButton {
-                width: 40px;
-                height: 40px;
-                round: false;
-                transform: false;
-                SvgIcon {
-                    source: @image-url("icons/minimize.svg");
-                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                    size: 18px;
-                }
-
-                clicked => {
-                    debug("minimize-window");
-                    WindowBridge.minimize-window();
-                }
-            }
-
-            IconButton {
-                width: 40px;
-                height: 40px;
-                round: false;
-                transform: false;
-                SvgIcon {
-                    source: @image-url("icons/maximize.svg");
-                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                    size: 18px;
-                }
-
-                clicked => {
-                    WindowBridge.maximize-window();
-                }
-            }
-
-            IconButton {
-                width: 40px;
-                height: 40px;
-                round: false;
-                transform: false;
-                SvgIcon {
-                    source: @image-url("icons/close.svg");
-                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                    size: 18px;
-                }
-
-                clicked => {
-                    WindowBridge.close-window();
-                }
-            }
-        }
-    }
-}
-
 
 component TransferSizeEntriesInfoHeader inherits Rectangle {
     in property <int> total-entries;
@@ -379,6 +283,18 @@ export component NectanWindow inherits Window {
     default-font-family: Theme.font-body;
     resize-border-width: 8px;
 
+    in-out property <bool> error_open: false;
+    in-out property <string> error_title: "";
+    in-out property <string> error_message: "";
+    callback show-error(string, string);
+    callback close-error();
+
+    show-error(title, message) => {
+        root.error_open = true;
+        root.error_message = message;
+        root.error_title = title;
+    }
+
     forward-focus: focus-scope;
 
     focus-scope := FocusScope {
@@ -413,6 +329,8 @@ export component NectanWindow inherits Window {
             if SettingsBridge.settings_open: SettingsModal { }
 
             if IncomingTransferOfferBridge.is-open: IncomingTransferOfferModal { }
+
+            if AddDeviceBridge.add_device_open: AddRemoteDeviceModal { }
 
             TabDragGhost { }
         }

@@ -2,24 +2,18 @@ use crate::{
     devices::{DeviceId, Devices, UserInfo},
     messages::AppEvent,
     protocol::{ALPN, NectanProtocol, NectanState},
-    transfers::PendingTransfers,
 };
 use anyhow::Result;
-use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::SigningKey;
 use iroh::{
     Endpoint,
     endpoint::{QuicTransportConfig, presets},
-    endpoint_info::UserData,
     protocol::Router,
 };
 use iroh_mdns_address_lookup::MdnsAddressLookup;
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-use tokio::sync::OnceCell;
+use std::{sync::Arc, time::Duration};
 
+pub mod code_lookup;
 pub mod common;
 pub mod devices;
 pub mod format;

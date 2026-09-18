@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use anyhow::{Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use futures::StreamExt;
-use getrandom::{SysRng, rand_core::UnwrapErr};
+use iroh::EndpointId;
 use iroh::{
     Endpoint, EndpointAddr,
     endpoint::{Connection, RecvStream, SendStream, presets},
@@ -12,6 +12,9 @@ use iroh::{
 };
 use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use n0_error::e;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
@@ -23,7 +26,7 @@ use std::{
 };
 use tokio::sync::OnceCell;
 use tokio::sync::oneshot;
-use tracing::{Instrument, debug_span, error, info, trace, warn};
+use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -37,6 +40,7 @@ use crate::{
 
 pub const ONLINE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const PROTOCOL_VERSION: u64 = 0;
+pub const DISCOVERY_URL: &str = "https://nectan.ngrok.dev";
 pub const ALPN: &[u8] = b"nectan/0";
 
 #[derive(Clone, Debug)]
@@ -65,7 +69,6 @@ impl NectanProtocol {
 impl ProtocolHandler for NectanProtocol {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let state = self.state();
-        let devices = &state.devices;
         let endpoint = self.endpoint();
 
         let devices = &state.devices;
@@ -75,7 +78,7 @@ impl ProtocolHandler for NectanProtocol {
         let remote_ep_id = connection.remote_id();
         let remote_addr = EndpointAddr::new(remote_ep_id);
 
-        trace!("Accepting new connection from {}", remote_ep_id.to_string());
+        trace!("Accepting new connection. {}", remote_ep_id.to_string());
 
         let (mut stream_tx, mut stream_rx) = connection.accept_bi().await?;
 
@@ -145,7 +148,6 @@ impl ProtocolHandler for NectanProtocol {
         let d = Device {
             username,
             id: remote_device_id,
-            endpoint_addr: Some(remote_addr.clone()),
             status: Online,
             deleted: false,
             connection: Some(connection.clone()),
@@ -299,6 +301,8 @@ pub struct NectanState {
     signing_key: SigningKey,
     userinfo: UserInfo,
     device_id: DeviceId,
+    http_client: Client,
+    pub seq_num: SeqNumber,
 }
 
 impl NectanState {
@@ -331,7 +335,12 @@ impl NectanState {
             signing_key,
             userinfo,
             device_id,
+            http_client: Client::new(),
+            seq_num: SeqNumber::new(),
         }
+    }
+    pub fn device_id(&self) -> DeviceId {
+        self.device_id
     }
     pub fn attach_router(&self, router: &Router) {
         self.router
@@ -351,6 +360,15 @@ impl NectanState {
     }
     async fn emit(&self, event: AppEvent) {
         let _ = self.app_event_tx.send(event).await;
+    }
+    pub fn http(&self) -> &Client {
+        &self.http_client
+    }
+    pub fn sign(&self, msg: &[u8]) -> Signature {
+        self.signing_key.sign(msg)
+    }
+    pub fn endpoint_id(&self) -> EndpointId {
+        self.router().endpoint().id()
     }
 }
 
@@ -439,11 +457,11 @@ pub fn start_mdns_discovery(state: &NectanState) {
     });
 }
 
-pub async fn connect(state: &NectanState, target: EndpointAddr) -> Result<Device> {
+pub async fn connect(state: &NectanState, target: EndpointId) -> Result<Device> {
     let connection = state
         .router()
         .endpoint()
-        .connect(target.clone(), ALPN)
+        .connect(target, ALPN)
         .await
         .map_err(|e| {
             error!("Connecting to the device failed. {e:#?}",);
@@ -452,7 +470,7 @@ pub async fn connect(state: &NectanState, target: EndpointAddr) -> Result<Device
 
     let (mut stream_tx, mut stream_rx) = connection.open_bi().await?;
 
-    let signature = state.signing_key.sign(target.id.as_bytes());
+    let signature = state.signing_key.sign(target.as_bytes());
     let username = state.userinfo.username();
 
     NetMessage::Hello {
@@ -484,7 +502,6 @@ pub async fn connect(state: &NectanState, target: EndpointAddr) -> Result<Device
             let remote_device = Device {
                 username: remote_username.clone(),
                 id: remote_device_id,
-                endpoint_addr: Some(target.clone()),
                 connection: Some(connection.clone()),
                 deleted: false,
                 status: Online,
@@ -537,10 +554,92 @@ pub fn gen_device_id() -> (DeviceId, SigningKey) {
     (key.verifying_key(), key)
 }
 
-// TEMPORARY
-pub async fn make_router(state: Arc<NectanState>) -> Router {
-    let builder = Endpoint::builder(presets::N0);
-    let endpoint = builder.bind().await.unwrap();
-    let prot = NectanProtocol::new(endpoint.clone(), state);
-    Router::builder(endpoint).accept(ALPN, prot).spawn()
+#[derive(Clone, Debug, Default)]
+pub struct SeqNumber {
+    inner: Arc<OnceLock<AtomicU64>>,
+}
+
+impl SeqNumber {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(OnceLock::new()),
+        }
+    }
+
+    pub fn set(&self, val: u64) {
+        self.inner.set(AtomicU64::new(val)).ok();
+    }
+
+    pub fn get_and_inc(&self) -> Option<u64> {
+        self.inner.get().map(|s| s.fetch_add(1, SeqCst))
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct EndpointAnnouncePayload {
+    pub device_id: DeviceId,
+    pub endpoint_id: EndpointId,
+    pub signature: Signature,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct EndpointAnncounceResponse {
+    pub seq_num: u64,
+}
+
+pub async fn announce_endpoint(state: &NectanState) {
+    let endpoint_id = state.endpoint_id();
+    let device_id = state.device_id();
+    let signature: Signature = state.sign(endpoint_id.as_bytes());
+    let payload = EndpointAnnouncePayload {
+        device_id,
+        endpoint_id,
+        signature,
+    };
+    let payload = postcard::to_allocvec(&payload).unwrap();
+
+    let seq = loop {
+        match state
+            .http()
+            .post(format!("{}/announce_endpoint", DISCOVERY_URL))
+            .body(payload.clone())
+            .send()
+            .await
+        {
+            Ok(response) => match response.status() {
+                StatusCode::OK => {
+                    break 10;
+                    // match response.json::<EndpointAnncounceResponse>().await {
+                    //     Ok(body) => {
+                    //         break body.seq_num;
+                    //     }
+                    //     Err(e) => error!(
+                    //         "Annouce endpoint. Failed to parse response: {:?}, retrying...",
+                    //         e
+                    //     ),
+                    // }
+                    // return;
+                }
+                StatusCode::UNAUTHORIZED => {
+                    warn!("Announce endpoint. UNAUTHORIZED");
+                    return;
+                }
+                StatusCode::NOT_FOUND => {
+                    error!("Announce endpoint. NOT_FOUND");
+                    return;
+                }
+                status => {
+                    error!("Announce endpoint unexpected status: {status}, retrying...")
+                }
+            },
+            Err(e) => {
+                error!("Announce enpoint network error {e}.");
+            }
+        }
+        warn!("Announce endpoint retry.");
+        tokio::time::sleep(Duration::from_millis(4000)).await;
+    };
+
+    trace!("Endpoint announced. Recovered sequence number {seq}");
+    state.seq_num.set(seq + 1);
 }
