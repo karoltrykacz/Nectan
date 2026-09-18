@@ -1,9 +1,16 @@
 import { Theme } from "theme.slint";
-import { IconButton, SvgIcon, PrimaryButton } from "elements.slint";
+import {
+    IconButton,
+    SvgIcon,
+    PrimaryButton,
+    GeneralModal,
+} from "elements.slint";
 import { ListView } from "std-widgets.slint";
 import { SettingsBridge, SettingsModal } from "settings.slint";
 import { TransfersBridge, Transfers } from "transfers.slint";
+import { MainBody, WindowBridge, TabDragGhost } from "tabs.slint";
 
+export { WindowBridge }
 export struct TreeNode {
     filename: string,
     path: string,
@@ -77,17 +84,6 @@ export component TreeList {
             }
         }
     }
-}
-
-export global WindowBridge {
-    in-out property <bool> sidebar-visible: true;
-    in-out property <length> sidebar-width: 200px;
-
-    callback drag-window();
-
-    callback minimize-window();
-    callback maximize-window();
-    callback close-window();
 }
 
 component TitleBar inherits Rectangle {
@@ -220,209 +216,6 @@ component TransferSizeEntriesInfoHeader inherits Rectangle {
         }
     }
 }
-
-component DeviceItem { }
-
-component DevicesList { }
-
-component MainBody inherits VerticalLayout {
-
-    height: 100%;
-    width: 100%;
-
-    TitleBar { }
-	// MainBody
-    HorizontalLayout {
-        vertical-stretch: 1;
-        Rectangle {
-            width: 40px;
-            background: WindowBridge.sidebar-visible ? Theme.colors.secondary-col : Theme.colors.primary-col;
-
-            animate background {
-                duration: 75ms;
-                easing: ease;
-            }
-
-            VerticalLayout {
-                padding-top: 8px;
-                padding-bottom: 8px;
-                cross-axis-alignment: center;
-
-                Rectangle {
-                    height: 8px;
-                }
-
-                IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: @image-url("icons/tranfsers.svg");
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
-                    }
-
-                    clicked => {
-                        debug("Opening transfers");
-                    }
-                }
-
-                Rectangle {
-                    height: 8px;
-                }
-
-                IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: @image-url("icons/tranfsers.svg");
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
-                    }
-
-                    clicked => {
-                    }
-                }
-
-                Rectangle {
-                    height: 8px;
-                }
-
-                IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: @image-url("icons/tranfsers.svg");
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
-                    }
-
-                    clicked => {
-                        debug("Opening transfers");
-                    }
-                }
-
-                Rectangle {
-                    height: 8px;
-                }
-
-                IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: @image-url("icons/tranfsers.svg");
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
-                    }
-
-                    clicked => {
-                        debug("Opening transfers");
-                    }
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-
-                IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: @image-url("icons/settings.svg");
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
-                    }
-
-                    clicked => {
-                        SettingsBridge.settings-open = true;
-                    }
-                }
-            }
-        }
-
-        Rectangle {
-            width: 1px;
-            background: Theme.colors.third-col;
-        }
-
-        Rectangle {
-            width: WindowBridge.sidebar-visible ? WindowBridge.sidebar-width : 0px;
-            clip: true;
-            background: Theme.colors.secondary-col;
-            border-width: 1px;
-            border-color: Theme.colors.secondary-col;
-
-            animate width {
-                duration: 75ms;
-                easing: ease;
-            }
-	    // HERE SIDEBAR SHIT
-	    DevicesList { }
-        }
-    }
-}
-
-
-
-component GeneralModal inherits Rectangle {
-
-    in-out property <bool> open;
-    callback on-close();
-    callback on-enter();
-
-    forward-focus: focus-scope;
-
-    focus-scope := FocusScope {
-        enabled: open;
-        visible: open;
-
-        changed enabled => {
-            if (open) {
-                self.focus();
-            }
-        }
-
-        key-pressed(event) => {
-            if (event.text == Key.Escape) {
-                open = false;
-                on-close();
-                return accept;
-            }
-            if (event.text == "w"
-                && (event.modifiers.control || event.modifiers.meta)) {
-                open = false;
-                on-close();
-                return accept;
-            }
-            if (event.text == Key.Return) {
-                on-enter();
-                return accept;
-            }
-            return reject;
-        }
-
-        Rectangle {
-            width: 100%;
-            height: 100%;
-            background: #00000077;
-        }
-
-        TouchArea {
-            width: 100%;
-            height: 100%;
-            enabled: open;
-            clicked => {
-                open = false;
-                on-close();
-            }
-        }
-
-        @children
-    }
-}
-
-component FoundNearbyModal { }
-
-component OutcomingTransferOfferModal { }
 
 export struct TransferOfferItem {
     name: string,
@@ -586,21 +379,42 @@ export component NectanWindow inherits Window {
     default-font-family: Theme.font-body;
     resize-border-width: 8px;
 
-    Rectangle {
+    forward-focus: focus-scope;
+
+    focus-scope := FocusScope {
         width: 100%;
         height: 100%;
-        background: Theme.colors.primary-col;
-        border-width: 1px;
-        border-color: #dddddd1b;
-        border-radius: 8px;
-        clip: true;
 
-        MainBody { }
+        init => {
+            self.focus();
+        }
 
-        IncomingTransferOfferModal { }
+        key-pressed(event) => {
+	    // Toggle sidebar
+            if (event.text == "b"
+                && (event.modifiers.control || event.modifiers.meta)) {
+                WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+                return accept;
+            }
+            return reject;
+        }
 
-        SettingsModal { }
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.colors.primary-col;
+            border-width: 1px;
+            border-color: #FFFFFF1B;
+            border-radius: 8px;
+            clip: true;
 
-        Transfers { }
+            MainBody { }
+
+            if SettingsBridge.settings_open: SettingsModal { }
+
+            if IncomingTransferOfferBridge.is-open: IncomingTransferOfferModal { }
+
+            TabDragGhost { }
+        }
     }
 }

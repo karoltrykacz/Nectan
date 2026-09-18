@@ -1,0 +1,340 @@
+import { Theme } from "theme.slint";
+import {
+    IconButton,
+    SvgIcon,
+    PrimaryButton,
+    SvgIcon,
+    GeneralModal,
+} from "elements.slint";
+import { SettingsBridge } from "settings.slint";
+import { OutcomingTransferModalBridge } from "transfer_offer_modal.slint";
+import { SettingsBridge } from "settings.slint";
+
+export enum DeviceStatus {
+    online,
+    offline,
+    nearby,
+}
+
+export struct DeviceItem {
+    id: string,
+    name: string,
+    status: DeviceStatus,
+    favourite: bool,
+    completed-transfers: int,
+    total-exchanged-data: string
+}
+
+export global DevicesBridge {
+    in-out property <[DeviceItem]> devices: [];
+    pure callback toggle-favourite(string);
+    in-out property <int> device-details-open-idx: -1;
+    in-out property <bool> device-details-open: false;
+}
+
+export component DeviceStatusText inherits Text {
+    in property <DeviceStatus> status;
+
+    text: status == DeviceStatus.online ? "Online" : status == DeviceStatus.nearby ? "Nearby" : "Offline";
+            // color: Theme.colors.third-font;
+    	    color: status == DeviceStatus.online ? #4caf50 :
+        (status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
+    font-size: 12px;
+    font-family: Theme.font-heading;
+    font-weight: 500;
+}
+
+export component DeviceRow inherits Rectangle {
+    in property <string> name: "Device";
+    in property <DeviceStatus> status;
+
+    in property <bool> selected: false;
+    property <bool> pressed: false;
+
+    out property <bool> hovered: area.has-hover;
+    in property <image> icon;
+
+    height: 52px;
+    border-radius: 4px;
+
+    background: root.pressed
+        ? Theme.colors.hover-col.with-alpha(0.05)
+        : (root.selected
+        ? Theme.colors.third-col
+        : (area.has-hover ? Theme.colors.third-col : transparent));
+
+    callback clicked;
+
+    VerticalLayout {
+        padding-left: 8px;
+        alignment: center;
+
+        Text {
+            text: root.name;
+            color: Theme.colors.primary-font;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: Theme.font-heading;
+        }
+
+        DeviceStatusText {
+            status: root.status;
+        }
+    }
+
+    area := TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => { root.clicked(); }
+        pointer-event(event) => {
+
+            if (event.kind == PointerEventKind.down) {
+                root.pressed = true;
+            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                root.pressed = false;
+            }
+        }
+    }
+}
+
+export component DeviceScreen {
+    in property <int> device-idx;
+    property <DeviceItem> device: DevicesBridge.devices[root.device-idx];
+
+    function select-device() {
+        OutcomingTransferModalBridge.sending-destination-name = device.name;
+        OutcomingTransferModalBridge.sending-destination-id = device.id;
+    }
+
+    VerticalLayout {
+
+        HorizontalLayout {
+            padding: 20px;
+            horizontal-stretch: 1;
+            alignment: space-between;
+
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    font-family: Theme.font-heading;
+                    font-size: 20px;
+                    font-weight: 600;
+                    color: Theme.colors.primary-font;
+                    text: device.name;
+                }
+
+                DeviceStatusText {
+                    status: device.status;
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                width: layout.min-width;
+
+                layout := HorizontalLayout {
+                    alignment: center;
+                    spacing: 12px;
+                    IconButton {
+
+                        width: 28px;
+                        height: 28px;
+                        SvgIcon {
+                            source: root.device.favourite ?
+                                @image-url("icons/star_filled.svg") :
+                                @image-url("icons/star.svg");
+                            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                            size: 16px;
+                        }
+
+                        clicked => {
+                            DevicesBridge.toggle-favourite(device.id);
+                        }
+                    }
+
+                    IconButton {
+                        width: 28px;
+                        height: 28px;
+                        SvgIcon {
+                            source: @image-url("icons/more-horizontal.svg");
+                            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                            size: 16px;
+                        }
+
+                        clicked => {
+                            DevicesBridge.device-details-open-idx = device-idx;
+                            DevicesBridge.device-details-open = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: center;
+
+            if device.status == DeviceStatus.offline: VerticalLayout {
+                vertical-stretch: 1;
+                alignment: center;
+                cross-axis-alignment: center;
+                padding-bottom: 64px;
+                spacing: 20px;
+
+                Text {
+                    text: "\{device.name} is offline";
+                    font-family: Theme.font-heading;
+                    font-size: 16px;
+                }
+
+                SvgIcon {
+                    source: @image-url("icons/wifi-off.svg");
+                    fg: Theme.colors.third-font;
+                    size: 28px;
+                }
+            }
+            if device.status != DeviceStatus.offline: VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                PrimaryButton {
+                    width: 142px;
+                    text: "Send folder";
+                    button-enabled: device.status != DeviceStatus.offline;
+                    image: @image-url("icons/folder-nofill.svg");
+                    animate-width: false;
+                    clicked => {
+                        select-device();
+                        OutcomingTransferModalBridge.select-folders();
+                    }
+                }
+
+                PrimaryButton {
+                    width: 142px;
+                    text: "Send container";
+                    button-enabled: device.status != DeviceStatus.offline;
+                    image: @image-url("icons/archive.svg");
+                    animate-width: false;
+                    clicked => {
+                        select-device();
+                        OutcomingTransferModalBridge.select-container();
+                    }
+                }
+
+                PrimaryButton {
+                    width: 142px;
+                    text: "Send files";
+                    button-enabled: device.status != DeviceStatus.offline;
+                    image: @image-url("icons/file-nofill.svg");
+                    animate-width: false;
+                    clicked => {
+                        select-device();
+                        OutcomingTransferModalBridge.select-files();
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component DeviceOptionsModal inherits Rectangle {
+    property <DeviceItem> device: DevicesBridge.devices[DevicesBridge.device-details-open-idx];
+    GeneralModal {
+        open <=> DevicesBridge.device-details-open;
+
+        Rectangle {
+            width: min(512px, parent.width - 40px);
+            height: min(256px,parent.height - 40px);
+            clip: true;
+
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                HorizontalLayout {
+
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            font-family: Theme.font-heading;
+                            font-size: 20px;
+                            font-weight: 600;
+                            color: Theme.colors.primary-font;
+                            text: device.name;
+                        }
+
+                        DeviceStatusText {
+                            status: device.status;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 8px;
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Completed transfers";
+                        color: Theme.colors.primary-font;
+                        font-size: 14px;
+                    }
+
+                    Text {
+                        text: device.completed-transfers;
+                        font-size: 14px;
+                        font-weight: 600;
+                        font-family: Theme.font-heading;
+                        color: Theme.colors.primary-font;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Total exchanged data";
+                        color: Theme.colors.primary-font;
+                        font-size: 14px;
+                    }
+
+                    Text {
+                        text: device.total-exchanged-data;
+                        font-size: 14px;
+                        font-weight: 600;
+                        font-family: Theme.font-heading;
+                        color: Theme.colors.primary-font;
+                    }
+                }
+
+                Rectangle { }
+
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton {
+                        text: "Close";
+                        clicked => {
+                            DevicesBridge.device-details-open = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
