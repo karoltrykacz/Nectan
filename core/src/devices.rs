@@ -1,15 +1,14 @@
+use anyhow::bail;
+use base64::{Engine, engine::general_purpose::STANDARD};
 use core::fmt;
+use ed25519_dalek::VerifyingKey;
+use iroh::{EndpointId, endpoint::Connection};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
-
-use anyhow::bail;
-use base64::{Engine, engine::general_purpose::STANDARD};
-use ed25519_dalek::VerifyingKey;
-use iroh::{EndpointAddr, EndpointId, endpoint::Connection};
-use serde::{Deserialize, Serialize};
 
 use crate::storage_utils::DataWriter;
 
@@ -144,6 +143,11 @@ impl fmt::Display for Device {
         write!(f, "Username {}", self.username)
     }
 }
+// struct DevicesInner{
+//     devices: RwLock<HashMap<DeviceId, Device>>,
+//     nearby_endpoints: RwLock<HashMap<EndpointId, DeviceId>>,
+//     writer: DataWriter,
+// }
 
 #[derive(Clone)]
 pub struct Devices {

@@ -1,8 +1,9 @@
 use iroh::{Endpoint, EndpointAddr, Watcher, endpoint::presets, protocol::Router};
 use nectan_core::{
-    devices::{DevicesPool, UserInfo, Username},
+    devices::{Devices, UserInfo, Username},
     messages::{AppEvent, UiResponse},
     protocol::{ALPN, NectanProtocol, NectanState, connect, gen_device_id},
+    storage_utils::KvStore,
 };
 use std::{sync::Arc, time::Duration};
 use tracing::{debug, info, trace};
@@ -42,11 +43,13 @@ async fn main() {
     });
 
     let tmp = std::env::temp_dir().join(Uuid::new_v4().to_string());
-    let devices = DevicesPool::new(Some(tmp)).expect("Failed to create devices pool.");
-    let state1 = NectanState::build(userinfo, device_id, key, devices, tx).await;
+    let store =
+        KvStore::new(tmp.clone(), "store.json").expect("Failed to create persistent storage.");
+    let devices = Devices::new(Some(tmp)).expect("Failed to create devices pool.");
+    let state1 = NectanState::build(userinfo, device_id, key, devices, tx, store).await;
     let prot = NectanProtocol::new(endpoint.clone(), Arc::new(state1.clone()));
     let router1 = Router::builder(endpoint.clone()).accept(ALPN, prot).spawn();
-    let ep1_addr = router1.endpoint().addr();
+    let target = router1.endpoint().id();
 
     state1.attach_router(&router1);
 
@@ -68,8 +71,10 @@ async fn main() {
         });
 
         let tmp = std::env::temp_dir().join(Uuid::new_v4().to_string());
-        let devices = DevicesPool::new(Some(tmp)).expect("Failed to create devices pool.");
-        let state2 = NectanState::build(userinfo, device_id, key, devices, tx).await;
+        let store =
+            KvStore::new(tmp.clone(), "store.json").expect("Failed to create persistent storage.");
+        let devices = Devices::new(Some(tmp)).expect("Failed to create devices pool.");
+        let state2 = NectanState::build(userinfo, device_id, key, devices, tx, store).await;
         let prot = NectanProtocol::new(endpoint.clone(), Arc::new(state2.clone()));
         let router2 = Router::builder(endpoint.clone()).accept(ALPN, prot).spawn();
 
@@ -77,7 +82,7 @@ async fn main() {
 
         println!("Ep2 {}", endpoint.id().to_string());
         println!("Connecting.. ");
-        println!("Connect result {:?}", connect(&state2, ep1_addr).await);
+        println!("Connect result {:?}", connect(&state2, target).await);
     });
 
     loop {

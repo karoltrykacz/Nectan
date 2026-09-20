@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tracing::info;
 
 #[derive(Clone, Debug)]
 pub struct DataWriter {
@@ -71,6 +72,7 @@ pub struct KvStore {
 
 impl KvStore {
     pub fn new(storage_path: PathBuf, store_name: &str) -> Result<Self, Error> {
+        info!("Store location [{:?}]", storage_path);
         let writer = DataWriter::new(storage_path, store_name)?;
         let initial: HashMap<String, Value> = writer
             .load()

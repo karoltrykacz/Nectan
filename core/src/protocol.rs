@@ -27,8 +27,7 @@ use std::{
 use tokio::sync::OnceCell;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
-use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
+use tracing::{Instrument, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::storage_utils::KvStore;
@@ -43,7 +42,7 @@ use crate::{
 
 pub const ONLINE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const PROTOCOL_VERSION: u64 = 0;
-pub const DISCOVERY_URL: &str = "https://nectan.ngrok.dev";
+pub const DISCOVERY_URL: &str = "https://discovery.nectan.co";
 pub const ALPN: &[u8] = b"nectan/0";
 
 #[derive(Clone, Debug)]
@@ -79,7 +78,6 @@ impl ProtocolHandler for NectanProtocol {
         let my_device_id = state.device_id;
 
         let remote_ep_id = connection.remote_id();
-        let remote_addr = EndpointAddr::new(remote_ep_id);
 
         trace!("Accepting new connection. {}", remote_ep_id.to_string());
 
@@ -271,7 +269,7 @@ async fn handle_transfer_offer(
     };
 
     if offer.is_none() {
-        &NetMessage::Rejected {
+        let _ = NetMessage::Rejected {
             reason: Some("Receiver is busy with another offer.".to_string()),
         }
         .write(stream.tx())
@@ -306,6 +304,7 @@ pub struct NectanState {
     device_id: DeviceId,
     http_client: Client,
     pub seq_num: SeqNumber,
+    pub store: KvStore,
 }
 
 impl NectanState {
@@ -315,6 +314,7 @@ impl NectanState {
         signing_key: SigningKey,
         devices: Devices,
         app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
+        store: KvStore,
     ) -> Self {
         let user_data: UserData = STANDARD.encode(device_id.to_bytes()).parse().unwrap();
         let builder = Endpoint::builder(presets::N0).user_data_for_address_lookup(user_data);
@@ -340,6 +340,7 @@ impl NectanState {
             device_id,
             http_client: Client::new(),
             seq_num: SeqNumber::new(),
+            store,
         }
     }
     pub fn device_id(&self) -> DeviceId {
@@ -405,9 +406,6 @@ pub fn build_offer() -> PathTree {
     walker.tree.lock().unwrap().take().unwrap()
 }
 
-// pub fn connect() {}
-// pub fn stream_mux() {}
-
 pub async fn setup() -> Result<()> {
     let builder = Endpoint::builder(presets::N0);
     let endpoint = builder.bind().await?;
@@ -435,24 +433,12 @@ pub fn start_mdns_discovery(state: &NectanState) {
         while let Some(event) = events.next().await {
             match event {
                 DiscoveryEvent::Discovered { endpoint_info, .. } => {
-                    let Some(device_id) = endpoint_info
-                        .user_data()
-                        .and_then(|data| STANDARD.decode(data.as_ref()).ok())
-                        .and_then(|bytes| bytes.as_slice().try_into().ok())
-                        .and_then(|arr: [u8; 32]| VerifyingKey::from_bytes(&arr).ok())
-                    else {
-                        error!("Discovery error. Failed to decode user data.");
-                        continue;
-                    };
-
                     let _ = state.app_event_tx.send(AppEvent::FoundNearby);
-                    info!("Discovery event. Found new device.");
-                    let addr = endpoint_info.to_endpoint_addr();
-                    info!("Address {addr:#?}");
-                    // TODO connect here
+                    info!("Discovery event. Found device.");
+                    connect(&state, endpoint_info.endpoint_id);
                 }
                 DiscoveryEvent::Expired { endpoint_id } => {
-                    // TODO
+                    state.devices.left_local(&endpoint_id);
                 }
                 _ => {}
             }
@@ -543,14 +529,6 @@ pub async fn connect(state: &NectanState, target: EndpointId) -> Result<Device> 
     }
 }
 
-fn validate_path_component(component: &str) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        !component.contains('/'),
-        "path components must not contain the only correct path separator, /"
-    );
-    Ok(())
-}
-
 pub fn gen_device_id() -> (DeviceId, SigningKey) {
     let mut csprng = UnwrapErr(SysRng);
     let key = SigningKey::generate(&mut csprng);
@@ -590,61 +568,69 @@ pub struct EndpointAnncounceResponse {
     pub seq_num: u64,
 }
 
-pub async fn announce_endpoint(state: &NectanState) {
-    let endpoint_id = state.endpoint_id();
-    let device_id = state.device_id();
-    let signature: Signature = state.sign(endpoint_id.as_bytes());
-    let payload = EndpointAnnouncePayload {
-        device_id,
-        endpoint_id,
-        signature,
-    };
-    let payload = postcard::to_allocvec(&payload).unwrap();
+pub fn announce_endpoint(state: &NectanState) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        let endpoint_id = state.endpoint_id();
+        let device_id = state.device_id();
+        let signature: Signature = state.sign(endpoint_id.as_bytes());
+        let payload = EndpointAnnouncePayload {
+            device_id,
+            endpoint_id,
+            signature,
+        };
+        let payload = postcard::to_allocvec(&payload).unwrap();
 
-    let seq = loop {
-        match state
-            .http()
-            .post(format!("{}/announce_endpoint", DISCOVERY_URL))
-            .body(payload.clone())
-            .send()
-            .await
-        {
-            Ok(response) => match response.status() {
-                StatusCode::OK => {
-                    break 10;
-                    // match response.json::<EndpointAnncounceResponse>().await {
-                    //     Ok(body) => {
-                    //         break body.seq_num;
-                    //     }
-                    //     Err(e) => error!(
-                    //         "Annouce endpoint. Failed to parse response: {:?}, retrying...",
-                    //         e
-                    //     ),
-                    // }
-                    // return;
+        let seq = loop {
+            match state
+                .http()
+                .post(format!("{}/announce_endpoint", DISCOVERY_URL))
+                .body(payload.clone())
+                .send()
+                .await
+            {
+                Ok(response) => match response.status() {
+                    StatusCode::OK => {
+                        let bytes = response.bytes().await;
+                        match bytes {
+                            Ok(body) => {
+                                let Ok(res) =
+                                    postcard::from_bytes::<EndpointAnncounceResponse>(&body)
+                                else {
+                                    continue;
+                                };
+                                break res.seq_num;
+                            }
+                            Err(e) => error!(
+                                "Annouce endpoint. Failed to parse response: {:?}, retrying...",
+                                e
+                            ),
+                        }
+                    }
+                    StatusCode::NOT_FOUND => {
+                        error!("Announce endpoint. NOT_FOUND");
+                        // ???
+                        // return;
+                    }
+                    StatusCode::UNAUTHORIZED => {
+                        error!("Announce endpoint. UNAUTHORIZED");
+                        return;
+                    }
+                    status => {
+                        error!("Announce endpoint unexpected status: {status}, retrying...")
+                    }
+                },
+                Err(e) => {
+                    error!("Announce enpoint network error {e}.");
                 }
-                StatusCode::UNAUTHORIZED => {
-                    warn!("Announce endpoint. UNAUTHORIZED");
-                    return;
-                }
-                StatusCode::NOT_FOUND => {
-                    error!("Announce endpoint. NOT_FOUND");
-                    return;
-                }
-                status => {
-                    error!("Announce endpoint unexpected status: {status}, retrying...")
-                }
-            },
-            Err(e) => {
-                error!("Announce enpoint network error {e}.");
             }
-        }
-        warn!("Announce endpoint retry.");
-        tokio::time::sleep(Duration::from_millis(4000)).await;
-    };
+            warn!("Announce endpoint retry.");
+            tokio::time::sleep(Duration::from_millis(4000)).await;
+        };
 
-    trace!("Endpoint announced. Recovered sequence number {seq}");
-    state.seq_num.set(seq + 1);
+        trace!("Endpoint announced. Recovered sequence number {seq}");
+        state.seq_num.set(seq + 1);
+    });
 }
 
 #[derive(Deserialize, Serialize)]
@@ -652,27 +638,28 @@ pub struct DeviceCreateRequest {
     pub device_id: DeviceId,
 }
 
-pub fn start_registration_loop(
-    store: KvStore,
-    device_id: DeviceId,
-    client: Client,
-) -> JoinHandle<()> {
+pub fn start_registration_loop(state: &NectanState) -> JoinHandle<()> {
+    let state = state.clone();
     tokio::spawn(async move {
-        let payload = DeviceCreateRequest { device_id };
+        let payload = DeviceCreateRequest {
+            device_id: state.device_id(),
+        };
         let payload = postcard::to_allocvec(&payload).unwrap();
 
         loop {
-            let registered = store
+            let registered = state
+                .store
                 .get("registered")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
 
             if registered {
-                trace!("User is already registered.");
+                info!("User is registered.");
                 break;
             }
 
-            match client
+            match state
+                .http()
                 .post(format!("{DISCOVERY_URL}/create_device"))
                 .body(payload.clone())
                 .send()
@@ -680,7 +667,8 @@ pub fn start_registration_loop(
             {
                 Ok(response) => match response.status() {
                     StatusCode::CREATED => {
-                        if store
+                        if state
+                            .store
                             .set("registered", serde_json::Value::Bool(true))
                             .is_ok()
                         {
