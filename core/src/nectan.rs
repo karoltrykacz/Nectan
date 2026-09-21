@@ -6,7 +6,7 @@ use nectan_core::{
     storage_utils::KvStore,
 };
 use std::{sync::Arc, time::Duration};
-use tracing::{debug, info, trace};
+use tracing::debug;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
@@ -82,7 +82,10 @@ async fn main() {
 
         println!("Ep2 {}", endpoint.id().to_string());
         println!("Connecting.. ");
-        println!("Connect result {:?}", connect(&state2, target).await);
+        println!(
+            "Connect result {:?}",
+            connect(Arc::new(state2), target).await
+        );
     });
 
     loop {

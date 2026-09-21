@@ -854,3 +854,44 @@ mod tests {
         );
     }
 }
+/// Formats bytes for human readability using SI prefixes, rounded to a whole number
+///
+/// # Examples
+/// ```rust
+/// # use indicatif::RoundedDecimalBytes;
+/// assert_eq!("15 B",  format!("{}", RoundedDecimalBytes(15)));
+/// assert_eq!("2 kB",  format!("{}", RoundedDecimalBytes(1_500)));
+/// assert_eq!("10 GB", format!("{}", RoundedDecimalBytes(10_000_000_000)));
+/// assert_eq!("10 TB", format!("{}", RoundedDecimalBytes(10_000_000_000_000)));
+/// ```
+#[derive(Debug)]
+pub struct RoundedDecimalBytes(pub u64);
+
+impl fmt::Display for RoundedDecimalBytes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match NumberPrefix::decimal(self.0 as f64) {
+            NumberPrefix::Standalone(number) => write!(f, "{number:.0} B"),
+            NumberPrefix::Prefixed(prefix, number) => write!(f, "{number:.0} {prefix}B"),
+        }
+    }
+}
+
+/// Formats bytes for human readability using ISO/IEC prefixes, rounded to a whole number
+///
+/// # Examples
+/// ```rust
+/// # use indicatif::RoundedBinaryBytes;
+/// assert_eq!("15 B",   format!("{}", RoundedBinaryBytes(15)));
+/// assert_eq!("10 GiB", format!("{}", RoundedBinaryBytes(10_737_418_240)));
+/// ```
+#[derive(Debug)]
+pub struct RoundedBinaryBytes(pub u64);
+
+impl fmt::Display for RoundedBinaryBytes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match NumberPrefix::binary(self.0 as f64) {
+            NumberPrefix::Standalone(number) => write!(f, "{number:.0} B"),
+            NumberPrefix::Prefixed(prefix, number) => write!(f, "{number:.0} {prefix}B"),
+        }
+    }
+}

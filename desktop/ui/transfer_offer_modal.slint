@@ -1,14 +1,15 @@
 import {
-    GeneralModal,
-    GeneralFocusScope,
-    PrimaryButton,
     IconButton,
     SvgIcon,
+    PrimaryButton,
     Switch,
+    GeneralFocusScope,
+    Spinner,
+    GeneralModal,
 } from "elements.slint";
+import { TreeList, TreeNode } from "file_tree.slint";
 import { Theme } from "theme.slint";
 import { SettingsRow } from "settings.slint";
-import { TreeList, TreeNode } from "path_tree.slint";
 
 
 component TransferSizeEntriesInfoHeader inherits Rectangle {
@@ -72,6 +73,7 @@ export component OutcomingTransferModal inherits Rectangle {
 
     callback send();
     send => {
+        debug("Sending offer");
         OutcomingTransferModalBridge.send(OutcomingTransferModalBridge.sending-destination-id,OutcomingTransferModalBridge.transfer-name, compression);
     }
 
@@ -563,7 +565,6 @@ export global OutcomingTransferModalBridge {
 
 
 export struct IncomingTransferOffer {
-    transfer-id: string,
     transfer-name: string,
     from: string,
     total-entries: int,
@@ -578,9 +579,8 @@ export global IncomingTransferOfferBridge {
     // Index, path 
     callback toggle-node(int, string);
 
-    // Transfer uuid	
-    callback accept(string);
-    callback reject(string);
+    callback accept();
+    callback reject();
 }
 
 
@@ -589,10 +589,10 @@ export component IncomingTransferOfferModal inherits Rectangle {
         open <=> IncomingTransferOfferBridge.is-open;
 
         on-close => {
-            IncomingTransferOfferBridge.reject(IncomingTransferOfferBridge.offer.transfer-id);
+            IncomingTransferOfferBridge.reject();
         }
         on-enter => {
-            IncomingTransferOfferBridge.accept(IncomingTransferOfferBridge.offer.transfer-id);
+            IncomingTransferOfferBridge.accept();
         }
 
         Rectangle {
@@ -687,7 +687,7 @@ export component IncomingTransferOfferModal inherits Rectangle {
                             text: "Reject";
                             alt: true;
                             clicked => {
-                                IncomingTransferOfferBridge.reject(IncomingTransferOfferBridge.offer.transfer-id);
+                                IncomingTransferOfferBridge.reject();
                             }
                         }
 
@@ -698,7 +698,7 @@ export component IncomingTransferOfferModal inherits Rectangle {
                         PrimaryButton {
                             text: "Accept";
                             clicked => {
-                                IncomingTransferOfferBridge.accept(IncomingTransferOfferBridge.offer.transfer-id);
+                                IncomingTransferOfferBridge.accept();
                             }
                         }
                     }

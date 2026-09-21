@@ -1,7 +1,10 @@
 use crate::{
     devices::{DeviceId, Devices, UserInfo},
     messages::AppEvent,
-    protocol::{ALPN, NectanProtocol, NectanState, announce_endpoint, start_registration_loop},
+    protocol::{
+        ALPN, NectanProtocol, NectanState, announce_endpoint, start_mdns_discovery,
+        start_registration_loop,
+    },
     storage_utils::KvStore,
 };
 use anyhow::Result;
@@ -24,6 +27,7 @@ pub mod protocol;
 pub mod storage_utils;
 pub mod stream;
 pub mod transfers;
+pub mod vpn;
 pub mod walker;
 
 pub async fn setup_core(
@@ -73,6 +77,7 @@ pub async fn setup_core(
 
     start_registration_loop(&state);
     announce_endpoint(&state);
+    start_mdns_discovery(&state);
 
     Ok(state)
 }

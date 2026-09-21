@@ -18,7 +18,14 @@ use tracing::info;
 use tracing::trace;
 use uuid::Uuid;
 
+use crate::devices::DeviceId;
+use crate::messages::AppEvent;
 use crate::messages::NetMessage;
+use crate::path_tree::CompressedPathTree;
+use crate::path_tree::PathTree;
+use crate::protocol::NectanState;
+use crate::protocol::TransferOffer;
+use crate::protocol::TransferOfferInner;
 use crate::stream::StreamPair;
 
 #[derive(Debug)]
@@ -297,6 +304,79 @@ pub async fn send_item(
     }
 
     stream.tx();
+
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind")]
+pub enum NectanTransferError {
+    DeviceOffline,
+    InvalidDestination,
+    TransferRejected,
+    UnexpectedResponse,
+    ConnectionFailed,
+}
+
+impl std::fmt::Display for NectanTransferError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for NectanTransferError {}
+
+/// Send transfer offer to remote device
+/// If the offer is accepted start processing the transfer
+pub async fn send_contents(
+    state: &NectanState,
+    target: DeviceId,
+    offer: TransferOfferInner<CompressedPathTree>,
+) -> Result<(), NectanTransferError> {
+    // Get device
+    let Some(device) = state.devices.get(&target) else {
+        return Err(NectanTransferError::InvalidDestination);
+    };
+
+    // Get connection
+    let Some(connection) = device.connection.clone() else {
+        return Err(NectanTransferError::DeviceOffline);
+    };
+
+    // Open stream
+    let Ok((mut tx, mut rx)) = connection.open_bi().await else {
+        return Err(NectanTransferError::ConnectionFailed);
+    };
+
+    // Write offer
+    let msg = NetMessage::TransferOfferMsg { offer };
+    if msg.write(&mut tx).await.is_err() {
+        return Err(NectanTransferError::ConnectionFailed);
+    }
+
+    // // Propagate app event (change the send modal state)
+    state.emit(AppEvent::TransferOfferDelivered).await;
+
+    // Read remote device response
+    let Ok(offer_response) = NetMessage::read_async(&mut rx).await else {
+        return Err(NectanTransferError::ConnectionFailed);
+    };
+
+    if let NetMessage::Rejected { reason } = &offer_response {
+        info!("Outcoming transfer offer rejected. {:?}", reason);
+        return Err(NectanTransferError::TransferRejected);
+    }
+
+    let NetMessage::Accepted = offer_response else {
+        return Err(NectanTransferError::UnexpectedResponse);
+    };
+
+    // // Finally start processing the transfer
+    // state
+    //     .transfers_pool
+    //     .start_processing_transfer(transfer_id, TransferDirection::Outcoming, destination)
+    //     .await;
+    // state.transfers_pool.notify_workers();
 
     Ok(())
 }

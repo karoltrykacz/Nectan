@@ -59,53 +59,56 @@ impl NetMessage {
     }
 }
 
+#[derive(Clone)]
+pub struct ConnectionOffer {
+    pub username: Username,
+    pub remote_device_id: DeviceId,
+    pub nearby: bool,
+    pub respond: tokio::sync::mpsc::Sender<UiResponse>,
+}
+
 pub enum AppEvent {
     FoundNearby,
-    Connected {
-        device_id: DeviceId,
-    },
-    NewConnectionRequest {
-        request_id: Uuid,
-        username: Username,
-        remote_device_id: DeviceId,
-        nearby: bool,
-        respond: tokio::sync::oneshot::Sender<UiResponse>,
-    },
-    IncomingTransferOffer {
-        offer: TransferOffer,
-    },
+    Connected { device_id: DeviceId },
+    ConnectionOffer { offer: ConnectionOffer },
+    IncomingTransferOffer { offer: TransferOffer },
+    TransferOfferDelivered,
+    DeviceWentOffline { device_id: DeviceId },
 }
 
 impl std::fmt::Debug for AppEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::DeviceWentOffline { device_id } => f
+                .debug_struct("DeviceWentOffline")
+                .field("device_id", device_id)
+                .finish(),
+            Self::TransferOfferDelivered => f.debug_struct("TransferOfferDelivered").finish(),
             Self::FoundNearby => f.debug_struct("FoundNearby").finish(),
-            Self::Connected { device_id } => {
-                f.debug_struct("Connected").field("device_id", &STANDARD.encode(&device_id)).finish()
-            }
-            Self::NewConnectionRequest {
-                request_id,
-                username,
-                remote_device_id,
-                nearby,
-                .. // This ignores the 'respond' field
-            } => {
+            Self::Connected { device_id } => f
+                .debug_struct("Connected")
+                .field("device_id", &STANDARD.encode(&device_id))
+                .finish(),
+            Self::ConnectionOffer { offer } => {
                 f.debug_struct("NewConnectionRequest")
-                    .field("request_id", request_id)
-                    .field("username", &username.to_string())
-                    .field("remote_device_id", &STANDARD.encode(&remote_device_id))
-                    .field("nearby", nearby)
+                    .field("username", &offer.username.to_string())
+                    .field(
+                        "remote_device_id",
+                        &STANDARD.encode(&offer.remote_device_id),
+                    )
+                    .field("nearby", &offer.nearby)
                     .field("respond", &"Sender { .. }") // Optional placeholder
                     .finish()
             }
-            Self::IncomingTransferOffer { offer } => {
-                f.debug_struct("IncomingTransferOffer").field("offer", offer).finish()
-            }
+            Self::IncomingTransferOffer { offer } => f
+                .debug_struct("IncomingTransferOffer")
+                .field("offer", offer)
+                .finish(),
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum UiResponse {
     Accept,
     Reject { reason: Option<String> },

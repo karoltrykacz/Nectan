@@ -1,20 +1,20 @@
-use anyhow::bail;
+use anyhow::{Result, anyhow, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use core::fmt;
 use ed25519_dalek::VerifyingKey;
 use iroh::{EndpointId, endpoint::Connection};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{Arc, RwLock},
 };
 
-use crate::storage_utils::DataWriter;
+use crate::{devices::DeviceStatus::Offline, storage_utils::DataWriter};
 
 pub type DeviceId = VerifyingKey;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum DeviceStatus {
     Offline,
     Online,
@@ -152,7 +152,7 @@ impl fmt::Display for Device {
 #[derive(Clone)]
 pub struct Devices {
     inner: Arc<RwLock<HashMap<DeviceId, Device>>>,
-    nearby_endpoints: Arc<RwLock<HashMap<EndpointId, DeviceId>>>,
+    nearby_endpoints: Arc<RwLock<HashSet<EndpointId>>>,
     writer: DataWriter,
 }
 
@@ -178,7 +178,7 @@ impl Devices {
 
         Ok(Self {
             inner: Arc::new(RwLock::new(initial)),
-            nearby_endpoints: Arc::new(RwLock::new(HashMap::new())),
+            nearby_endpoints: Arc::new(RwLock::new(HashSet::new())),
             writer: store,
         })
     }
@@ -195,6 +195,10 @@ impl Devices {
         self.inner.read().unwrap().get(target).cloned()
     }
 
+    pub fn get_all(&self) -> Vec<Device> {
+        self.inner.read().unwrap().values().cloned().collect()
+    }
+
     pub fn is_nearby(&self, endpoint_id: &EndpointId) -> bool {
         self.nearby_endpoints
             .read()
@@ -203,23 +207,12 @@ impl Devices {
             .is_some()
     }
 
-    pub fn left_local(&self, endpoint_id: &EndpointId) -> Option<DeviceId> {
-        if let Some(device_id) = self.nearby_endpoints.write().unwrap().remove(endpoint_id)
-            && let Some(d) = self.inner.write().unwrap().get_mut(&device_id)
-        {
-            // d.on_local = false;
-            return Some(device_id);
-        };
-        None
+    pub fn remove_nearby(&self, endpoint_id: EndpointId) {
+        self.nearby_endpoints.write().unwrap().remove(&endpoint_id);
     }
-    pub fn new_nearby(&self, endpoint_id: EndpointId, device_id: DeviceId) -> Option<VerifyingKey> {
-        // if let Some(device) = self.inner.write().unwrap().get_mut(&device_id) {
-        // // status upadet?
-        // };
-        self.nearby_endpoints
-            .write()
-            .unwrap()
-            .insert(endpoint_id, device_id)
+    /// Returns true if device is newly inserted
+    pub fn add_nearby(&self, endpoint_id: EndpointId) -> bool {
+        self.nearby_endpoints.write().unwrap().insert(endpoint_id)
     }
     pub fn insert(
         &self,
@@ -242,4 +235,39 @@ impl Devices {
         }
         unresolved_devices
     }
+    pub fn is_alive(&self, target: EndpointId) -> bool {
+        self.inner.read().unwrap().iter().any(|(_, device)| {
+            device
+                .connection
+                .as_ref()
+                .is_some_and(|c| c.remote_id() == target && c.close_reason().is_none())
+        })
+    }
+    pub fn remove_conn(&self, target: &DeviceId, conn_id: usize) -> bool {
+        let mut lock = self.inner.write().unwrap();
+        let Some(device) = lock.get_mut(&target) else {
+            return false;
+        };
+        let Some(conn) = &device.connection else {
+            return false;
+        };
+        if conn.stable_id() == conn_id {
+            device.connection = None;
+            device.status = Offline;
+            return true;
+        }
+        false
+    }
+}
+
+pub fn device_id_from_base64(s: &str) -> Result<DeviceId> {
+    let bytes = STANDARD.decode(s)?;
+    let arr: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| anyhow!("Expected 32 bytes."))?;
+    Ok(VerifyingKey::from_bytes(&arr)?)
+}
+
+pub fn device_id_to_base64(device_id: &DeviceId) -> String {
+    STANDARD.encode(device_id.as_bytes())
 }

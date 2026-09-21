@@ -213,17 +213,17 @@ export component DeviceScreen {
                     }
                 }
 
-                PrimaryButton {
-                    width: 142px;
-                    text: "Send container";
-                    button-enabled: device.status != DeviceStatus.offline;
-                    image: @image-url("icons/archive.svg");
-                    animate-width: false;
-                    clicked => {
-                        select-device();
-                        OutcomingTransferModalBridge.select-container();
-                    }
-                }
+                // PrimaryButton {
+                //     width: 142px;
+                //     text: "Send container";
+                //     button-enabled: device.status != DeviceStatus.offline;
+                //     image: @image-url("icons/archive.svg");
+                //     animate-width: false;
+                //     clicked => {
+                //         select-device();
+                //         OutcomingTransferModalBridge.select-container();
+                //     }
+                // }
 
                 PrimaryButton {
                     width: 142px;

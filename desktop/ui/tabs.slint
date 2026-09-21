@@ -6,7 +6,7 @@ import { DeviceRow, DeviceScreen, DevicesBridge } from "devices.slint";
 import { AddDeviceBridge } from "add_remote_modal.slint";
 
 // Containers, search
-export enum selected-window { transfers, device, vpn }
+export enum selected-window { transfers, device, containers }
 export struct NectanTab { display: string, id: int, kind: selected-window, ref-id: int }
 
 export global WindowBridge {
@@ -393,33 +393,15 @@ export component MainBody inherits VerticalLayout {
                     width: 28px;
                     height: 28px;
                     SvgIcon {
-                        source: @image-url("icons/shield.svg");
+                        source: @image-url("icons/archive.svg");
                         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
+                        size: 16px;
                     }
 
                     clicked => {
-                        WindowBridge.open-tab(selected-window.vpn, 0, "VPN");
+                        WindowBridge.open-tab(selected-window.containers, 0, "Containers");
                     }
                 }
-
-                // Rectangle {
-                //     height: 8px;
-                // }
-                //
-                // IconButton {
-                //     width: 28px;
-                //     height: 28px;
-                //     SvgIcon {
-                //         source: @image-url("icons/archive.svg");
-                //         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                //         size: 16px;
-                //     }
-                //
-                //     clicked => {
-                //         WindowBridge.open-tab(selected-window.containers, 0, "Containers");
-                //     }
-                // }
 
                 Rectangle {
                     vertical-stretch: 1;

@@ -1,21 +1,28 @@
-use std::{rc::Rc, sync::Arc};
+use std::{path::PathBuf, rc::Rc, sync::Arc, time::Duration};
 
 use nectan_core::{
     code_lookup::{CodeLookupError, gen_code, issue_code, lookup_code},
-    format::DecimalBytes,
+    common::gen_transfer_name,
+    devices::device_id_from_base64,
+    format::{DecimalBytes, RoundedDecimalBytes},
     messages::{
         AppEvent::{self},
         ConnectionOffer, UiResponse,
     },
-    protocol::{NectanState, TransferOffer, connect},
+    protocol::{NectanState, TransferOffer, TransferOfferInner, connect},
+    transfers::{NectanTransferError, send_contents},
+    walker::Walker,
 };
+use rfd::FileHandle;
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, winit_030::WinitWindowAccessor};
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::{mpsc::Receiver, oneshot};
 use tracing::{error, info, trace};
+use uuid::Uuid;
 
 use crate::{
     AddDeviceBridge, ConnectionOfferBridge, IncomingTransferOffer, IncomingTransferOfferBridge,
-    LookupState, NectanTab, NectanWindow, WindowBridge, devices::update_devices, selected_window,
+    LookupState, NectanTab, NectanWindow, OutcomingTransferModalBridge, SendModalState, TreeNode,
+    WindowBridge, devices::update_devices, selected_window, state::ui_state,
 };
 
 pub fn handle_window_controls(w: &NectanWindow) {
@@ -70,8 +77,20 @@ pub fn start_event_listener(w: &NectanWindow, mut rx: Receiver<AppEvent>, state:
                 AppEvent::Connected { .. } => {
                     update_devices(&w, &state);
                 }
+                AppEvent::TransferOfferDelivered => {
+                    transfer_offer_delivered(&w);
+                }
+                AppEvent::DeviceWentOffline { .. } => {
+                    update_devices(&w, &state);
+                }
             }
         }
+    });
+}
+pub fn transfer_offer_delivered(w: &Weak<NectanWindow>) {
+    let _ = w.upgrade_in_event_loop(move |w| {
+        let bridge = w.global::<OutcomingTransferModalBridge>();
+        bridge.set_send_state(SendModalState::WaitingForResponse);
     });
 }
 
@@ -308,7 +327,7 @@ pub fn handle_tabs(w: &NectanWindow) {
                 let tab = tabs.row_data(i).unwrap();
                 let same_kind = tab.kind == kind;
                 let same_ref = match kind {
-                    selected_window::Transfers | selected_window::Vpn => true,
+                    selected_window::Transfers | selected_window::Containers => true,
                     selected_window::Device => tab.ref_id == ref_id,
                 };
                 if same_kind && same_ref {
@@ -452,5 +471,185 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
             })
             .unwrap();
         });
+    });
+}
+
+pub fn handle_scan_files(w: &NectanWindow) {
+    let weak = w.as_weak();
+    w.global::<OutcomingTransferModalBridge>()
+        .on_select_files(move || {
+            let weak = weak.clone();
+            tokio::spawn(async move {
+                if let Some(h) = rfd::AsyncFileDialog::new().pick_files().await
+                    && !h.is_empty()
+                {
+                    open_send_modal(weak, h);
+                }
+            });
+        });
+}
+pub fn handle_scan_folders(w: &NectanWindow) {
+    let weak = w.as_weak();
+    w.global::<OutcomingTransferModalBridge>()
+        .on_select_folders(move || {
+            let weak = weak.clone();
+            tokio::spawn(async move {
+                let Some(h) = rfd::AsyncFileDialog::new().pick_folders().await else {
+                    return;
+                };
+                if h.is_empty() {
+                    return;
+                }
+                open_send_modal(weak, h);
+            });
+        });
+}
+
+pub fn filehandle_to_paths(h: Vec<FileHandle>) -> Vec<PathBuf> {
+    h.iter().map(|h| h.path().to_path_buf()).collect()
+}
+
+pub fn handle_cancel_walker(w: &NectanWindow) {
+    w.global::<OutcomingTransferModalBridge>()
+        .on_transfer_walk_cancelled(move || {
+            if let Some(walker) = ui_state().walker().take() {
+                walker.stop();
+            }
+        });
+}
+
+pub fn open_send_modal(w: Weak<NectanWindow>, h: Vec<FileHandle>) {
+    let h_c = h.clone();
+    let paths = filehandle_to_paths(h);
+
+    let walker = Walker::new(paths, true);
+    // Store the walker so it can be cancelled at demand
+
+    let walker2 = walker.clone();
+    let _ = w.upgrade_in_event_loop(move |w| {
+        *ui_state().walker() = Some(walker2);
+
+        let transfer_name = gen_transfer_name();
+        let bridge = w.global::<OutcomingTransferModalBridge>();
+        bridge.set_transfer_name(transfer_name.into());
+        bridge.set_walk_finished(false);
+        bridge.set_walk_total_size("0 B".into());
+        bridge.set_walk_total_entries(0);
+        bridge.set_send_state(SendModalState::Initial);
+        bridge.set_sending_open(true);
+
+        let nodes: Vec<TreeNode> = h_c
+            .iter()
+            .map(|h| TreeNode {
+                depth: 0,
+                expanded: false,
+                is_file: h.path().is_file(),
+                filename: h.file_name().into(),
+                path: h.path().to_string_lossy().to_string().into(),
+            })
+            .collect();
+        let model = VecModel::from(nodes);
+        bridge.set_nodes(ModelRc::from(Rc::new(model)));
+    });
+
+    walker.walk();
+
+    std::thread::spawn(move || {
+        loop {
+            let total_entries = walker.total_entries();
+            let total_size = walker.total_size();
+
+            let _ = w.upgrade_in_event_loop(move |w| {
+                let bridge = w.global::<OutcomingTransferModalBridge>();
+                let size_str = RoundedDecimalBytes(total_size).to_string();
+                bridge.set_walk_total_entries(total_entries as i32);
+                bridge.set_walk_total_size(size_str.into());
+            });
+            if walker.finished() {
+                let _ = w.upgrade_in_event_loop(move |w| {
+                    let bridge = w.global::<OutcomingTransferModalBridge>();
+                    let size_str = RoundedDecimalBytes(total_size).to_string();
+                    bridge.set_walk_total_entries(total_entries as i32);
+                    bridge.set_walk_total_size(size_str.into());
+                    bridge.set_walk_finished(true);
+                });
+                return;
+            }
+
+            std::thread::sleep(Duration::from_millis(18));
+        }
+    });
+}
+
+pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
+    let weak = w.as_weak();
+    let bridge = w.global::<OutcomingTransferModalBridge>();
+    bridge.on_send(move |destination_id, transfer_name, compression| {
+        info!("Sending offer. {transfer_name}. Compression - {compression}");
+        if let Some(walk_info) = ui_state().walker().take() {
+            let transfer_id = Uuid::new_v4();
+            let destination_device = device_id_from_base64(&destination_id).unwrap();
+
+            let entries_num = walk_info.total_entries();
+            let total_size = walk_info.total_size();
+            let transfer_name = transfer_name.into();
+
+            let tree = walk_info
+                .take_tree()
+                .expect("At this point the tree should be Some.")
+                .compress()
+                .into();
+
+            let info = TransferOfferInner {
+                transfer_id,
+                transfer_name,
+                entries_num,
+                total_size,
+                tree,
+            };
+
+            let s = s.clone();
+            let weak = weak.clone();
+            tokio::spawn(async move {
+                match send_contents(&s, destination_device, info).await {
+                    Ok(()) => {
+                        let _ = weak.upgrade_in_event_loop(move |w| {
+                            let bridge = w.global::<OutcomingTransferModalBridge>();
+                            bridge.set_send_state(crate::SendModalState::Accepted);
+                        });
+                    }
+                    Err(e) => {
+                        let _ = weak.upgrade_in_event_loop(move |w| {
+                            let b = w.global::<OutcomingTransferModalBridge>();
+                            match e {
+                                NectanTransferError::DeviceOffline => {
+                                    b.set_send_state(SendModalState::Offline);
+                                }
+                                NectanTransferError::TransferRejected => {
+                                    b.set_send_state(SendModalState::Rejected);
+                                }
+                                NectanTransferError::ConnectionFailed => {
+                                    b.set_send_state(SendModalState::Error);
+                                    b.set_sending_error_msg(
+                                        "Connection failed. Device not reachable.".into(),
+                                    );
+                                }
+                                NectanTransferError::InvalidDestination => {
+                                    b.set_send_state(SendModalState::Error);
+                                    b.set_sending_error_msg(
+                                        "Invalid destination. Try restarting Nectan.".into(),
+                                    );
+                                }
+                                NectanTransferError::UnexpectedResponse => {
+                                    b.set_sending_error_msg(
+                                        "Unexcpected error. Device sent wrong message.".into(),
+                                    );
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+        }
     });
 }

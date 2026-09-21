@@ -9,8 +9,9 @@ use std::path::PathBuf;
 
 use crate::devices::update_devices;
 use crate::handlers::{
-    handle_add_device, handle_connection_offer, handle_incoming_transfer_offer, handle_tabs,
-    handle_window_controls, start_event_listener,
+    handle_add_device, handle_cancel_walker, handle_connection_offer,
+    handle_incoming_transfer_offer, handle_scan_files, handle_scan_folders, handle_send,
+    handle_tabs, handle_window_controls, start_event_listener,
 };
 use crate::state::init_app_state;
 use crate::transfers::update_transfers_list;
@@ -36,7 +37,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         .without_time()
         .init();
 
-    let userinfo = UserInfo::new(Username::new("Default User").unwrap());
+    let userinfo = UserInfo::new(Username::new("Desktop User").unwrap());
     let data_dir = dirs::data_dir()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let devices = Devices::new(Some(data_dir)).expect("Failed to create devices pool.");
@@ -59,6 +60,11 @@ async fn main() -> Result<(), slint::PlatformError> {
     handle_window_controls(&w);
     handle_tabs(&w);
     handle_add_device(&w, Arc::clone(&state));
+
+    handle_scan_files(&w);
+    handle_scan_folders(&w);
+    handle_cancel_walker(&w);
+    handle_send(&w, Arc::clone(&state));
 
     handle_incoming_transfer_offer(&w, Arc::clone(&state));
     handle_connection_offer(&w, Arc::clone(&state));

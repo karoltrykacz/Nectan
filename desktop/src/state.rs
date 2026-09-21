@@ -1,21 +1,29 @@
 use crate::{
     DevicesBridge, NectanWindow, TransfersBridge, devices::DevicesModel, transfers::TransfersModel,
 };
+use nectan_core::walker::Walker;
 use slint::{Global, ModelRc};
-use std::{cell::OnceCell, rc::Rc, sync::Arc};
+use std::{
+    cell::OnceCell,
+    rc::Rc,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 pub struct UiState {
     devices_model: Rc<DevicesModel>,
     transfers_model: Rc<TransfersModel>,
+    walker: Arc<Mutex<Option<Walker>>>,
 }
 
 impl UiState {
     pub fn devices(&self) -> Rc<DevicesModel> {
         self.devices_model.clone()
     }
-
     pub fn transfers(&self) -> Rc<TransfersModel> {
         self.transfers_model.clone()
+    }
+    pub fn walker(&self) -> MutexGuard<'_, Option<Walker>> {
+        self.walker.lock().unwrap()
     }
 }
 
@@ -41,6 +49,7 @@ pub fn init_app_state(w: &NectanWindow) {
     let ui = Rc::new(UiState {
         devices_model,
         transfers_model,
+        walker: Arc::new(Mutex::new(None)),
     });
 
     UI.with(|c| c.set(ui).ok().expect("UiState already initialized."));

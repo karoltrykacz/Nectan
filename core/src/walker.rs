@@ -1,5 +1,4 @@
 use crate::path_tree::{CompressedPathTree, PathTree};
-use futures::future::Join;
 use ignore::WalkBuilder;
 use std::{
     path::PathBuf,
@@ -59,7 +58,11 @@ impl Walker {
         self.total_size.load(Ordering::Relaxed)
     }
 
-    pub fn new(paths: Vec<PathBuf>, ignore_hidden_files: bool, respect_gitignore: bool) -> Self {
+    pub fn new(
+        paths: Vec<PathBuf>,
+        ignore_hidden_files: bool,
+        // options: IgnoreOptions,
+    ) -> Self {
         Walker(Arc::new(WalkControllerInner {
             ignore_hidden_files,
             // respect_gitignore,

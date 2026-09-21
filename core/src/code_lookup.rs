@@ -79,7 +79,6 @@ pub async fn issue_code(state: &NectanState, code: String) -> Result<String> {
 
     let mut bytes = Vec::new();
     bytes.extend_from_slice(state.device_id().as_bytes());
-    bytes.extend_from_slice(code.as_bytes());
     bytes.extend_from_slice(&seq_n.to_be_bytes());
     let signature = state.sign(&bytes);
 
