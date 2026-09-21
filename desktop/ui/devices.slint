@@ -36,8 +36,7 @@ export component DeviceStatusText inherits Text {
     in property <DeviceStatus> status;
 
     text: status == DeviceStatus.online ? "Online" : status == DeviceStatus.nearby ? "Nearby" : "Offline";
-            // color: Theme.colors.third-font;
-    	    color: status == DeviceStatus.online ? #4caf50 :
+    color: status == DeviceStatus.online ? #ff9800 :
         (status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
     font-size: 12px;
     font-family: Theme.font-heading;
@@ -188,7 +187,7 @@ export component DeviceScreen {
 
                 Text {
                     text: "\{device.name} is offline";
-                    font-family: Theme.font-heading;
+                    font-family: Theme.font-body;
                     font-size: 16px;
                 }
 

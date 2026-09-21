@@ -76,17 +76,16 @@ export component AddRemoteDeviceModal inherits Rectangle {
 
     changed visible => {
 
-        debug("VISIBLE CHANGED");
         if (root.visible) {
             root.code-mode = "host";
             root.typed-code = "";
             root.input-error = "";
             AddDeviceBridge.lookup-state = LookupState.none;
 
-            // if (AddDeviceBridge.time-left <= 0) {
+            if (AddDeviceBridge.time-left <= 0) {
                 AddDeviceBridge.time-left = 90;
-            AddDeviceBridge.request_code();
-            // }
+                AddDeviceBridge.request_code();
+            }
         }
     }
 
@@ -512,30 +511,30 @@ export component AddRemoteDeviceModal inherits Rectangle {
     }
 }
 
-// Incoming connetion offer
-export global ConnectionRequestBridge {
+export global ConnectionOfferBridge {
     in-out property <bool> open;
     in-out property <string> remote-device-name;
 
-    callback reject();
-    callback accept();
+    callback accept(bool);
 }
 
-export component ConnectionRequestModal inherits Rectangle {
+export component ConnectionOfferModal inherits Rectangle {
     GeneralModal {
-        open <=> ConnectionRequestBridge.open;
+        open <=> ConnectionOfferBridge.open;
 
         on-close => {
-            ConnectionRequestBridge.reject();
+            ConnectionOfferBridge.accept(false);
+            ConnectionOfferBridge.open = false;
         }
         on-enter => {
-            ConnectionRequestBridge.accept();
+            ConnectionOfferBridge.accept(true);
+            ConnectionOfferBridge.open = false;
         }
 
         Rectangle {
 
             width: min(520px, parent.width - 80px);
-            height: min(256px, parent.height - 80px);
+            height: min(192px, parent.height - 80px);
 
             animate width, height {
                 duration: 200ms;
@@ -558,80 +557,87 @@ export component ConnectionRequestModal inherits Rectangle {
 
             VerticalLayout {
                 padding: 20px;
+                padding-top: 18px;
 
-                VerticalLayout {
-                    spacing: 12px;
-
-                    HorizontalLayout {
-                        VerticalLayout {
-                            alignment: start;
-                            Text {
-                                text: "New connection";
-                                font-size: 20px;
-                                color: Theme.colors.primary-font;
-                                font-family: Theme.font-heading;
-                                font-weight: 600;
-                            }
-
-                            HorizontalLayout {
-                                alignment: start;
-                                Text {
-                                    text: ConnectionRequestBridge.remote-device-name;
-                                    font-size: 13px;
-                                    color: Theme.colors.secondary-font;
-                                    font-weight: 600;
-                                }
-
-                                Text {
-                                    text: " wants to connect to you.";
-                                    font-size: 13px;
-                                    color: Theme.colors.secondary-font;
-                                }
-                            }
-                        }
-                    }
-
+                HorizontalLayout {
                     VerticalLayout {
                         alignment: start;
+                        Text {
+                            text: "Accept connection";
+                            font-size: 20px;
+                            color: Theme.colors.primary-font;
+                            font-family: Theme.font-heading;
+                            font-weight: 600;
+                        }
+
                         Rectangle {
-                            height: 8px;
+                            height: 4px;
                         }
 
-                        Text {
-                            text: "This action won't transfer any files.";
-                            color: Theme.colors.primary-font;
-                            font-size: 13px;
-                            font-weight: 500;
-                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            Text {
+                                text: ConnectionOfferBridge.remote-device-name;
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
+                                font-weight: 500;
+                            }
 
-                        Text {
-                            text: "Accepting will allow \{ConnectionRequestBridge.remote-device-name} to send transfer offers to you.";
-                            color: Theme.colors.primary-font;
-                            wrap: word-wrap;
-                            font-size: 13px;
-                            font-weight: 500;
+                            Text {
+                                text: " wants to connect to you.";
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
+                            }
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: start;
+                    Rectangle {
+                        height: 8px;
+                    }
+
+                    Text {
+                        text: "This action won't transfer any files.";
+                        color: Theme.colors.primary-font;
+                        font-size: 13px;
+                        font-weight: 500;
+                    }
+
+                    Text {
+                        text: "Accepting will allow \{ConnectionOfferBridge.remote-device-name} to send transfer offers to you.";
+                        color: Theme.colors.primary-font;
+                        wrap: word-wrap;
+                        font-size: 13px;
+                        font-weight: 500;
+                    }
+
+                    Rectangle {
+                        height: 12px;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton {
+                        text: "Reject";
+                        alt: true;
+                        clicked => {
+                            ConnectionOfferBridge.open = false;
+                            ConnectionOfferBridge.accept(false);
                         }
                     }
 
-                    HorizontalLayout {
-                        alignment: end;
-                        PrimaryButton {
-                            text: "Reject";
-                            alt: true;
-                            clicked => {
-                                ConnectionRequestBridge.reject();
-                            }
-                        }
+                    Rectangle {
+                        width: 12px;
+                    }
 
-                        Rectangle {
-                            width: 12px;
-                        }
-
-                        PrimaryButton {
-                            text: "Accept";
-                            clicked => {
-                                ConnectionRequestBridge.accept();
-                            }
+                    PrimaryButton {
+                        text: "Accept";
+                        clicked => {
+                            ConnectionOfferBridge.open = false;
+                            ConnectionOfferBridge.accept(true);
                         }
                     }
                 }

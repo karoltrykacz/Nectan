@@ -7,12 +7,26 @@ import {
 } from "elements.slint";
 import { ListView } from "std-widgets.slint";
 import { SettingsBridge, SettingsModal } from "settings.slint";
-import { TransfersBridge, Transfers } from "transfers.slint";
+import { TransfersBridge, Transfers, TransferItem } from "transfers.slint";
 import { MainBody, WindowBridge, TabDragGhost } from "tabs.slint";
-import { AddRemoteDeviceModal, AddDeviceBridge } from "add_remote_modal.slint";
+import {
+    AddRemoteDeviceModal,
+    AddDeviceBridge,
+    ConnectionOfferBridge,
+    ConnectionOfferModal,
+} from "add_remote_modal.slint";
 import { ErrorModal } from "error_modal.slint";
+import { DeviceItem, DevicesBridge } from "devices.slint";
 
-export { WindowBridge, AddDeviceBridge }
+export {
+    DeviceItem,
+    WindowBridge,
+    AddDeviceBridge,
+    TransferItem,
+    DevicesBridge,
+    TransfersBridge,
+    ConnectionOfferBridge,
+}
 export struct TreeNode {
     filename: string,
     path: string,
@@ -330,6 +344,8 @@ export component NectanWindow inherits Window {
             if SettingsBridge.settings_open: SettingsModal { }
 
             if IncomingTransferOfferBridge.is-open: IncomingTransferOfferModal { }
+
+            if ConnectionOfferBridge.open: ConnectionOfferModal { }
 
             AddRemoteDeviceModal { }
 

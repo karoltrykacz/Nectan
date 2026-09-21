@@ -5,7 +5,7 @@ use nectan_core::{
     format::DecimalBytes,
     messages::{
         AppEvent::{self},
-        UiResponse,
+        ConnectionOffer, UiResponse,
     },
     protocol::{NectanState, TransferOffer, connect},
 };
@@ -14,8 +14,8 @@ use tokio::sync::mpsc::Receiver;
 use tracing::{error, info, trace};
 
 use crate::{
-    AddDeviceBridge, IncomingTransferOffer, IncomingTransferOfferBridge, LookupState, NectanTab,
-    NectanWindow, WindowBridge, selected_window,
+    AddDeviceBridge, ConnectionOfferBridge, IncomingTransferOffer, IncomingTransferOfferBridge,
+    LookupState, NectanTab, NectanWindow, WindowBridge, devices::update_devices, selected_window,
 };
 
 pub fn handle_window_controls(w: &NectanWindow) {
@@ -53,7 +53,7 @@ pub fn handle_window_controls(w: &NectanWindow) {
     });
 }
 
-pub fn start_event_listener(w: &NectanWindow, mut rx: Receiver<AppEvent>) {
+pub fn start_event_listener(w: &NectanWindow, mut rx: Receiver<AppEvent>, state: Arc<NectanState>) {
     let w = w.as_weak();
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -61,7 +61,15 @@ pub fn start_event_listener(w: &NectanWindow, mut rx: Receiver<AppEvent>) {
                 AppEvent::IncomingTransferOffer { offer } => {
                     show_transfer_offer(&w, offer);
                 }
-                _ => {}
+                AppEvent::ConnectionOffer { offer } => {
+                    show_connection_offer(&w, offer);
+                }
+                AppEvent::FoundNearby { .. } => {
+                    update_devices(&w, &state);
+                }
+                AppEvent::Connected { .. } => {
+                    update_devices(&w, &state);
+                }
             }
         }
     });
@@ -76,12 +84,13 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
         if let Some(w) = weak.upgrade() {
             let b = w.global::<IncomingTransferOfferBridge>();
             b.set_is_open(false);
-            let s = s.clone();
 
+            let s = s.clone();
             tokio::spawn(async move {
-                s.respond_to_offer(UiResponse::Reject {
+                s.respond_transfer_offer(UiResponse::Reject {
                     reason: Some("User rejected the offer.".to_string()),
-                });
+                })
+                .await;
             });
         }
     });
@@ -96,9 +105,10 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
 
             let s = s.clone();
             tokio::spawn(async move {
-                s.respond_to_offer(UiResponse::Reject {
+                s.respond_transfer_offer(UiResponse::Reject {
                     reason: Some("User rejected the offer.".to_string()),
-                });
+                })
+                .await;
             });
         }
     });
@@ -183,23 +193,42 @@ pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOffer) {
     });
 }
 
+pub fn show_connection_offer(w: &Weak<NectanWindow>, offer: ConnectionOffer) {
+    let _ = w.upgrade_in_event_loop(move |w| {
+        let b = w.global::<ConnectionOfferBridge>();
+        b.set_open(true);
+        b.set_remote_device_name(offer.username.as_string().into());
+    });
+}
+pub fn handle_connection_offer(w: &NectanWindow, state: Arc<NectanState>) {
+    let bridge = w.global::<ConnectionOfferBridge>();
+    bridge.on_accept(move |accept| {
+        let state = state.clone();
+        tokio::spawn(async move {
+            if accept {
+                info!("Accepted connection offer.");
+                state.respond_connection_offer(UiResponse::Accept).await;
+            } else {
+                info!("Rejected connection offer.");
+                state
+                    .respond_connection_offer(UiResponse::Reject {
+                        reason: Some(String::from("User rejected.")),
+                    })
+                    .await;
+            }
+        });
+    });
+}
+
 pub fn handle_tabs(w: &NectanWindow) {
     let bridge = w.global::<WindowBridge>();
 
-    let initial_tabs = vec![
-        NectanTab {
-            display: "Transfers".into(),
-            id: 0,
-            kind: selected_window::Transfers,
-            ref_id: 0,
-        },
-        // NectanTab {
-        //     display: "Home".into(),
-        //     id: 1,
-        //     kind: selected_window::Transfers,
-        //     ref_id: 1,
-        // },
-    ];
+    let initial_tabs = vec![NectanTab {
+        display: "Transfers".into(),
+        id: 0,
+        kind: selected_window::Transfers,
+        ref_id: 0,
+    }];
 
     let tabs_model = Rc::new(VecModel::from(initial_tabs));
     bridge.set_tabs(ModelRc::from(tabs_model.clone()));
@@ -382,7 +411,7 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                         Ok(addr) => {
                             bridge.set_lookup_state(LookupState::Connecting);
                             tokio::spawn(async move {
-                                let result = connect(&state, addr).await;
+                                let result = connect(state, addr).await;
 
                                 if let Some(ui) = ui_weak.upgrade() {
                                     let bridge = ui.global::<AddDeviceBridge>();
