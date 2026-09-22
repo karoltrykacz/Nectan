@@ -12,8 +12,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 
 use crate::messages::NetMessage;
 
-type DefaultReader = iroh::endpoint::RecvStream;
-type DefaultWriter = iroh::endpoint::SendStream;
+pub type DefaultReader = iroh::endpoint::RecvStream;
+pub type DefaultWriter = iroh::endpoint::SendStream;
 
 #[derive(Debug)]
 pub struct StreamPair<R: RecvStream = DefaultReader, W: SendStream = DefaultWriter> {
@@ -22,11 +22,12 @@ pub struct StreamPair<R: RecvStream = DefaultReader, W: SendStream = DefaultWrit
 }
 
 impl StreamPair {
-    pub async fn accept(
-        conn: &endpoint::Connection,
-        // events: EventSender,
-    ) -> Result<Self> {
+    pub async fn accept(conn: &endpoint::Connection) -> Result<Self> {
         let (writer, reader) = conn.accept_bi().await?;
+        Ok(Self::new(reader, writer))
+    }
+    pub async fn open(conn: &endpoint::Connection) -> Result<Self> {
+        let (writer, reader) = conn.open_bi().await?;
         Ok(Self::new(reader, writer))
     }
 }
@@ -35,18 +36,21 @@ impl<R: RecvStream, W: SendStream> StreamPair<R, W> {
     pub fn stream_id(&self) -> u64 {
         self.reader.id()
     }
-
     pub fn new(reader: R, writer: W) -> Self {
         Self { reader, writer }
     }
-
     pub fn tx(&mut self) -> &mut W {
         &mut self.writer
     }
+    pub fn rx(&mut self) -> &mut R {
+        &mut self.reader
+    }
+    pub async fn read<M: crate::messages::StreamableMessage>(&mut self) -> Result<M> {
+        Ok(M::read_async(&mut self.reader).await?)
+    }
 
-    pub async fn read_request(&mut self) -> Result<NetMessage> {
-        Ok(NetMessage::read_async(&mut self.reader).await?)
-        // self.other_bytes_read += size as u64;
+    pub async fn write<M: crate::messages::StreamableMessage>(&mut self, msg: &M) -> Result<()> {
+        Ok(msg.write(&mut self.writer).await?)
     }
 }
 

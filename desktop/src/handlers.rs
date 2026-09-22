@@ -9,8 +9,8 @@ use nectan_core::{
         AppEvent::{self},
         ConnectionOffer, UiResponse,
     },
-    protocol::{NectanState, TransferOffer, TransferOfferInner, connect},
-    transfers::{NectanTransferError, send_contents},
+    protocol::{NectanState, TransferOffer, TransferOfferRequest, connect},
+    transfers::{TransferOfferError, send_contents},
     walker::Walker,
 };
 use rfd::FileHandle;
@@ -193,7 +193,7 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
     // });
 }
 
-pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOffer) {
+pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOfferRequest) {
     // TODO show the contents
     let _ = w.upgrade_in_event_loop(move |w| {
         let b = w.global::<IncomingTransferOfferBridge>();
@@ -600,7 +600,7 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
                 .compress()
                 .into();
 
-            let info = TransferOfferInner {
+            let info = TransferOffer {
                 transfer_id,
                 transfer_name,
                 entries_num,
@@ -622,25 +622,25 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
                         let _ = weak.upgrade_in_event_loop(move |w| {
                             let b = w.global::<OutcomingTransferModalBridge>();
                             match e {
-                                NectanTransferError::DeviceOffline => {
+                                TransferOfferError::DeviceOffline => {
                                     b.set_send_state(SendModalState::Offline);
                                 }
-                                NectanTransferError::TransferRejected => {
+                                TransferOfferError::TransferRejected => {
                                     b.set_send_state(SendModalState::Rejected);
                                 }
-                                NectanTransferError::ConnectionFailed => {
+                                TransferOfferError::ConnectionFailed => {
                                     b.set_send_state(SendModalState::Error);
                                     b.set_sending_error_msg(
                                         "Connection failed. Device not reachable.".into(),
                                     );
                                 }
-                                NectanTransferError::InvalidDestination => {
+                                TransferOfferError::InvalidDestination => {
                                     b.set_send_state(SendModalState::Error);
                                     b.set_sending_error_msg(
                                         "Invalid destination. Try restarting Nectan.".into(),
                                     );
                                 }
-                                NectanTransferError::UnexpectedResponse => {
+                                TransferOfferError::UnexpectedResponse => {
                                     b.set_sending_error_msg(
                                         "Unexcpected error. Device sent wrong message.".into(),
                                     );

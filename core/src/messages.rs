@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     devices::{DeviceId, Username},
     path_tree::CompressedPathTree,
-    protocol::{TransferOffer, TransferOfferInner},
+    protocol::{TransferOffer, TransferOfferRequest},
 };
 
 /// Set of messages sent over the network
@@ -19,42 +19,44 @@ pub enum NetMessage {
         signature: Signature,
     },
     TransferOfferMsg {
-        offer: TransferOfferInner<CompressedPathTree>,
-    },
-    TransferStream {
-        transfer_id: Uuid,
+        offer: TransferOffer<CompressedPathTree>,
     },
     Accepted,
     Rejected {
         reason: Option<String>,
     },
+    /// Forwards the stream to Transfers manager
+    TransferStream {
+        transfer_id: Uuid,
+    },
+    // Forwards the stream to Specified Container (if has permission)
+    ContainerStream {
+        id: Uuid,
+    },
 }
-impl NetMessage {
-    pub async fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> Result<Self> {
-        // Read length prefix
+
+pub trait StreamableMessage: Sized {
+    async fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> Result<Self>;
+    async fn write<T: crate::stream::SendStream>(&self, tx: &mut T) -> Result<()>;
+}
+
+impl<M: Serialize + serde::de::DeserializeOwned> StreamableMessage for M {
+    async fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> Result<Self> {
         let mut len_buf = [0u8; 4];
         rx.recv_exact(&mut len_buf).await?;
+
         let len = u32::from_be_bytes(len_buf) as usize;
-
-        // Read payload
         let mut buf = vec![0u8; len];
-        rx.recv_exact(&mut buf).await?;
 
+        rx.recv_exact(&mut buf).await?;
         Ok(postcard::from_bytes(&buf)?)
     }
 
-    pub async fn write<T: crate::stream::SendStream + tokio::io::AsyncWriteExt + Unpin>(
-        &self,
-        tx: &mut T,
-    ) -> Result<()> {
-        let raw_msg = postcard::to_allocvec(self).unwrap();
+    async fn write<T: crate::stream::SendStream>(&self, tx: &mut T) -> Result<()> {
+        let raw_msg = postcard::to_allocvec(self)?;
         let len = raw_msg.len() as u32;
-
-        // Write length prefix
-        tx.write_all(&len.to_be_bytes()).await?;
-        // Write payload
-        tx.write_all(&raw_msg).await?;
-
+        tx.send(&len.to_be_bytes()).await?;
+        tx.send(&raw_msg).await?;
         Ok(())
     }
 }
@@ -71,7 +73,7 @@ pub enum AppEvent {
     FoundNearby,
     Connected { device_id: DeviceId },
     ConnectionOffer { offer: ConnectionOffer },
-    IncomingTransferOffer { offer: TransferOffer },
+    IncomingTransferOffer { offer: TransferOfferRequest },
     TransferOfferDelivered,
     DeviceWentOffline { device_id: DeviceId },
 }

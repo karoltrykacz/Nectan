@@ -19,6 +19,7 @@ use std::{sync::Arc, time::Duration};
 
 pub mod code_lookup;
 pub mod common;
+pub mod connections;
 pub mod devices;
 pub mod format;
 pub mod messages;
@@ -27,7 +28,6 @@ pub mod protocol;
 pub mod storage_utils;
 pub mod stream;
 pub mod transfers;
-pub mod vpn;
 pub mod walker;
 
 pub async fn setup_core(

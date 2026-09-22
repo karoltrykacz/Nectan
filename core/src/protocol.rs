@@ -31,7 +31,7 @@ use tokio::task::JoinHandle;
 use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
-use crate::messages::ConnectionOffer;
+use crate::messages::{ConnectionOffer, StreamableMessage};
 use crate::storage_utils::KvStore;
 use crate::{
     devices::{Device, DeviceId, DeviceStatus::Online, Devices, UserInfo, Username},
@@ -71,7 +71,7 @@ impl NectanProtocol {
 }
 
 impl ProtocolHandler for NectanProtocol {
-    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+    async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
         let state = self.state();
         let endpoint = self.endpoint();
 
@@ -79,11 +79,11 @@ impl ProtocolHandler for NectanProtocol {
         let singing_key = &state.signing_key;
         let my_device_id = state.device_id;
 
-        let remote_ep_id = connection.remote_id();
+        let remote_ep_id = conn.remote_id();
 
         info!("Accepting new connection. {}", remote_ep_id.to_string());
 
-        let (mut stream_tx, mut stream_rx) = connection.accept_bi().await?;
+        let (mut stream_tx, mut stream_rx) = conn.accept_bi().await?;
 
         let Ok(msg) = NetMessage::read_async(&mut stream_rx).await else {
             error!("Accepting connection. Failed to read hello.");
@@ -173,20 +173,18 @@ impl ProtocolHandler for NectanProtocol {
         .write(&mut stream_tx)
         .await;
 
-        let d = Device {
+        let device = Device {
             username: remote_username.clone(),
             id: remote_device_id,
             status: Online,
             deleted: false,
-            connection: Some(connection.clone()),
+            connection: Some(conn.clone()),
             completed_transfers: stored.as_ref().map(|d| d.completed_transfers).unwrap_or(0),
             total_exchanged_data: stored.as_ref().map(|d| d.total_exchanged_data).unwrap_or(0),
             fav: stored.as_ref().map(|d| d.fav).unwrap_or(false),
         };
 
-        if let Err(e) = devices.insert(remote_device_id, d) {
-            error!("Failed to insert new device {e:?}");
-        };
+        let _ = devices.insert(remote_device_id, &device);
 
         state
             .emit(AppEvent::Connected {
@@ -195,29 +193,19 @@ impl ProtocolHandler for NectanProtocol {
             .await;
 
         info!("Accepted connetion {}", remote_username);
-        tokio::task::spawn(handle_connection(
-            state,
-            remote_device_id,
-            connection,
-            remote_username,
-        ));
+        tokio::spawn(handle_connection(state, device, conn));
 
         Ok(())
     }
     async fn shutdown(&self) {}
 }
 
-async fn handle_connection(
-    state: Arc<NectanState>,
-    target: DeviceId,
-    conn: Connection,
-    sender_name: Username,
-) {
+async fn handle_connection(state: Arc<NectanState>, device: Device, conn: Connection) {
     let conn_id = conn.stable_id();
     info!("Handling connetion {conn_id}");
     let id = conn.stable_id().to_string();
     let span = debug_span!("connection", id);
-    let sender_name: Arc<str> = sender_name.as_string().into();
+    let sender_name: Arc<str> = device.username.as_string().into();
 
     async move {
         while let Ok(pair) = StreamPair::accept(&conn).await {
@@ -225,15 +213,17 @@ async fn handle_connection(
             tokio::spawn(handle_stream(state.clone(), pair, sender_name.clone()).instrument(span));
         }
 
-        if state.devices.remove_conn(&target, conn_id) {
-            state
-                .emit(AppEvent::DeviceWentOffline { device_id: target })
-                .await;
-
-            warn!("Connection dropped [{conn_id}]. Device went offline");
-        } else {
-            warn!("Connection dropped [{conn_id}]");
-        }
+        // if state.devices.remove_conn(&device.id, conn_id) {
+        //     state
+        //         .emit(AppEvent::DeviceWentOffline {
+        //             device_id: device.id,
+        //         })
+        //         .await;
+        //
+        //     warn!("Connection dropped [{conn_id}]. Device went offline");
+        // } else {
+        //     warn!("Connection dropped [{conn_id}]");
+        // }
     }
     .instrument(span)
     .await;
@@ -244,12 +234,15 @@ async fn handle_stream(
     mut stream: StreamPair,
     sender_name: Arc<str>,
 ) -> Result<()> {
-    let msg = stream.read_request().await?;
+    let msg: NetMessage = stream.read().await?;
 
     match msg {
         NetMessage::TransferOfferMsg { offer } => {
-            info!("Handling transfer offer.");
             handle_transfer_offer(state, stream, sender_name, offer).await?;
+        }
+        NetMessage::TransferStream { transfer_id } => {
+            // Forward the bidistream to the specific transfer
+            // state.pending_transfers.
         }
         _ => {
             error!("Stream handler received forbidden message. {msg:#?}");
@@ -260,7 +253,7 @@ async fn handle_stream(
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TransferOfferInner<T> {
+pub struct TransferOffer<T> {
     pub transfer_name: String,
     pub transfer_id: Uuid,
     pub entries_num: u64,
@@ -268,11 +261,11 @@ pub struct TransferOfferInner<T> {
     pub tree: Arc<T>,
 }
 
-impl TransferOfferInner<CompressedPathTree> {
-    pub fn decompress(self) -> anyhow::Result<TransferOfferInner<PathTree>> {
+impl TransferOffer<CompressedPathTree> {
+    pub fn decompress(self) -> anyhow::Result<TransferOffer<PathTree>> {
         let tree = Arc::new(self.tree.as_ref().decompress()?);
 
-        Ok(TransferOfferInner {
+        Ok(TransferOffer {
             transfer_name: self.transfer_name,
             transfer_id: self.transfer_id,
             entries_num: self.entries_num,
@@ -282,11 +275,11 @@ impl TransferOfferInner<CompressedPathTree> {
     }
 }
 
-impl TransferOfferInner<PathTree> {
-    pub fn compress(self) -> anyhow::Result<TransferOfferInner<CompressedPathTree>> {
+impl TransferOffer<PathTree> {
+    pub fn compress(self) -> anyhow::Result<TransferOffer<CompressedPathTree>> {
         let tree = Arc::new(self.tree.as_ref().compress());
 
-        Ok(TransferOfferInner {
+        Ok(TransferOffer {
             transfer_name: self.transfer_name,
             transfer_id: self.transfer_id,
             entries_num: self.entries_num,
@@ -297,10 +290,9 @@ impl TransferOfferInner<PathTree> {
 }
 
 #[derive(Clone, Debug)]
-pub struct TransferOffer {
-    // sender_id: DeviceId,
+pub struct TransferOfferRequest {
     pub sender_name: String,
-    pub inner: TransferOfferInner<PathTree>,
+    pub inner: TransferOffer<PathTree>,
     pub respond: tokio::sync::mpsc::Sender<UiResponse>,
 }
 
@@ -309,7 +301,7 @@ async fn handle_transfer_offer(
     state: Arc<NectanState>,
     mut stream: StreamPair,
     sender_name: Arc<str>,
-    offer: TransferOfferInner<CompressedPathTree>,
+    offer: TransferOffer<CompressedPathTree>,
 ) -> Result<()> {
     let (respond, mut rx) = tokio::sync::mpsc::channel(1);
 
@@ -322,7 +314,7 @@ async fn handle_transfer_offer(
         } else {
             info!("Offer slot empty.");
             let inner = offer.decompress()?;
-            let offer = TransferOffer {
+            let offer = TransferOfferRequest {
                 sender_name: sender_name.to_string(),
                 inner,
                 respond,
@@ -359,7 +351,7 @@ pub struct NectanState {
     /// Only one connection offer allowed at a time
     conn_offer: Arc<Mutex<Option<ConnectionOffer>>>,
     /// Only one transfer offer allowed at a time
-    transfer_offer: Arc<Mutex<Option<TransferOffer>>>,
+    transfer_offer: Arc<Mutex<Option<TransferOfferRequest>>>,
     pub devices: Devices,
     mdns: MdnsAddressLookup,
     router: OnceCell<Router>,
@@ -516,13 +508,13 @@ pub fn start_mdns_discovery(state: &NectanState) {
     });
 }
 
-pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<Device> {
-    if state.devices.is_alive(target) {
-        warn!("Connecting to the device cancelled. [CONNECTED]",);
-        bail!("Already connected")
-    }
+pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<()> {
+    // if state.devices.is_alive(target) {
+    //     warn!("Connecting to the device cancelled. [CONNECTED]",);
+    //     bail!("Already connected")
+    // }
 
-    let connection = state
+    let conn = state
         .router()
         .endpoint()
         .connect(target, ALPN)
@@ -532,7 +524,7 @@ pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<Devi
             anyhow!("Connection failed. {}", e)
         })?;
 
-    let (mut stream_tx, mut stream_rx) = connection.open_bi().await?;
+    let (mut stream_tx, mut stream_rx) = conn.open_bi().await?;
 
     let signature = state.signing_key.sign(target.as_bytes());
     let username = state.userinfo.username();
@@ -562,10 +554,10 @@ pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<Devi
 
             let stored_remote_device: Option<Device> = state.devices.get(&remote_device_id);
 
-            let remote_device = Device {
+            let device = Device {
                 username: remote_username.clone(),
                 id: remote_device_id,
-                connection: Some(connection.clone()),
+                connection: Some(conn.clone()),
                 deleted: false,
                 status: Online,
                 completed_transfers: stored_remote_device
@@ -581,9 +573,7 @@ pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<Devi
                     .map(|d| d.fav)
                     .unwrap_or(false),
             };
-            let _ = state
-                .devices
-                .insert(remote_device_id, remote_device.clone());
+            let _ = state.devices.insert(remote_device_id, &device);
 
             state
                 .emit(AppEvent::Connected {
@@ -593,13 +583,8 @@ pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<Devi
 
             info!("Connected [{}]", remote_username);
 
-            tokio::spawn(handle_connection(
-                state,
-                remote_device_id,
-                connection,
-                username,
-            ));
-            Ok(remote_device)
+            tokio::spawn(handle_connection(state, device, conn));
+            Ok(())
         }
         NetMessage::Rejected { reason } => {
             warn!("Remote device rejected connection. [{:?}]", reason);
@@ -796,7 +781,7 @@ pub async fn resolve_devices(
     let client = state.http_client.clone();
 
     let devices = match devices {
-        None => state.devices.get_unresolved_devices(),
+        None => state.devices.get_all_ids(),
         Some(d) => d,
     };
 

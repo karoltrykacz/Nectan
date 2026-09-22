@@ -10,7 +10,9 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{devices::DeviceStatus::Offline, storage_utils::DataWriter};
+use crate::{
+    devices::DeviceStatus::Offline, storage_utils::DataWriter, transfers::PendingTransfers,
+};
 
 pub type DeviceId = VerifyingKey;
 
@@ -101,6 +103,8 @@ pub struct Device {
     pub total_exchanged_data: u64,
     pub completed_transfers: u64,
     pub fav: bool,
+    // #[serde(skip)]
+    // pub pending_transfers: PendingTransfers,
 }
 
 pub fn serialize_device_id<S>(id: &DeviceId, s: S) -> Result<S::Ok, S::Error>
@@ -190,15 +194,15 @@ impl Devices {
         };
         self.writer.write(&stored)
     }
-
     pub fn get(&self, target: &DeviceId) -> Option<Device> {
         self.inner.read().unwrap().get(target).cloned()
     }
-
     pub fn get_all(&self) -> Vec<Device> {
         self.inner.read().unwrap().values().cloned().collect()
     }
-
+    pub fn get_all_ids(&self) -> Vec<DeviceId> {
+        self.inner.read().unwrap().keys().cloned().collect()
+    }
     pub fn is_nearby(&self, endpoint_id: &EndpointId) -> bool {
         self.nearby_endpoints
             .read()
@@ -206,7 +210,6 @@ impl Devices {
             .get(endpoint_id)
             .is_some()
     }
-
     pub fn remove_nearby(&self, endpoint_id: EndpointId) {
         self.nearby_endpoints.write().unwrap().remove(&endpoint_id);
     }
@@ -217,9 +220,13 @@ impl Devices {
     pub fn insert(
         &self,
         target: DeviceId,
-        device: Device,
+        device: &Device,
     ) -> Result<Option<Device>, std::io::Error> {
-        let old = self.inner.write().unwrap().insert(target, device);
+        let old = self
+            .inner
+            .write()
+            .unwrap()
+            .insert(target, device.to_owned());
         self.persist()?;
         Ok(old)
     }
@@ -257,6 +264,13 @@ impl Devices {
             return true;
         }
         false
+    }
+    pub fn get_connection(&self, device_id: DeviceId) -> Option<Connection> {
+        self.inner
+            .read()
+            .unwrap()
+            .get(&device_id)
+            .and_then(|d| d.connection.clone())
     }
 }
 

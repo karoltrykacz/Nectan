@@ -34,6 +34,48 @@ pub struct PathTree {
     #[serde(with = "lossy_map")]
     children: HashMap<PathBuf, PathTree>,
     is_file: bool,
+    /// File size in bytes. 0 for directories or unknown.
+    size: u64,
+}
+
+pub struct PathTreeIter<'a> {
+    stack: Vec<(
+        PathBuf,
+        std::collections::hash_map::Iter<'a, PathBuf, PathTree>,
+    )>,
+}
+
+impl<'a> Iterator for PathTreeIter<'a> {
+    type Item = (PathBuf, bool, u64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((prefix, iter)) = self.stack.last_mut() {
+            match iter.next() {
+                Some((segment, child)) => {
+                    let full_path = prefix.join(segment);
+                    let is_file = child.is_file;
+                    let size = child.size;
+                    self.stack.push((full_path.clone(), child.children.iter()));
+                    return Some((full_path, is_file, size));
+                }
+                None => {
+                    self.stack.pop();
+                }
+            }
+        }
+        None
+    }
+}
+
+impl<'a> IntoIterator for &'a PathTree {
+    type Item = (PathBuf, bool, u64);
+    type IntoIter = PathTreeIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        PathTreeIter {
+            stack: vec![(PathBuf::new(), self.children.iter())],
+        }
+    }
 }
 
 impl PathTree {
@@ -41,37 +83,38 @@ impl PathTree {
         PathTree {
             children: HashMap::new(),
             is_file: false,
+            size: 0,
         }
     }
 
-    pub fn to_vec(&self) -> Vec<(PathBuf, bool)> {
-        let mut paths = Vec::new();
-        self.collect_paths(&PathBuf::new(), &mut paths);
-        paths
+    pub fn to_vec(&self) -> Vec<(PathBuf, bool, u64)> {
+        self.into_iter().collect()
     }
 
-    fn collect_paths(&self, current_prefix: &PathBuf, acc: &mut Vec<(PathBuf, bool)>) {
-        for (segment, child) in &self.children {
-            let full_path = current_prefix.join(segment);
-            acc.push((full_path.clone(), child.is_file));
-            child.collect_paths(&full_path, acc);
+    /// Total size of all files under this node (recursive).
+    pub fn total_size(&self) -> u64 {
+        let mut acc = 0u64;
+        for child in self.children.values() {
+            acc += child.size;
+            acc += child.total_size();
         }
+        acc
     }
 
     pub fn count(&self) -> u64 {
         let mut acc = 0u64;
-        self.count_inner(&PathBuf::new(), &mut acc);
+        self.count_inner(&mut acc);
         acc
     }
-    fn count_inner(&self, current_prefix: &PathBuf, acc: &mut u64) {
-        for (segment, child) in &self.children {
-            let full_path = current_prefix.join(segment);
+    fn count_inner(&self, acc: &mut u64) {
+        for child in self.children.values() {
             *acc += 1;
-            child.count_inner(&full_path, acc);
+            child.count_inner(acc);
         }
     }
 
-    pub fn insert(&mut self, path: &Path, is_file: bool) {
+    /// Insert a path. `size` is ignored (left 0) when `is_file` is false.
+    pub fn insert(&mut self, path: &Path, is_file: bool, size: u64) {
         let mut node = self;
         let mut comps = path.components().peekable();
         while let Some(comp) = comps.next() {
@@ -79,11 +122,12 @@ impl PathTree {
             node = node.children.entry(key).or_insert_with(PathTree::new);
             if comps.peek().is_none() {
                 node.is_file = is_file;
+                node.size = if is_file { size } else { 0 };
             }
         }
     }
 
-    pub fn get_depth_0(&self) -> Vec<(PathBuf, bool)> {
+    pub fn get_depth_0(&self) -> Vec<(PathBuf, bool, u64)> {
         let mut root = self.common_parent();
         root.pop();
         let mut node = self;
@@ -96,7 +140,7 @@ impl PathTree {
         }
         node.children
             .iter()
-            .map(|(p, t)| (root.join(p), t.is_file))
+            .map(|(p, t)| (root.join(p), t.is_file, t.size))
             .collect()
     }
 
@@ -114,7 +158,7 @@ impl PathTree {
         parts.into_iter().collect()
     }
 
-    pub fn children_of(&self, root: &Path) -> Vec<(PathBuf, bool)> {
+    pub fn children_of(&self, root: &Path) -> Vec<(PathBuf, bool, u64)> {
         let mut node = self;
         for comp in root.components() {
             let key = PathBuf::from(comp.as_os_str());
@@ -125,14 +169,20 @@ impl PathTree {
         }
         node.children
             .iter()
-            .map(|(c, t)| (root.join(c), t.is_file))
+            .map(|(c, t)| (root.join(c), t.is_file, t.size))
             .collect()
     }
 
     pub fn build(paths: &[PathBuf]) -> Self {
         let mut root = PathTree::new();
         for p in paths {
-            root.insert(p, p.is_file());
+            let is_file = p.is_file();
+            let size = if is_file {
+                std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)
+            } else {
+                0
+            };
+            root.insert(p, is_file, size);
         }
         root
     }
@@ -326,6 +376,15 @@ mod tests {
             .map(|t| t.0)
             .collect();
         assert_eq!(children, vec![PathBuf::from("/a/b")]);
+    }
+
+    #[test]
+    fn insert_tracks_file_size() {
+        let mut t = PathTree::new();
+        t.insert(&PathBuf::from("/a/b/c"), true, 1234);
+        let kids = t.children_of(&PathBuf::from("/a/b"));
+        assert_eq!(kids, vec![(PathBuf::from("/a/b/c"), true, 1234)]);
+        assert_eq!(t.total_size(), 1234);
     }
 
     #[cfg(unix)]
