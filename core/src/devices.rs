@@ -10,9 +10,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{
-    devices::DeviceStatus::Offline, storage_utils::DataWriter, transfers::PendingTransfers,
-};
+use crate::{devices::DeviceStatus::Offline, storage_utils::DataWriter};
 
 pub type DeviceId = VerifyingKey;
 
@@ -103,8 +101,6 @@ pub struct Device {
     pub total_exchanged_data: u64,
     pub completed_transfers: u64,
     pub fav: bool,
-    // #[serde(skip)]
-    // pub pending_transfers: PendingTransfers,
 }
 
 pub fn serialize_device_id<S>(id: &DeviceId, s: S) -> Result<S::Ok, S::Error>
@@ -217,6 +213,16 @@ impl Devices {
     pub fn add_nearby(&self, endpoint_id: EndpointId) -> bool {
         self.nearby_endpoints.write().unwrap().insert(endpoint_id)
     }
+    // pub fn set_or_init(&self, new: &Device) -> Result<Option<Device>, std::io::Error> {
+    //     let mut lock = self.inner.write().unwrap();
+    //     let entry = lock.entry(device.id).and_modify(|d| {
+    //         d.username = new.username;
+    //         d.status = new.status;
+    //         d.deleted = new.deleted;
+    //         d.connection = new.connection;
+    //         d.deleted
+    //     });
+    // }
     pub fn insert(
         &self,
         target: DeviceId,

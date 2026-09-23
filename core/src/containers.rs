@@ -153,3 +153,5 @@
 //         };
 //     }
 // }
+//
+// const CONTAINERS: TableDefinition<u128, &[u8]> = TableDefinition::new("transfers");

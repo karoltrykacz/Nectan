@@ -76,6 +76,7 @@ pub enum AppEvent {
     IncomingTransferOffer { offer: TransferOfferRequest },
     TransferOfferDelivered,
     DeviceWentOffline { device_id: DeviceId },
+    TransferUpdated,
 }
 
 impl std::fmt::Debug for AppEvent {

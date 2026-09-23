@@ -85,9 +85,6 @@ impl Walker {
                 let (tx, rx) = channel::<PathTree>();
                 let walker = WalkBuilder::new(p)
                     .hidden(c.ignore_hidden_files)
-                    // .git_ignore(c.respect_gitignore)
-                    // .git_global(c.respect_gitignore)
-                    // .git_exclude(c.i)
                     .build_parallel();
 
                 walker.run(|| {
@@ -95,6 +92,7 @@ impl Walker {
                     let mut flush = Flush {
                         tx: tx.clone(),
                         tree: PathTree::new(),
+                        next_id: 0,
                     };
                     Box::new(move |r| {
                         if let Ok(entry) = r
@@ -103,18 +101,14 @@ impl Walker {
                             let path = entry.into_path();
                             let is_file = meta.is_file();
 
-                            flush.tree.insert(&path, is_file);
-                            c.total_entries.fetch_add(1, Ordering::Relaxed);
-
                             #[cfg(unix)]
-                            {
-                                c.total_size.fetch_add(meta.size(), Ordering::Relaxed);
-                            }
-
+                            let size = meta.size();
                             #[cfg(not(unix))]
-                            {
-                                c.total_size.fetch_add(meta.len(), Ordering::Relaxed);
-                            }
+                            let size = meta.len();
+
+                            flush.tree.insert(&path, is_file, size, &mut flush.next_id);
+                            c.total_entries.fetch_add(1, Ordering::Relaxed);
+                            c.total_size.fetch_add(size, Ordering::Relaxed);
                         }
                         if c.should_abort() {
                             return ignore::WalkState::Quit;
@@ -156,6 +150,7 @@ impl std::ops::Deref for Walker {
 struct Flush {
     tx: Sender<PathTree>,
     tree: PathTree,
+    next_id: u32,
 }
 impl Drop for Flush {
     fn drop(&mut self) {
@@ -179,6 +174,7 @@ mod tests {
             let mut flush = Flush {
                 tx: tx.clone(),
                 tree: PathTree::new(),
+                next_id: 0,
             };
             Box::new(move |r| {
                 if let Ok(entry) = r
@@ -186,7 +182,13 @@ mod tests {
                 {
                     let path = entry.into_path();
                     let is_file = meta.is_file();
-                    flush.tree.insert(&path, is_file);
+
+                    #[cfg(unix)]
+                    let size = meta.size();
+                    #[cfg(not(unix))]
+                    let size = meta.len();
+
+                    flush.tree.insert(&path, is_file, size, &mut flush.next_id);
                 }
                 ignore::WalkState::Continue
             })

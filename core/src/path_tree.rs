@@ -36,6 +36,8 @@ pub struct PathTree {
     is_file: bool,
     /// File size in bytes. 0 for directories or unknown.
     size: u64,
+    /// Stable id, assigned at insert time, independent of HashMap iteration order.
+    id: u32,
 }
 
 pub struct PathTreeIter<'a> {
@@ -46,17 +48,16 @@ pub struct PathTreeIter<'a> {
 }
 
 impl<'a> Iterator for PathTreeIter<'a> {
-    type Item = (PathBuf, bool, u64);
+    type Item = (PathBuf, bool, u64, u32); // path, is_file, size, id
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((prefix, iter)) = self.stack.last_mut() {
             match iter.next() {
                 Some((segment, child)) => {
                     let full_path = prefix.join(segment);
-                    let is_file = child.is_file;
-                    let size = child.size;
-                    self.stack.push((full_path.clone(), child.children.iter()));
-                    return Some((full_path, is_file, size));
+                    let item = (full_path.clone(), child.is_file, child.size, child.id);
+                    self.stack.push((full_path, child.children.iter()));
+                    return Some(item);
                 }
                 None => {
                     self.stack.pop();
@@ -68,7 +69,7 @@ impl<'a> Iterator for PathTreeIter<'a> {
 }
 
 impl<'a> IntoIterator for &'a PathTree {
-    type Item = (PathBuf, bool, u64);
+    type Item = (PathBuf, bool, u64, u32);
     type IntoIter = PathTreeIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -84,11 +85,16 @@ impl PathTree {
             children: HashMap::new(),
             is_file: false,
             size: 0,
+            id: 0,
         }
     }
 
-    pub fn to_vec(&self) -> Vec<(PathBuf, bool, u64)> {
+    pub fn to_vec(&self) -> Vec<(PathBuf, bool, u64, u32)> {
         self.into_iter().collect()
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id
     }
 
     /// Total size of all files under this node (recursive).
@@ -114,12 +120,20 @@ impl PathTree {
     }
 
     /// Insert a path. `size` is ignored (left 0) when `is_file` is false.
-    pub fn insert(&mut self, path: &Path, is_file: bool, size: u64) {
+    /// `next_id` is a shared counter across a whole build/insert session so
+    /// every node gets a unique, deterministic id.
+    pub fn insert(&mut self, path: &Path, is_file: bool, size: u64, next_id: &mut u32) {
         let mut node = self;
         let mut comps = path.components().peekable();
         while let Some(comp) = comps.next() {
             let key = PathBuf::from(comp.as_os_str());
-            node = node.children.entry(key).or_insert_with(PathTree::new);
+            node = node.children.entry(key).or_insert_with(|| {
+                let id = *next_id;
+                *next_id += 1;
+                let mut n = PathTree::new();
+                n.id = id;
+                n
+            });
             if comps.peek().is_none() {
                 node.is_file = is_file;
                 node.size = if is_file { size } else { 0 };
@@ -173,29 +187,54 @@ impl PathTree {
             .collect()
     }
 
+    /// Sort input paths first so id assignment is deterministic regardless of
+    /// the order the caller happened to collect them in.
     pub fn build(paths: &[PathBuf]) -> Self {
+        let mut sorted: Vec<&PathBuf> = paths.iter().collect();
+        sorted.sort();
         let mut root = PathTree::new();
-        for p in paths {
+        let mut next_id = 0u32;
+        for p in sorted {
             let is_file = p.is_file();
             let size = if is_file {
                 std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)
             } else {
                 0
             };
-            root.insert(p, is_file, size);
+            root.insert(p, is_file, size, &mut next_id);
         }
         root
     }
 
-    pub fn merge(&mut self, other: PathTree) {
+    /// Raw structural merge, ids left as-is (may collide between the two
+    /// trees since each was built starting its own counter at 0). Callers
+    /// should follow with `renumber()` — `merge`/`merge_all` do this for you.
+    fn merge_inner(&mut self, other: PathTree) {
         for (key, other_child) in other.children {
             match self.children.get_mut(&key) {
-                Some(existing) => existing.merge(other_child),
+                Some(existing) => existing.merge_inner(other_child),
                 None => {
                     self.children.insert(key, other_child);
                 }
             }
         }
+    }
+
+    fn renumber(&mut self) {
+        let mut next_id = 0u32;
+        self.renumber_inner(&mut next_id);
+    }
+    fn renumber_inner(&mut self, next_id: &mut u32) {
+        for child in self.children.values_mut() {
+            child.id = *next_id;
+            *next_id += 1;
+            child.renumber_inner(next_id);
+        }
+    }
+
+    pub fn merge(&mut self, other: PathTree) {
+        self.merge_inner(other);
+        self.renumber();
     }
 
     pub fn merged(mut self, other: PathTree) -> PathTree {
@@ -206,8 +245,9 @@ impl PathTree {
     pub fn merge_all(trees: impl IntoIterator<Item = PathTree>) -> PathTree {
         let mut root = PathTree::new();
         for t in trees {
-            root.merge(t);
+            root.merge_inner(t);
         }
+        root.renumber();
         root
     }
 
@@ -381,10 +421,37 @@ mod tests {
     #[test]
     fn insert_tracks_file_size() {
         let mut t = PathTree::new();
-        t.insert(&PathBuf::from("/a/b/c"), true, 1234);
+        let mut next_id = 0u32;
+        t.insert(&PathBuf::from("/a/b/c"), true, 1234, &mut next_id);
         let kids = t.children_of(&PathBuf::from("/a/b"));
         assert_eq!(kids, vec![(PathBuf::from("/a/b/c"), true, 1234)]);
         assert_eq!(t.total_size(), 1234);
+    }
+
+    #[test]
+    fn ids_unique_and_deterministic() {
+        let paths = vec![
+            PathBuf::from("/a/b/c"),
+            PathBuf::from("/a/b/d"),
+            PathBuf::from("/a/e"),
+        ];
+        let t1 = PathTree::build(&paths);
+
+        // Same paths, different collection order -> same ids, since build() sorts.
+        let mut reordered = paths.clone();
+        reordered.reverse();
+        let t2 = PathTree::build(&reordered);
+
+        let mut ids1: Vec<u32> = t1.to_vec().iter().map(|(_, _, _, id)| *id).collect();
+        let mut ids2: Vec<u32> = t2.to_vec().iter().map(|(_, _, _, id)| *id).collect();
+        ids1.sort();
+        ids2.sort();
+
+        // All unique.
+        let unique: std::collections::HashSet<u32> = ids1.iter().cloned().collect();
+        assert_eq!(unique.len(), ids1.len());
+
+        assert_eq!(ids1, ids2);
     }
 
     #[cfg(unix)]

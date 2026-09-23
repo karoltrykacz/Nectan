@@ -21,11 +21,9 @@ use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::{
-    path::PathBuf,
     sync::{Arc, atomic::Ordering::Relaxed},
     time::Duration,
 };
-use tokio::sync::oneshot;
 use tokio::sync::{Mutex, OnceCell, Semaphore};
 use tokio::task::JoinHandle;
 use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
@@ -38,7 +36,7 @@ use crate::{
     messages::{AppEvent, NetMessage, UiResponse},
     path_tree::{CompressedPathTree, PathTree},
     stream::StreamPair,
-    transfers::{PendingTransfers, recieve_item},
+    transfers::Transfers,
     walker::Walker,
 };
 
@@ -212,18 +210,6 @@ async fn handle_connection(state: Arc<NectanState>, device: Device, conn: Connec
             let span = debug_span!("stream", stream_id = %pair.stream_id());
             tokio::spawn(handle_stream(state.clone(), pair, sender_name.clone()).instrument(span));
         }
-
-        // if state.devices.remove_conn(&device.id, conn_id) {
-        //     state
-        //         .emit(AppEvent::DeviceWentOffline {
-        //             device_id: device.id,
-        //         })
-        //         .await;
-        //
-        //     warn!("Connection dropped [{conn_id}]. Device went offline");
-        // } else {
-        //     warn!("Connection dropped [{conn_id}]");
-        // }
     }
     .instrument(span)
     .await;
@@ -241,8 +227,10 @@ async fn handle_stream(
             handle_transfer_offer(state, stream, sender_name, offer).await?;
         }
         NetMessage::TransferStream { transfer_id } => {
-            // Forward the bidistream to the specific transfer
-            // state.pending_transfers.
+            state
+                .transfers
+                .forward_incoming_stream(transfer_id, stream)
+                .await;
         }
         _ => {
             error!("Stream handler received forbidden message. {msg:#?}");
@@ -296,7 +284,6 @@ pub struct TransferOfferRequest {
     pub respond: tokio::sync::mpsc::Sender<UiResponse>,
 }
 
-// TODO
 async fn handle_transfer_offer(
     state: Arc<NectanState>,
     mut stream: StreamPair,
@@ -346,7 +333,7 @@ async fn handle_transfer_offer(
 
 #[derive(Clone)]
 pub struct NectanState {
-    pending_transfers: PendingTransfers,
+    transfers: Arc<Transfers>,
     app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     /// Only one connection offer allowed at a time
     conn_offer: Arc<Mutex<Option<ConnectionOffer>>>,
@@ -385,7 +372,7 @@ impl NectanState {
         endpoint.address_lookup().unwrap().add(mdns.clone());
 
         NectanState {
-            pending_transfers: PendingTransfers::new(),
+            transfers: Arc::new(Transfers::new(devices.clone(), app_event_tx.clone())),
             app_event_tx,
             conn_offer: Arc::new(Mutex::new(None)),
             transfer_offer: Arc::new(Mutex::new(None)),
@@ -444,39 +431,21 @@ impl std::fmt::Debug for NectanState {
     }
 }
 
-async fn handle_transfer_stream(
-    state: NectanState,
-    transfer_id: Uuid,
-    tx: SendStream,
-    mut rx: RecvStream,
-) {
-    // let Some(pending) = state.pending_transfers.get(transfer_id) else {
-    //     return;
-    // };
-
-    println!("Receiving item");
-    let result = recieve_item(tx, rx).await;
-    println!("Receiver item result {result:#?}");
-}
-
-// pub fn build_offer() -> PathTree {
-//     let paths = vec![PathBuf::from("/home/karol/Documents")];
-//     let walker = Walker::new(paths, true, true);
-//     walker.walk().join().unwrap();
-//     let total_size = walker.total_size.load(Relaxed);
-//     println!("Total size of offer. {total_size}");
-//     walker.tree.lock().unwrap().take().unwrap()
+// async fn handle_transfer_stream(
+//     state: NectanState,
+//     transfer_id: Uuid,
+//     tx: SendStream,
+//     mut rx: RecvStream,
+// ) {
+//     // let Some(pending) = state.pending_transfers.get(transfer_id) else {
+//     //     return;
+//     // };
+//
+//     println!("Receiving item");
+//     let result = recieve_item(tx, rx).await;
+//     println!("Receiver item result {result:#?}");
 // }
 
-// pub async fn start_addr_watcher() {
-// let watcher = endpoint.watch_addr();
-// tokio::spawn(async move {
-//     let mut updates = watcher.stream();
-//     while let Some(addr) = updates.next().await {
-//         trace!("EP1 changed {addr:#?}");
-//     }
-// });
-// }
 pub fn start_mdns_discovery(state: &NectanState) {
     let state = Arc::new(state.clone());
     tokio::spawn(async move {
@@ -509,10 +478,10 @@ pub fn start_mdns_discovery(state: &NectanState) {
 }
 
 pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<()> {
-    // if state.devices.is_alive(target) {
-    //     warn!("Connecting to the device cancelled. [CONNECTED]",);
-    //     bail!("Already connected")
-    // }
+    if state.devices.is_alive(target) {
+        warn!("Connecting to the device cancelled. [CONNECTED]",);
+        bail!("Already connected")
+    }
 
     let conn = state
         .router()
