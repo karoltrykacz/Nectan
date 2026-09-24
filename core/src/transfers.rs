@@ -1,9 +1,10 @@
 use anyhow::Result;
+use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::ensure;
 use fixedbitset::FixedBitSet;
-use futures::FutureExt;
-use futures::Stream;
 use iroh::endpoint::Connection;
+use redb::ReadableDatabase;
 use redb::ReadableTable;
 use redb::TableDefinition;
 use redb::TypeName;
@@ -11,11 +12,8 @@ use redb::Value;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::fmt::Pointer;
-use std::fmt::format;
 use std::io::ErrorKind;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -54,6 +52,8 @@ use crate::path_tree::PathTree;
 use crate::protocol::NectanState;
 use crate::protocol::TransferOffer;
 use crate::stream::StreamPair;
+use crate::transfers;
+use crate::transfers::TransferDirection::Outcoming;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TransferItemHeader {
@@ -135,7 +135,7 @@ impl std::fmt::Display for TransferOfferError {
 pub async fn send_contents(
     state: &NectanState,
     target: DeviceId,
-    offer: TransferOffer<CompressedPathTree>,
+    offer: TransferOffer<PathTree>,
 ) -> Result<(), TransferOfferError> {
     // Get device
     let Some(device) = state.devices.get(&target) else {
@@ -143,17 +143,18 @@ pub async fn send_contents(
     };
 
     // Get connection
-    let Some(connection) = device.connection.clone() else {
+    let Some(conn) = device.connection.clone() else {
         return Err(TransferOfferError::DeviceOffline);
     };
 
     // Open stream
-    let Ok((mut tx, mut rx)) = connection.open_bi().await else {
+    let Ok((mut tx, mut rx)) = conn.open_bi().await else {
         return Err(TransferOfferError::ConnectionFailed);
     };
 
-    // Write offer
-    let msg = NetMessage::TransferOfferMsg { offer };
+    // Write compressed offer
+    let c_offer = offer.clone().compress().unwrap();
+    let msg = NetMessage::TransferOfferMsg { offer: c_offer };
     if msg.write(&mut tx).await.is_err() {
         return Err(TransferOfferError::ConnectionFailed);
     }
@@ -163,33 +164,28 @@ pub async fn send_contents(
 
     // Read remote device response
     let Ok(offer_response) = NetMessage::read_async(&mut rx).await else {
+        error!("Failed to read offer response.");
         return Err(TransferOfferError::ConnectionFailed);
     };
 
     if let NetMessage::Rejected { reason } = &offer_response {
-        info!("Outcoming transfer offer rejected. {:?}", reason);
+        warn!("Outcoming transfer offer rejected. {:?}", reason);
         return Err(TransferOfferError::TransferRejected);
     }
 
     let NetMessage::Accepted = offer_response else {
         return Err(TransferOfferError::UnexpectedResponse);
     };
+    info!("Transfer accepted.");
 
-    // Transfer accepted
-    // Create transfer object
-
-    // // Finally start processing the transfer
-    // state
-    //     .transfers_pool
-    //     .start_processing_transfer(transfer_id, TransferDirection::Outcoming, destination)
-    //     .await;
-    // state.transfers_pool.notify_workers();
+    // Transfer accepted, start processing
+    state.transfers.new_offer(target, Outcoming, offer).await;
 
     Ok(())
 }
 
-#[derive(Clone, Copy)]
-enum TransferDirection {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TransferDirection {
     Outcoming,
     Incoming,
 }
@@ -198,11 +194,11 @@ const DUMB_ITEMS: TableDefinition<u32, TransferItem> = TableDefinition::new("ite
 
 pub struct PendingTransfer {
     id: Uuid,
-    peer: DeviceId,
+    target: DeviceId,
     direction: TransferDirection,
     items_queue: Mutex<FixedBitSet>,
-    total_sent: AtomicU64,
     failed: AtomicU32,
+    total_items: u32,
     processed: AtomicU32,
     db: redb::Database,
     /// When sending, common parent of all items
@@ -217,19 +213,29 @@ pub struct PendingTransfer {
 /// from saved -> recover transfer
 
 impl PendingTransfer {
+    // fn run_db_writer() {
+    // move the db writer to separate thread
+    // }
     pub fn from_offer(
         event_tx: tokio::sync::mpsc::Sender<AppEvent>,
-        peer: DeviceId,
+        target: DeviceId,
         direction: TransferDirection,
         offer: TransferOffer<PathTree>,
     ) -> Self {
+        info!("New transfer from offer.");
+
         let id = offer.transfer_id;
         let root_path = offer.tree.common_parent();
 
         let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
-        let db_dir = db_dir.join(format!("t-{id}"));
+        let dir = match direction {
+            TransferDirection::Outcoming => "out",
+            TransferDirection::Incoming => "in",
+        };
+        let db_dir = db_dir.join(format!("Nectan/t-{id}-{}", dir));
         let db = redb::Database::create(db_dir).expect("Failed to create database");
 
+        let mut c = 0u32;
         let txn = db.begin_write().unwrap();
         {
             let mut table = txn.open_table(DUMB_ITEMS).unwrap();
@@ -242,23 +248,30 @@ impl PendingTransfer {
                     size: file_size,
                     err: None,
                 };
-                table.insert(id, item);
+                let _ = table.insert(id, item);
+                c += 1;
             }
         }
         let _ = txn.commit();
+
+        assert_eq!(
+            offer.entries_num, c,
+            "Total entries must equal tree elements."
+        );
+        let total_items = c;
 
         PendingTransfer {
             id,
             direction,
             failed: AtomicU32::new(0),
             processed: AtomicU32::new(0),
-            total_sent: AtomicU64::new(0),
             items_queue: Mutex::new(FixedBitSet::with_capacity(offer.entries_num as usize)),
             db,
+            total_items,
             root_path,
             cancel_token: CancellationToken::new(),
             event_tx,
-            peer,
+            target,
             sem: Arc::new(Semaphore::new(4)),
         }
     }
@@ -268,45 +281,82 @@ impl PendingTransfer {
     pub fn cancel(&self) {
         self.cancel_token.cancel()
     }
-    // pub fn new(
-    //     id: Uuid,
-    //     root_path: PathBuf,
-    //     total_items: u32,
-    //     direction: TransferDirection,
-    // ) -> Self {
-    //     let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
-    //     let db_dir = db_dir.join(format!("t-{id}"));
-    //     let db = redb::Database::create(db_dir).expect("Failed to create database");
-    //
-    //     PendingTransfer {
-    //         id,
-    //         direction,
-    //         failed: AtomicU32::new(0)),
-    //         total_sent: Arc::new(AtomicU64::new(0)),
-    //         items_queue: Arc::new(Mutex::new(FixedBitSet::with_capacity(total_items as usize))),
-    //         db: Arc::new(db),
-    //         root_path,
-    //     }
-    // }
     /// Returns remaining items
-    fn item_finished(&self, item_id: u32) -> u32 {
-        self.items_queue.lock().unwrap().set(item_id as usize, true);
+    fn item_finished(&self) -> u32 {
         self.processed.fetch_add(1, Relaxed) + 1
     }
-    fn next_unsent_item(&self) -> Option<TransferItem> {
-        let idx = {
-            let lock = self.items_queue.lock().unwrap();
-            lock.zeroes().next()?
-        };
-        self.get_item(idx as u32)
+    fn get_item(&self, id: u32) -> Result<TransferItem, redb::Error> {
+        let txn = self.db.begin_read()?;
+        Ok(txn
+            .open_table(DUMB_ITEMS)?
+            .get(id)?
+            .expect("Item must be in database.")
+            .value())
     }
-    fn get_item(&self, id: u32) -> Option<TransferItem> {
-        let txn = self.db.begin_read().ok()?;
-        txn.open_table(DUMB_ITEMS)
-            .ok()?
-            .get(id)
-            .ok()?
-            .map(|i| i.value())
+    fn unsent_batch(&self) -> Vec<usize> {
+        let mut queue = self.items_queue.lock().unwrap();
+        let batch: Vec<usize> = queue.zeroes().take(10).collect();
+        for &i in &batch {
+            queue.set(i, true);
+        }
+        batch
+    }
+    async fn start_sending(self: Arc<Self>, conn: Connection) -> Result<()> {
+        info!(
+            "Starting sending [{}] [{} ITEMS]",
+            &self.id.to_string()[0..8],
+            self.items_queue.lock().unwrap().zeroes().count()
+        );
+
+        // Get first batch of items
+        let mut queue = Vec::new();
+        queue.extend(self.unsent_batch());
+
+        loop {
+            let item = match queue.pop() {
+                Some(id) => {
+                    // TODO graceful err, file not found???
+                    self.get_item(id as u32).expect("Transfer database error.")
+                }
+                None => {
+                    let drained = self.processed.load(Relaxed) == self.total_items;
+                    if drained {
+                        // All transfers processed, wait until sem is free and exit
+                        info!("All transfers drained. Waiting for last items to finish.");
+                        let _ = self.sem.acquire_many(4).await;
+                        return Ok(());
+                    } else {
+                        queue.extend(self.unsent_batch());
+                        continue;
+                    }
+                }
+            };
+
+            let stream = StreamPair::open(&conn).await?;
+            let permit = self.sem.clone().acquire_owned().await.unwrap();
+            let s = self.clone();
+
+            tokio::spawn(async move {
+                let item_id = item.id;
+                let _permit = permit;
+
+                match s.send_item(item, stream).await {
+                    Ok(()) => {
+                        s.item_finished();
+                    }
+                    Err(e) => {
+                        s.handle_item_err(item_id, e);
+                        // Transfer failed -> uncheck it
+                        unsafe {
+                            s.items_queue
+                                .lock()
+                                .unwrap()
+                                .set_unchecked(item_id as usize, false);
+                        }
+                    }
+                }
+            });
+        }
     }
 
     pub async fn process_stream(
@@ -314,103 +364,62 @@ impl PendingTransfer {
         permit: OwnedSemaphorePermit,
         mut stream: StreamPair,
     ) -> Result<()> {
-        match self.direction {
-            TransferDirection::Outcoming => {
-                let Some(mut item) = self.next_unsent_item() else {
-                    // All transfers processed, wait until sem is free and exit
-                    info!("All transfers drained. Waiting for last items.");
-                    return Ok(());
-                };
+        info!("Processing stream for {}", &self.id.to_string()[0..8]);
+        ensure!(self.direction == TransferDirection::Incoming);
 
-                let s = self.clone();
+        info!("Reading header");
+        let header: TransferItemHeader = stream.read().await?;
+        info!("Read header {:?}", header);
+        let id = header.id;
 
-                spawn(async move {
-                    match s.send_item(&mut item, stream, permit).await {
-                        Ok(()) => s.item_finished(item.id),
-                        Err(e) => s.handle_item_err(item.id, e),
-                    }
-                });
-            }
-            TransferDirection::Incoming => {
-                let header: TransferItemHeader = stream.read().await?;
-                let id = header.id;
+        let r = match self.recieve_item(header, stream, permit).await {
+            Ok(()) => self.item_finished(),
+            Err(e) => self.handle_item_err(id, e),
+        };
 
-                spawn(async move {
-                    let r = match self.recieve_item(header, stream, permit).await {
-                        Ok(()) => self.item_finished(id),
-                        Err(e) => self.handle_item_err(id, e),
-                    };
-                    if r == 0 {
-                        // TODO
-                        info!("No more items to receive.");
-                        self.cancel();
-                    }
-                });
-            }
+        if r == 0 {
+            info!("No more items to receive.");
+            self.cancel();
         }
 
         Ok(())
     }
 
-    // pub async fn start_receiving(self: Arc<Self>) -> Result<()> {
-    //     loop {
-    //         let s = self.clone();
-    //
-    //         // mut pair_rx: tokio::sync::mpsc::Receiver<StreamPair>,
-    //
-    //         tokio::select! {
-    //             _ = self.cancelled() => {
-    //                 warn!("Receiving transfer [{}] cancelled.", &self.id.to_string()[0..8]);
-    //             }
-    //             stream = pair_rx.recv() => {
-    //                 // Tx will never drop
-    //                 let mut stream = stream.unwrap();
-    //
-    //             }
-    //         }
-    //     }
-    // }
-    // async fn start_sending(self: Arc<Self>, conn: Connection) -> Result<()> {
-    //     // Limit max concurrent items
-    //     let sem = Arc::new(Semaphore::new(4));
-    //
-    //     loop {
-    //         let Some(mut item) = self.next_unsent_item() else {
-    //             // All transfers processed, wait until sem is free and exit
-    //             info!("All transfers drained. Waiting for last items.");
-    //             let _ = sem.acquire_many(4).await;
-    //             return Ok(());
-    //         };
-    //
-    //         let stream = StreamPair::open(&conn).await?;
-    //         let permit = sem.clone().acquire_owned().await.unwrap();
-    //         let s = self.clone();
-    //
-    //         spawn(async move {
-    //             match s.send_item(&mut item, stream, permit).await {
-    //                 Ok(()) => s.item_finished(item.id),
-    //                 Err(e) => s.handle_item_err(item.id, e),
-    //             }
-    //         });
-    //     }
-    // }
-
     async fn recieve_item(
         &self,
         header: TransferItemHeader,
         mut stream: StreamPair,
-        permit: OwnedSemaphorePermit,
+        _permit: OwnedSemaphorePermit,
     ) -> Result<(), TransferItemError> {
         let file_size = header.file_size;
-        let output_dir = Path::new(&self.root_path).join(&header.path);
+
+        let item_path = header.path;
+        // Check against shit like ../../
+        let item_path: PathBuf = item_path
+            .components()
+            .filter(|c| matches!(c, Component::Normal(_)))
+            .collect();
+        let output_dir = Path::new("/home/karol/Documents/NectanTests").join(&item_path);
+
+        if !header.is_file {
+            // Just create the folder
+            if let Some(parent) = output_dir.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|_| TransferItemError::FileIOError)?;
+            }
+            return Ok(());
+        }
 
         if std::fs::exists(&output_dir).map_err(|_| TransferItemError::OpenFail)? {
+            error!("File [{}] already exsited.", output_dir.display());
             return Err(TransferItemError::FileAlreadyExisted);
         }
 
-        let full_path = PathBuf::from(format!("{}.NectanLock", output_dir.display()));
+        let mut lock_path = output_dir.clone();
+        lock_path.as_mut_os_string().push(".NectanLock");
 
-        if let Some(parent) = full_path.parent() {
+        if let Some(parent) = lock_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
                 .map_err(|_| TransferItemError::FileIOError)?;
@@ -420,7 +429,7 @@ impl PendingTransfer {
             .write(true)
             .create(true)
             .truncate(false)
-            .open(&full_path)
+            .open(&lock_path)
             .await
             .map_err(|_| TransferItemError::FileIOError)?;
 
@@ -435,7 +444,7 @@ impl PendingTransfer {
         loop {
             tokio::select! {
                 _ = self.cancelled() =>{
-                    warn!("Receiving [{}] cancelled.", header.path.display());
+                    warn!("Receiving [{}] cancelled.", item_path.display());
                     return Err(TransferItemError::Terminated);
                 }
                 r = stream.rx().read_chunk(CHUNK_SIZE) => {
@@ -447,7 +456,7 @@ impl PendingTransfer {
                                 .flush()
                                 .await
                                 .map_err(|_| TransferItemError::FileIOError)?;
-                            warn!("RxStream ended prematurely [{}]", header.path.display());
+                            warn!("RxStream ended prematurely [{}]", item_path.display());
                             return Err(TransferItemError::StreamError);
                         }
                         break;
@@ -464,38 +473,34 @@ impl PendingTransfer {
             }
         }
 
+        info!("Flushing {}", item_path.display());
         out_file
             .flush()
             .await
-            .map_err(|_| TransferItemError::StreamError)?;
-
-        stream
-            .tx()
-            .write_all(&total_written.to_be_bytes())
-            .await
-            .map_err(|_| TransferItemError::StreamError)?;
-
-        let final_destination = {
-            let s = full_path.to_string_lossy();
-            let stripped = s.strip_suffix(".NectanLock").unwrap_or(&s);
-            PathBuf::from(stripped)
-        };
-
-        std::fs::rename(&full_path, &final_destination)
             .map_err(|_| TransferItemError::FileIOError)?;
 
+        info!("Flushing {}", item_path.display());
+
+        std::fs::rename(&lock_path, &output_dir).map_err(|_| TransferItemError::FileIOError)?;
+
+        // Final ack
+        // stream
+        //     .tx()
+        //     .write_all(&total_written.to_be_bytes())
+        //     .await
+        //     .map_err(|_| TransferItemError::StreamError)?;
+
+        info!("Received {}", item_path.display());
         Ok(())
     }
 
     async fn send_item(
         &self,
-        item: &mut TransferItem,
+        mut item: TransferItem,
         mut stream: StreamPair,
-        _permit: OwnedSemaphorePermit,
     ) -> Result<(), TransferItemError> {
         let full_path = Path::new(&self.root_path).join(&item.path);
-
-        info!("Sending {full_path:?}");
+        info!("Sending {full_path:?}. Item path {}", item.path.display());
 
         let mut file = match tokio::fs::File::open(&full_path).await {
             Ok(file) => file,
@@ -514,6 +519,13 @@ impl PendingTransfer {
                 }
             },
         };
+        stream
+            .write(&NetMessage::TransferStream {
+                transfer_id: self.id,
+            })
+            .await
+            .map_err(|_| TransferItemError::StreamError)?;
+
         stream
             .write(&TransferItemHeader {
                 id: item.id,
@@ -549,6 +561,7 @@ impl PendingTransfer {
                 }
             };
         }
+        info!("Sending {full_path:?} finished");
 
         Ok(())
     }
@@ -562,9 +575,10 @@ impl PendingTransfer {
             | TransferItemError::FileAlreadyExisted
             | TransferItemError::FileNotFound
             | TransferItemError::FileIOError => {
-                self.failed.fetch_add(1, Relaxed);
                 let _ = self.set_item_error(id, e);
-                self.item_finished(id);
+                let _ = self.item_finished();
+
+                self.failed.fetch_add(1, Relaxed);
                 self.processed.fetch_add(1, Relaxed) + 1
             }
             // Recoverable (Network) errors - nop
@@ -595,6 +609,7 @@ impl PendingTransfer {
                 error!("Item not found.");
                 return Ok(());
             };
+
             meta.err = Some(e);
             table.insert(item_id, &meta)?;
         }
@@ -603,8 +618,6 @@ impl PendingTransfer {
     }
 }
 
-// How to display list of all transfers???
-
 const TRANSFERS: TableDefinition<u128, &[u8]> = TableDefinition::new("transfers");
 
 // #[derive(Clone)]
@@ -612,63 +625,49 @@ pub struct Transfers {
     pub pending_transfers: std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>>,
     devices: Devices,
     event_tx: tokio::sync::mpsc::Sender<AppEvent>,
-    db: redb::Database,
-    // notify: Notify,
+    // db: redb::Database,
 }
 
 impl Transfers {
     pub fn new(devices: Devices, event_tx: tokio::sync::mpsc::Sender<AppEvent>) -> Self {
-        let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
-        let db_dir = db_dir.join("transfers");
-        let db = redb::Database::create(db_dir).expect("Failed to create transfers database");
-        let pending_transfers = hotpath::rw_lock!(
-            std::sync::RwLock::new(HashMap::new()),
-            label = "pending_transfers"
-        );
+        // let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
+        // let db_dir = db_dir.join("transfers");
+        // let db = redb::Database::create(db_dir).expect("Failed to create transfers database");
+        let pending_transfers = std::sync::RwLock::new(HashMap::new());
 
         Transfers {
             event_tx,
-            db,
             pending_transfers,
-            notify: Notify::new(),
             devices,
         }
     }
 
-    async fn run(self: Arc<Self>) {
-        loop {
-            self.notify.notified().await;
-        }
-    }
-
-    pub fn process_offer(
+    pub async fn new_offer(
         &self,
-        peer: DeviceId,
+        target: DeviceId,
         direction: TransferDirection,
         offer: TransferOffer<PathTree>,
     ) {
         let id = offer.transfer_id;
         let t = Arc::new(PendingTransfer::from_offer(
             self.event_tx.clone(),
-            peer,
+            target,
             direction,
             offer,
         ));
+        if direction == TransferDirection::Outcoming {
+            if let Some(conn) = self.devices.get_connection(target) {
+                let _ = t.clone().start_sending(conn).await;
+            }
+        }
         self.pending_transfers.write().unwrap().insert(id, t);
     }
 
-    async fn start_sending(&self, t: Arc<PendingTransfer>) -> Result<()> {
-        let Some(conn) = self.devices.get_connection(t.peer) else {
-            bail!("Connection not found")
-        };
-        loop {
-            let permit = t.sem.clone().acquire_owned().await.unwrap();
-            let stream = StreamPair::open(&conn).await?;
-            t.clone().process_stream(permit, stream).await;
-        }
-    }
-
-    pub async fn forward_incoming_stream(&self, transfer_id: Uuid, stream: StreamPair) {
+    pub async fn forward_incoming_stream(
+        &self,
+        transfer_id: Uuid,
+        stream: StreamPair,
+    ) -> Result<()> {
         let Some(t) = self
             .pending_transfers
             .read()
@@ -676,13 +675,10 @@ impl Transfers {
             .get(&transfer_id)
             .cloned()
         else {
-            return;
+            error!("Transfer not found");
+            bail!("Transfer not found")
         };
         let permit = t.sem.clone().acquire_owned().await.unwrap();
-        t.process_stream(permit, stream).await;
+        t.process_stream(permit, stream).await
     }
-}
-
-pub enum TransferCommand {
-    GetFile,
 }

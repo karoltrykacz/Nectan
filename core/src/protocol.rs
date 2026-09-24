@@ -20,24 +20,21 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
-use std::{
-    sync::{Arc, atomic::Ordering::Relaxed},
-    time::Duration,
-};
-use tokio::sync::{Mutex, OnceCell, Semaphore};
+use std::{sync::Arc, time::Duration};
+use tokio::sync::{Mutex, OnceCell};
 use tokio::task::JoinHandle;
-use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
+use tracing::{Instrument, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::messages::{ConnectionOffer, StreamableMessage};
 use crate::storage_utils::KvStore;
+use crate::transfers::TransferDirection;
 use crate::{
     devices::{Device, DeviceId, DeviceStatus::Online, Devices, UserInfo, Username},
     messages::{AppEvent, NetMessage, UiResponse},
     path_tree::{CompressedPathTree, PathTree},
     stream::StreamPair,
     transfers::Transfers,
-    walker::Walker,
 };
 
 pub const ONLINE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -208,7 +205,9 @@ async fn handle_connection(state: Arc<NectanState>, device: Device, conn: Connec
     async move {
         while let Ok(pair) = StreamPair::accept(&conn).await {
             let span = debug_span!("stream", stream_id = %pair.stream_id());
-            tokio::spawn(handle_stream(state.clone(), pair, sender_name.clone()).instrument(span));
+            tokio::spawn(
+                handle_stream(state.clone(), pair, device.id, sender_name.clone()).instrument(span),
+            );
         }
     }
     .instrument(span)
@@ -218,22 +217,24 @@ async fn handle_connection(state: Arc<NectanState>, device: Device, conn: Connec
 async fn handle_stream(
     state: Arc<NectanState>,
     mut stream: StreamPair,
+    sender: DeviceId,
     sender_name: Arc<str>,
 ) -> Result<()> {
     let msg: NetMessage = stream.read().await?;
 
     match msg {
         NetMessage::TransferOfferMsg { offer } => {
-            handle_transfer_offer(state, stream, sender_name, offer).await?;
+            handle_transfer_offer(state, stream, sender, sender_name, offer).await?;
         }
         NetMessage::TransferStream { transfer_id } => {
             state
                 .transfers
                 .forward_incoming_stream(transfer_id, stream)
-                .await;
+                .await?;
         }
         _ => {
             error!("Stream handler received forbidden message. {msg:#?}");
+            bail!("Stream handler received forbidden message. {msg:#?}")
         }
     }
 
@@ -244,7 +245,7 @@ async fn handle_stream(
 pub struct TransferOffer<T> {
     pub transfer_name: String,
     pub transfer_id: Uuid,
-    pub entries_num: u64,
+    pub entries_num: u32,
     pub total_size: u64,
     pub tree: Arc<T>,
 }
@@ -287,6 +288,7 @@ pub struct TransferOfferRequest {
 async fn handle_transfer_offer(
     state: Arc<NectanState>,
     mut stream: StreamPair,
+    sender: DeviceId,
     sender_name: Arc<str>,
     offer: TransferOffer<CompressedPathTree>,
 ) -> Result<()> {
@@ -321,11 +323,24 @@ async fn handle_transfer_offer(
     }
     let offer = offer.unwrap();
 
-    state.emit(AppEvent::IncomingTransferOffer { offer }).await;
+    // TODO! (expensive clone)
+    state
+        .emit(AppEvent::IncomingTransferOffer {
+            offer: offer.clone(),
+        })
+        .await;
 
-    if let Some(r) = rx.recv().await {
-        info!("Received response. {r:?}");
-        NetMessage::from(r).write(&mut stream.tx()).await?;
+    let Some(r) = rx.recv().await else {
+        bail!("Failed to receive user response")
+    };
+    stream.write(&NetMessage::from(r.clone())).await?;
+    info!("Wrote response");
+
+    if let UiResponse::Accept = r {
+        state
+            .transfers
+            .new_offer(sender, TransferDirection::Incoming, offer.inner)
+            .await;
     }
 
     Ok(())
@@ -333,7 +348,7 @@ async fn handle_transfer_offer(
 
 #[derive(Clone)]
 pub struct NectanState {
-    transfers: Arc<Transfers>,
+    pub transfers: Arc<Transfers>,
     app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     /// Only one connection offer allowed at a time
     conn_offer: Arc<Mutex<Option<ConnectionOffer>>>,

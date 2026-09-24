@@ -65,6 +65,7 @@ pub fn start_event_listener(w: &NectanWindow, mut rx: Receiver<AppEvent>, state:
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             match msg {
+                AppEvent::TransferUpdated => {}
                 AppEvent::IncomingTransferOffer { offer } => {
                     show_transfer_offer(&w, offer);
                 }
@@ -597,7 +598,6 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
             let tree = walk_info
                 .take_tree()
                 .expect("At this point the tree should be Some.")
-                .compress()
                 .into();
 
             let info = TransferOffer {

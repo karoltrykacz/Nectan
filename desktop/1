@@ -109,8 +109,6 @@ export component DeviceScreen {
 
         HorizontalLayout {
             padding: 20px;
-            padding-left: 24px;
-            padding-right: 24px;
             horizontal-stretch: 1;
             alignment: space-between;
 

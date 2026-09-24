@@ -29,10 +29,6 @@ pub enum NetMessage {
     TransferStream {
         transfer_id: Uuid,
     },
-    // Forwards the stream to Specified Container (if has permission)
-    ContainerStream {
-        id: Uuid,
-    },
 }
 
 pub trait StreamableMessage: Sized {
@@ -82,6 +78,7 @@ pub enum AppEvent {
 impl std::fmt::Debug for AppEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::TransferUpdated => f.debug_struct("transfer_updated").finish(),
             Self::DeviceWentOffline { device_id } => f
                 .debug_struct("DeviceWentOffline")
                 .field("device_id", device_id)
