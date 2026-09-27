@@ -21,24 +21,27 @@ export struct ThemeColors {
     primary-col: color,
     secondary-col: color,
     third-col: color,
+    fourth-col: color,
     primary-font: color,
     secondary-font: color,
     third-font: color,
+    fourth-font: color,
     hover-col: color,
     border-col: color,
 }
 
 export global Theme {
-    in-out property <string> mode: "light";
+    in-out property <string> mode: "dark";
 
     out property <ThemeColors> dark-theme: {
         primary-col: #1a1a1a,
         secondary-col: #1f1f1f,
         third-col: #272727,
+        fourth-col: #333,
         primary-font: #ffffff,
-        secondary-font: #ccc,
-        third-font: #aaa,
-        border-col: #88888822,
+        secondary-font: #cccccc,
+        third-font: #aaaaaa,
+        fourth-font: #888,
         hover-col: #ffffff27,
     };
 
@@ -46,6 +49,7 @@ export global Theme {
         primary-col: #f1f1f1,
         secondary-col: #ececec,
         third-col: #dddddd,
+        fourth-col: #bfbfbf,
         primary-font: #1a1a1a,
         secondary-font: #333333,
         third-font: #555555,
@@ -54,7 +58,7 @@ export global Theme {
         hover-col: #00000022,
     };
 
-    out property <ThemeColors> colors: root.mode == "dark" ? root.light-theme : root.dark-theme;
+    out property <ThemeColors> colors: root.mode == "light" ? root.light-theme : root.dark-theme;
 
     out property <string> font-heading: "Rubik";
     out property <string> font-body: "Inter";

@@ -1,5 +1,14 @@
+use crate::devices::DeviceId;
+use crate::devices::Devices;
+use crate::messages::AppEvent;
+use crate::messages::NetMessage;
+use crate::messages::StreamableMessage;
+use crate::path_tree::PathTree;
+use crate::protocol::NectanState;
+use crate::protocol::TransferOffer;
+use crate::stream::StreamPair;
+use crate::transfers::TransferDirection::Outcoming;
 use anyhow::Result;
-use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::ensure;
 use fixedbitset::FixedBitSet;
@@ -21,6 +30,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::Relaxed;
+use std::time::Duration;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
@@ -40,20 +50,6 @@ use tracing::info;
 use tracing::instrument::WithSubscriber;
 use tracing::warn;
 use uuid::Uuid;
-
-use crate::devices::DeviceId;
-use crate::devices::Devices;
-use crate::devices::Username;
-use crate::messages::AppEvent;
-use crate::messages::NetMessage;
-use crate::messages::StreamableMessage;
-use crate::path_tree::CompressedPathTree;
-use crate::path_tree::PathTree;
-use crate::protocol::NectanState;
-use crate::protocol::TransferOffer;
-use crate::stream::StreamPair;
-use crate::transfers;
-use crate::transfers::TransferDirection::Outcoming;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TransferItemHeader {
@@ -209,13 +205,7 @@ pub struct PendingTransfer {
     sem: Arc<Semaphore>,
 }
 
-/// from_offer -> normal way of constructing
-/// from saved -> recover transfer
-
 impl PendingTransfer {
-    // fn run_db_writer() {
-    // move the db writer to separate thread
-    // }
     pub fn from_offer(
         event_tx: tokio::sync::mpsc::Sender<AppEvent>,
         target: DeviceId,
@@ -240,6 +230,7 @@ impl PendingTransfer {
         {
             let mut table = txn.open_table(DUMB_ITEMS).unwrap();
             for (path, is_file, file_size, id) in &*offer.tree {
+                c += 1;
                 let item = TransferItem {
                     path,
                     is_file,
@@ -249,15 +240,9 @@ impl PendingTransfer {
                     err: None,
                 };
                 let _ = table.insert(id, item);
-                c += 1;
             }
         }
         let _ = txn.commit();
-
-        assert_eq!(
-            offer.entries_num, c,
-            "Total entries must equal tree elements."
-        );
         let total_items = c;
 
         PendingTransfer {
@@ -265,7 +250,7 @@ impl PendingTransfer {
             direction,
             failed: AtomicU32::new(0),
             processed: AtomicU32::new(0),
-            items_queue: Mutex::new(FixedBitSet::with_capacity(offer.entries_num as usize)),
+            items_queue: Mutex::new(FixedBitSet::with_capacity(total_items as usize)),
             db,
             total_items,
             root_path,
@@ -307,6 +292,7 @@ impl PendingTransfer {
             &self.id.to_string()[0..8],
             self.items_queue.lock().unwrap().zeroes().count()
         );
+        // siema
 
         // Get first batch of items
         let mut queue = Vec::new();
@@ -319,14 +305,24 @@ impl PendingTransfer {
                     self.get_item(id as u32).expect("Transfer database error.")
                 }
                 None => {
-                    let drained = self.processed.load(Relaxed) == self.total_items;
+                    let processed = self.processed.load(Relaxed);
+                    let drained = processed == self.total_items;
+
+                    info!("Processed {processed}. Total {}", self.total_items);
+
                     if drained {
                         // All transfers processed, wait until sem is free and exit
                         info!("All transfers drained. Waiting for last items to finish.");
                         let _ = self.sem.acquire_many(4).await;
                         return Ok(());
                     } else {
-                        queue.extend(self.unsent_batch());
+                        let unsent = self.unsent_batch();
+                        let unsent_len = unsent.len();
+                        queue.extend(unsent);
+                        if unsent_len == 0 {
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
+                        info!("Extending batch. Unsent_len {unsent_len}");
                         continue;
                     }
                 }
@@ -345,14 +341,8 @@ impl PendingTransfer {
                         s.item_finished();
                     }
                     Err(e) => {
+                        info!("Transfer sending failed! {e:?}");
                         s.handle_item_err(item_id, e);
-                        // Transfer failed -> uncheck it
-                        unsafe {
-                            s.items_queue
-                                .lock()
-                                .unwrap()
-                                .set_unchecked(item_id as usize, false);
-                        }
                     }
                 }
             });
@@ -392,9 +382,8 @@ impl PendingTransfer {
         _permit: OwnedSemaphorePermit,
     ) -> Result<(), TransferItemError> {
         let file_size = header.file_size;
-
         let item_path = header.path;
-        // Check against shit like ../../
+
         let item_path: PathBuf = item_path
             .components()
             .filter(|c| matches!(c, Component::Normal(_)))
@@ -499,18 +488,20 @@ impl PendingTransfer {
         mut item: TransferItem,
         mut stream: StreamPair,
     ) -> Result<(), TransferItemError> {
-        let full_path = Path::new(&self.root_path).join(&item.path);
-        info!("Sending {full_path:?}. Item path {}", item.path.display());
+        // let path = Path::new(&self.root_path).join(&item.path);
+        // info!("Sending {path:?}. Item path {}", item.path.display());
+        let path = item.path;
+        info!("Sending {}", path.display());
 
-        let mut file = match tokio::fs::File::open(&full_path).await {
+        let mut file = match tokio::fs::File::open(&path).await {
             Ok(file) => file,
             Err(e) => match e.kind() {
                 ErrorKind::PermissionDenied => {
-                    error!("Failed to open file {full_path:?}");
+                    error!("Failed to open {path:?}");
                     return Err(TransferItemError::FileOpenPermissionDenied);
                 }
                 ErrorKind::NotFound => {
-                    error!("File not found {full_path:?}");
+                    error!("File not found {path:?}");
                     return Err(TransferItemError::FileNotFound);
                 }
                 _ => {
@@ -532,21 +523,28 @@ impl PendingTransfer {
                 file_size: item.size,
                 sent_bytes: item.sent_bytes,
                 is_file: item.is_file,
-                path: item.path.clone(),
+                path: path.clone(),
             })
             .await
             .map_err(|_| TransferItemError::StreamError)?;
+
+        if !item.is_file {
+            // If its folder just send the header
+            return Ok(());
+        }
 
         let mut buf = Vec::with_capacity(64 * 1024);
 
         loop {
             tokio::select! {
                 _ = self.cancelled() => {
-                    warn!("Sending item [{}] terminated.", item.path.display());
+                    warn!("Sending item [{}] terminated.", path.display());
                     return Err(TransferItemError::Terminated);
                 }
                 result = file.read_buf(&mut buf)=>{
-                    let n = result.map_err(|_| TransferItemError::FileIOError)?;
+                    let n = result.map_err(|e| {
+                        error!("Failed to read file {e:?}");
+                        TransferItemError::FileIOError})?;
                     if n == 0 {
                         break;
                     }
@@ -561,7 +559,7 @@ impl PendingTransfer {
                 }
             };
         }
-        info!("Sending {full_path:?} finished");
+        info!("Sending {} finished", path.display());
 
         Ok(())
     }
@@ -583,6 +581,15 @@ impl PendingTransfer {
             }
             // Recoverable (Network) errors - nop
             TransferItemError::StreamError | TransferItemError::Terminated => {
+                if self.direction == TransferDirection::Outcoming {
+                    // Move item back to the queue
+                    unsafe {
+                        self.items_queue
+                            .lock()
+                            .unwrap()
+                            .set_unchecked(id as usize, false);
+                    }
+                }
                 self.processed.load(Relaxed)
             }
         }
@@ -620,7 +627,6 @@ impl PendingTransfer {
 
 const TRANSFERS: TableDefinition<u128, &[u8]> = TableDefinition::new("transfers");
 
-// #[derive(Clone)]
 pub struct Transfers {
     pub pending_transfers: std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>>,
     devices: Devices,

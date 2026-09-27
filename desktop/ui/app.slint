@@ -8,7 +8,7 @@ import {
 import { ListView } from "std-widgets.slint";
 import { SettingsBridge, SettingsModal } from "settings.slint";
 import { TransfersBridge, Transfers, TransferItem } from "transfers.slint";
-import { MainBody, WindowBridge, TabDragGhost } from "tabs.slint";
+import { Api, WindowBridge, TabsGrid } from "tabs.slint";
 import {
     AddRemoteDeviceModal,
     AddDeviceBridge,
@@ -16,7 +16,7 @@ import {
     ConnectionOfferModal,
 } from "add_remote_modal.slint";
 import { ErrorModal } from "error_modal.slint";
-import { DeviceItem, DevicesBridge } from "devices.slint";
+import { DeviceItem, DevicesBridge, DeviceStatus } from "devices.slint";
 import { TreeNode, TreeList } from "path_tree.slint";
 import {
     IncomingTransferOfferModal,
@@ -26,6 +26,7 @@ import {
 } from "transfer_offer_modal.slint";
 
 export {
+    Api,
     DeviceItem,
     WindowBridge,
     AddDeviceBridge,
@@ -36,7 +37,120 @@ export {
     IncomingTransferOfferBridge,
     OutcomingTransferModalBridge,
 }
+export component DeviceRow inherits Rectangle {
+    in property <string> name: "Device";
+    in property <DeviceStatus> status;
+    in property <bool> selected: false;
+    in property <image> icon;
+
+    property <bool> pressed: false;
+
+    out property <bool> hovered: area.has-hover;
+
+    height: 32px;
+    border-radius: 8px;
+
+    transform-scale-x: root.pressed ? 0.99 : 1.0;
+    transform-scale-y: root.pressed ? 0.999 : 1.0;
+    animate transform-scale-x, transform-scale-y {
+        duration: 50ms;
+        easing: ease-out;
+    }
+
+    background: root.selected
+        ? Theme.colors.third-col
+        : (area.has-hover ? Theme.colors.third-col : transparent);
+    callback clicked;
+
+    VerticalLayout {
+        padding-left: 16px;
+        alignment: center;
+
+        Text {
+            text: root.name;
+            color: Theme.colors.primary-font;
+            font-size: 13px;
+            font-weight: 500;
+            font-family: Theme.font-heading;
+        }
+    }
+
+    area := TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => { root.clicked(); }
+        pointer-event(event) => {
+
+            if (event.kind == PointerEventKind.down) {
+                root.pressed = true;
+            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                root.pressed = false;
+            }
+        }
+    }
+}
+
+
+component ActionButton inherits Rectangle {
+    height: 42px;
+    in property <length> icon-size: 16px;
+    in property <image> icon;
+    in property <string> text;
+    in property <color> icon-color: Theme.colors.fourth-col;
+    in property <color> text-color: Theme.colors.third-font;
+
+    callback clicked();
+
+    border-radius: 12px;
+    background: Theme.colors.third-col;
+
+    states [
+        hovered when touch.has-hover: {
+            background: Theme.colors.fourth-col;
+        }
+    ]
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    if icon != @image-url(""): SvgIcon {
+        source: icon;
+        fg: Theme.colors.third-font;
+        size: icon-size;
+    }
+}
+
+// export component MyTray inherits SystemTrayIcon {
+//     icon: @image-url("icons/icon512.png");
+//     tooltip: "Nectan";
+//
+//     callback show-window();
+//     callback hide-window();
+//
+//     Menu {
+//         MenuItem {
+//             title: "Show";
+//             activated => { show-window(); }
+//         }
+//
+//         MenuItem {
+//             title: "Hide";
+//             activated => { hide-window(); }
+//         }
+//     }
+// }
+
 export component NectanWindow inherits Window {
+
+    property <[DeviceItem]> devices: [
+        { id: "1", name: "Ozzy", status: DeviceStatus.online },
+        { id: "2", name: "Jim", status: DeviceStatus.offline },
+        { id: "3", name: "Igor", status: DeviceStatus.online },
+    ];
+
     no-frame: true;
     background: transparent;
     title: "Nectan";
@@ -64,6 +178,7 @@ export component NectanWindow inherits Window {
     forward-focus: focus-scope;
 
     focus-scope := FocusScope {
+        focus-on-click: true;
         width: 100%;
         height: 100%;
 
@@ -72,13 +187,28 @@ export component NectanWindow inherits Window {
         }
 
         key-pressed(event) => {
-	    // Toggle sidebar
-            if (event.text == "b"
+
+            if (event.text == Key.S
                 && (event.modifiers.control || event.modifiers.meta)) {
                 WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+                WindowBridge.sidebar-hover = false;
                 return accept;
             }
             return reject;
+        }
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            scroll-event(event) => {
+                if event.delta-x > 10px {
+                    WindowBridge.sidebar-visible = true;
+                }
+                if event.delta-x < -10px {
+                    WindowBridge.sidebar-visible = false;
+                }
+                return accept;
+            }
         }
 
         Rectangle {
@@ -86,33 +216,185 @@ export component NectanWindow inherits Window {
             height: 100%;
             background: Theme.colors.primary-col;
             border-width: 1px;
-            border-color: #FFFFFF1B;
-            border-radius: 8px;
+            border-color: Theme.colors.fourth-col;
+            border-radius: 12px;
+            padding: 20px;
             clip: true;
 
-            MainBody { }
-
-            AddRemoteDeviceModal { }
-
-            if SettingsBridge.settings_open: SettingsModal { }
-
-            if ConnectionOfferBridge.open: ConnectionOfferModal { }
-
-            if OutcomingTransferModalBridge.sending-open: OutcomingTransferModal { }
-
-            if IncomingTransferOfferBridge.is-open: IncomingTransferOfferModal { }
-
-            if root.error_open: ErrorModal {
-                open: root.error_open;
-                title: root.error_title;
-                message: root.error_message;
-
-                closed => {
-                    root.error_open = false;
+            Rectangle {
+                x: 0;
+                z: 1;
+                width: WindowBridge.sidebar-visible ? 0 : WindowBridge.sidebar-hover ? WindowBridge.sidebar-width + 60px : 20px;
+                sidebar-toggle := TouchArea {
+                    pointer-event(event) => {
+                        if self.mouse-x > WindowBridge.sidebar-width {
+                            WindowBridge.sidebar-hover = false;
+                        }
+                        if self.mouse-x < 20px {
+                            WindowBridge.sidebar-hover = true;
+                        }
+                    }
                 }
             }
 
-            TabDragGhost { }
+            Rectangle {
+                x: WindowBridge.sidebar-visible ? 0 : (WindowBridge.sidebar-hover ? 4px : -WindowBridge.sidebar-width);
+                width: WindowBridge.sidebar-width;
+                z: 2;
+                background: Theme.colors.primary-col;
+                height: parent.height - 8px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: WindowBridge.sidebar-visible ? transparent : Theme.colors.border-col;
+
+                animate x, border-color {
+                    duration: 128ms;
+                    easing: ease;
+                }
+
+                VerticalLayout {
+                    padding: 8px;
+                    padding-bottom: 0px;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+                        padding-left: 4px;
+
+                        IconButton {
+                            width: 28px;
+                            height: 28px;
+
+                            Image {
+                                source: @image-url("icons/tray.png");
+                                width: 16px;
+                                height: 16px;
+                            }
+
+                            clicked => {
+                                WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+                            }
+                        }
+
+                        IconButton {
+                            width: 28px;
+                            height: 28px;
+                            SvgIcon {
+                                source: @image-url("icons/sidebar.svg");
+                                fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                                size: 16px;
+                            }
+
+                            clicked => {
+                                WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 8px;
+                    }
+
+                    Rectangle {
+                        background: Theme.colors.third-col;
+                        height: 32px;
+                        border-radius: 12px;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            spacing: 8px;
+                            cross-axis-alignment: center;
+
+                            SvgIcon {
+                                source: @image-url("icons/search.svg");
+                                fg: Theme.colors.third-font;
+                                size: 16px;
+                            }
+
+                            Text {
+                                vertical-alignment: center;
+                                text: "Search...";
+                                font-size: 13px;
+                                font-family: Theme.font-body;
+                                color: Theme.colors.third-font;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 8px;
+                    }
+
+                    GridLayout {
+                        spacing: 8px;
+                        Row {
+
+                            ActionButton {
+                                horizontal-stretch: 1;
+                                icon: @image-url("icons/link.svg");
+                            }
+
+                            ActionButton {
+                                horizontal-stretch: 1;
+                                icon: @image-url("icons/tranfsers.svg");
+                                icon-size: 17px;
+                            }
+
+                            ActionButton {
+                                horizontal-stretch: 1;
+                                icon: @image-url("icons/search.svg");
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 8px;
+                    }
+
+                    for device in devices: DeviceRow {
+                        name: device.name;
+                    }
+                    Rectangle { }
+
+                    HorizontalLayout {
+                        alignment: space-between;
+                        IconButton {
+                            width: 28px;
+                            height: 28px;
+                            SvgIcon {
+                                source: @image-url("icons/settings.svg");
+                                fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                                size: 16px;
+                            }
+
+                            clicked => {
+                                SettingsBridge.settings-open = true;
+                            }
+                        }
+
+                        IconButton {
+                            width: 28px;
+                            height: 28px;
+                            SvgIcon {
+                                source: @image-url("icons/plus.svg");
+                                fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                                size: 16px;
+                            }
+
+                            clicked => {
+                                AddDeviceBridge.add_device_open = true;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 4px;
+                    }
+                }
+            }
         }
+
+        if SettingsBridge.settings_open: SettingsModal { }
+
+        if AddDeviceBridge.add_device_open: AddRemoteDeviceModal { }
     }
 }

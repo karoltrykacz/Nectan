@@ -1,6 +1,74 @@
 import { ScrollView, TextEdit, VerticalBox, LineEdit } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { PrimaryButton, PlainLineEdit, GeneralModal } from "elements.slint";
+import { PrimaryButton, GeneralModal, PlainLineEdit } from "elements.slint";
+
+export struct ShortcutItem {
+    title: string,
+    keys: [string],
+    show_border: bool,
+}
+
+export struct ShortcutGroup {
+    category: string,
+    items: [ShortcutItem],
+}
+
+export component KeyBadge {
+    in property <string> key-name;
+
+    Rectangle {
+        height: 26px;
+        min-width: 36px;
+        border-radius: 5px;
+        background: Theme.colors.third-font;
+
+        Rectangle {
+            y: -1.25px;
+            width: 100%;
+            height: 24px;
+            border-radius: 5px;
+            background: Theme.colors.primary-font;
+
+            Text {
+                text: root.key-name;
+                color: Theme.colors.primary-col;
+                font-family: "Rubik";
+
+                font-size: 11px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component ShortcutKeys {
+    in property <[string]> keys;
+
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: center;
+
+        for key[idx] in root.keys: HorizontalLayout {
+            spacing: 8px;
+
+            if idx > 0: Text {
+                text: "+";
+                color: Theme.colors.primary-font;
+                font-size: 12px;
+                font-weight: 600;
+                width: 8px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            KeyBadge {
+                key-name: key;
+            }
+        }
+    }
+}
 
 export component SettingsRow {
     in property <string> title;
@@ -30,6 +98,61 @@ export component SettingsRow {
         VerticalLayout {
             alignment: center;
             @children
+        }
+    }
+}
+
+
+component ShortcutGroupView {
+    in property <string> category;
+    in property <[ShortcutItem]> items;
+
+    Rectangle {
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 0px;
+
+            Text {
+                text: root.category;
+                color: Theme.colors.third-font;
+                font-size: 11px;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                height: 10px;
+            }
+
+            for item in root.items: Rectangle {
+                height: 42px;
+
+                VerticalLayout {
+                    HorizontalLayout {
+                        alignment: space-between;
+
+                        Text {
+                            text: item.title;
+                            color: Theme.colors.primary-font;
+                            font-size: 13px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+
+                        ShortcutKeys {
+                            keys: item.keys;
+                        }
+                    }
+
+                    if item.show_border: Rectangle {
+                        height: 1px;
+                        border-color: Theme.colors.border-col;
+                    }
+                }
+            }
         }
     }
 }
@@ -112,11 +235,11 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "Username";
+            title: "Nazwa użytkownika";
             subtitle: SettingsBridge.username;
 
             PrimaryButton {
-                text: "Change";
+                text: "Zmień";
 
                 clicked => {
                     SettingsBridge.username-modal = true;
@@ -130,11 +253,11 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "Community";
-            subtitle: "Join Nectan discord server";
+            title: "Społeczność";
+            subtitle: "Dołącz do serwera Discord Nectan";
 
             PrimaryButton {
-                text: "Join";
+                text: "Dołącz";
 
                 clicked => {
                     SettingsBridge.join_discord();
@@ -166,11 +289,11 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "Privary policy";
-            subtitle: "Read our privacy policy";
+            title: "Polityka prywatności";
+            subtitle: "Zobacz naszą politykę prywatności";
 
             PrimaryButton {
-                text: "Read";
+                text: "Otwórz";
 
                 clicked => {
                     SettingsBridge.open_privacy();
@@ -200,11 +323,11 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "Reset Nectan";
-            subtitle: "Bring Nectan to its initial state";
+            title: "Zresetuj Nectan";
+            subtitle: "Przywraca aplikację do stanu początkowego.";
 
             PrimaryButton {
-                text: "Reset";
+                text: "Resetuj";
 
                 clicked => {
                 }
@@ -214,6 +337,29 @@ component SettingsGeneralTab inherits Rectangle {
 }
 
 component SettingShortcutsTab inherits Rectangle {
+
+    private property <[ShortcutGroup]> shortcut-groups: [
+        {
+            category: "NAVIGATION",
+            items: [
+                { title: "Go to search", keys: ["Ctrl", "K"], show_border: true },
+                { title: "Open next tab", keys: ["Ctrl", "Tab"], show_border: true },
+                { title: "Open previous tab", keys: ["Ctrl", "Shift", "Tab"], show_border: true },
+                { title: "Go back", keys: ["Alt", "←"], show_border: true },
+                { title: "Go forward", keys: ["Alt", "→"], show_border: false }
+            ]
+        },
+        {
+            category: "EDITING",
+            items: [
+                { title: "Undo", keys: ["Ctrl", "Z"], show_border: true },
+                { title: "Redo", keys: ["Ctrl", "Shift", "Z"], show_border: true },
+                { title: "Duplicate line", keys: ["Ctrl", "D"], show_border: true },
+                { title: "Delete line", keys: ["Ctrl", "Shift", "K"], show_border: true },
+                { title: "Comment line", keys: ["Ctrl", "/"], show_border: false }
+            ]
+        }
+    ];
 
     width: 100%;
     height: 100%;
@@ -234,80 +380,82 @@ component SettingShortcutsTab inherits Rectangle {
                 font-size: 20px;
                 font-weight: 700;
             }
+
+            for group in shortcut-groups: ShortcutGroupView {
+                category: group.category;
+                items: group.items;
+            }
         }
     }
 }
 
-export component SettingsModal inherits Rectangle {
+export component SettingsModal inherits GeneralModal {
+    open <=> SettingsBridge.settings_open;
 
-    GeneralModal {
-        open <=> SettingsBridge.settings_open;
+    Rectangle {
+        width: min(820px, parent.width - 40px);
+        height: min(560px,parent.height - 40px);
+        clip: true;
 
-        Rectangle {
-            width: min(820px, parent.width - 40px);
-            height: min(560px,parent.height - 40px);
-            clip: true;
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
 
-            drop-shadow-color: #00000099;
-            drop-shadow-blur: 28px;
-            background: Theme.colors.primary-col;
-            border-radius: 12px;
-            border-width: 1px;
-            border-color: Theme.colors.border-col;
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {}
+        }
 
-            TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => {}
-            }
+        HorizontalLayout {
 
-            HorizontalLayout {
+            Rectangle {
+                width: 156px;
 
-                Rectangle {
-                    width: 156px;
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 4px;
 
-                    VerticalLayout {
-                        padding: 8px;
-                        spacing: 4px;
+                    SettingsTab {
+                        active-tab <=> SettingsBridge.active-tab;
+                        tab-id: 0;
+                        tab: "Ogólne";
+                    }
 
-                        SettingsTab {
-                            active-tab <=> SettingsBridge.active-tab;
-                            tab-id: 0;
-                            tab: "General";
-                        }
+                    SettingsTab {
+                        active-tab <=> SettingsBridge.active-tab;
+                        tab-id: 1;
+                        tab: "Shortcuts";
+                    }
 
-                        SettingsTab {
-                            active-tab <=> SettingsBridge.active-tab;
-                            tab-id: 1;
-                            tab: "Shortcuts";
-                        }
+                    SettingsTab {
+                        active-tab <=> SettingsBridge.active-tab;
+                        tab-id: 2;
+                        tab: "Advanced";
+                    }
 
-                        SettingsTab {
-                            active-tab <=> SettingsBridge.active-tab;
-                            tab-id: 2;
-                            tab: "Advanced";
-                        }
-
-                        SettingsTab {
-                            active-tab <=> SettingsBridge.active-tab;
-                            tab-id: 3;
-                            tab: "Blocked";
-                        }
+                    SettingsTab {
+                        active-tab <=> SettingsBridge.active-tab;
+                        tab-id: 3;
+                        tab: "Blocked";
                     }
                 }
+            }
 
-                Rectangle {
-                    width: 1px;
-                    background: Theme.colors.border-col;
-                }
+            Rectangle {
+                width: 1px;
+                background: Theme.colors.border-col;
+            }
 
-                Rectangle {
-                    SettingsGeneralTab { }
+            Rectangle {
+                SettingsGeneralTab { }
 
-                    SettingShortcutsTab { }
+                SettingShortcutsTab { }
 
-                    BlockedTab { }
-                }
+                BlockedTab { }
             }
         }
     }
@@ -316,7 +464,7 @@ export component SettingsModal inherits Rectangle {
 export global SettingsBridge {
 
     in-out property <bool> username-modal: false;
-    in-out property <bool> settings-open: false;
+    in-out property <bool> settings_open: false;
     in-out property <int> active-tab: 0;
 
     in-out property <string> username: "Siema";
@@ -400,7 +548,6 @@ export component ChangeUsernameModal inherits Rectangle {
                         border-radius: 8px;
                         background: Theme.colors.secondary-col;
                         VerticalLayout {
-
                             PlainLineEdit {
                                 placeholder-text: "Enter username";
                                 input-text <=> new-username;

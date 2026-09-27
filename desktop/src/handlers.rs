@@ -591,7 +591,7 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
             let transfer_id = Uuid::new_v4();
             let destination_device = device_id_from_base64(&destination_id).unwrap();
 
-            let entries_num = walk_info.total_entries();
+            let entries_num = walk_info.total_entries() as u32;
             let total_size = walk_info.total_size();
             let transfer_name = transfer_name.into();
 

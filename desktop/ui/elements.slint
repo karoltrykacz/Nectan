@@ -29,8 +29,6 @@ export component PlainLineEdit {
     }
 }
 
-
-
 export component GeneralModal inherits Rectangle {
 
     in-out property <bool> open;
@@ -71,6 +69,7 @@ export component GeneralModal inherits Rectangle {
         Rectangle {
             width: 100%;
             height: 100%;
+            border-radius: 12px;
             background: #00000077;
         }
 
@@ -87,6 +86,7 @@ export component GeneralModal inherits Rectangle {
         @children
     }
 }
+
 
 
 export component QRApp inherits Rectangle {
@@ -381,8 +381,9 @@ export component IconButton inherits Rectangle {
         width: root.width;
         height: root.height;
         border-radius: root.round ? 4px : 0px;
-        background: root.inner-bg != red ? root.inner-bg : (area.pressed ? Theme.colors.hover-col : (area.has-hover ? Theme.colors.hover-col : transparent));
-
+        // background: root.inner-bg != red ? root.inner-bg : (area.pressed ? Theme.colors.hover-col : (area.has-hover ? Theme.colors.hover-col : transparent));
+	//
+	background: area.has-hover ? Theme.colors.fourth-col : transparent;
         animate width, height, y {
             duration: 80ms;
             easing: ease-out;

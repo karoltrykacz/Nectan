@@ -24,7 +24,7 @@ pub struct CodeLookupRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CodeLookupResponse {
-    pub peer_addr: EndpointId,
+    pub device_id: EndpointId,
 }
 
 pub async fn lookup_code(code: String, state: &NectanState) -> Result<EndpointId, CodeLookupError> {
@@ -40,17 +40,15 @@ pub async fn lookup_code(code: String, state: &NectanState) -> Result<EndpointId
     {
         Ok(response) => match response.status() {
             StatusCode::FOUND => {
-                // let payload = response.
-                // let payload = response
-                //     .json::<CodeLookupResponse>()
-                //     .await
-                //     .expect("Failed to decode CodeLookupResponse");
+                let body = response
+                    .bytes()
+                    .await
+                    .map_err(|_| CodeLookupError::ConnectionFailed)?;
 
-                // debug!("Code found. {:#?}", payload);
+                let body = postcard::from_bytes::<CodeLookupResponse>(&body)
+                    .map_err(|e| CodeLookupError::NectanService)?;
 
-                // TODO
-                Err(CodeLookupError::NotFound)
-                // Ok(payload.peer_addr)
+                Ok(body.device_id)
             }
             StatusCode::NOT_FOUND => {
                 info!("Code not found");

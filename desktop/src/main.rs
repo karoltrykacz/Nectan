@@ -5,6 +5,7 @@ slint::include_modules!();
 use anyhow::Result;
 use nectan_core::common::get_signing_key;
 use nectan_core::storage_utils::KvStore;
+use slint::DataTransfer;
 use std::path::PathBuf;
 
 use crate::devices::update_devices;
@@ -31,6 +32,12 @@ async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
 
     init_app_state(&w);
+
+    // let tray = Tray::new()?;
+
+    let api = w.global::<Api>();
+    api.on_make_transfer(move |data| DataTransfer::default());
+    api.on_read_transfer(move |data| data.plain_text().unwrap_or_default());
 
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
