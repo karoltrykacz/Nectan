@@ -129,7 +129,7 @@ impl ProtocolHandler for NectanProtocol {
 
                 let offer = ConnectionOffer {
                     username: remote_username.clone(),
-                    remote_device_id: remote_device_id,
+                    remote_device_id,
                     nearby: is_nearby,
                     respond,
                 };
@@ -339,7 +339,7 @@ async fn handle_transfer_offer(
     if let UiResponse::Accept = r {
         state
             .transfers
-            .new_offer(sender, TransferDirection::Incoming, offer.inner)
+            .add_transfer(sender, TransferDirection::Incoming, offer.inner)
             .await;
     }
 
@@ -349,7 +349,7 @@ async fn handle_transfer_offer(
 #[derive(Clone)]
 pub struct NectanState {
     pub transfers: Arc<Transfers>,
-    app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
+    pub app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     /// Only one connection offer allowed at a time
     conn_offer: Arc<Mutex<Option<ConnectionOffer>>>,
     /// Only one transfer offer allowed at a time

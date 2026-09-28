@@ -28,6 +28,7 @@ export struct DeviceItem {
 export global DevicesBridge {
     in-out property <[DeviceItem]> devices: [];
     pure callback toggle-favourite(string);
+
     in-out property <int> device-details-open-idx: -1;
     in-out property <bool> device-details-open: false;
 }
@@ -96,8 +97,9 @@ export component DeviceRow inherits Rectangle {
     }
 }
 
-export component DeviceScreen {
-    in property <int> device-idx;
+export component DeviceScreen inherits Rectangle {
+
+    in property <int> device-idx: DevicesBridge.device-details-open-idx;
     property <DeviceItem> device: DevicesBridge.devices[root.device-idx];
 
     function select-device() {

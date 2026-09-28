@@ -11,7 +11,6 @@ use crate::transfers::TransferDirection::Outcoming;
 use anyhow::Result;
 use anyhow::bail;
 use anyhow::ensure;
-use ed25519_dalek::VerifyingKey;
 use fixedbitset::FixedBitSet;
 use iroh::endpoint::Connection;
 use redb::ReadableDatabase;
@@ -61,14 +60,6 @@ pub struct TransferItem {
     /// Relative path (starting from the transfer root path)
     pub path: PathBuf,
     pub err: Option<TransferItemError>,
-}
-impl TransferItem {
-    pub fn name(&self) -> String {
-        self.path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    }
 }
 
 impl Value for TransferItem {
@@ -127,7 +118,7 @@ impl std::fmt::Display for TransferOfferError {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TransferMeta {
+pub struct Transfer {
     id: Uuid,
     total_size: u64,
     sent_bytes: u64,
@@ -210,11 +201,8 @@ pub struct PendingTransfer {
     direction: TransferDirection,
     items_queue: Mutex<FixedBitSet>,
     failed: AtomicU32,
-    pub name: String,
-    pub total_items: u32,
-    pub total_size: u64,
-    processed_items: AtomicU32,
-    sent_bytes: AtomicU64,
+    total_items: u32,
+    processed: AtomicU32,
     db: redb::Database,
     /// When sending, common parent of all items
     /// When receiving, target directory
@@ -225,48 +213,6 @@ pub struct PendingTransfer {
 }
 
 impl PendingTransfer {
-    pub fn default(total_items: u32, event_tx: tokio::sync::mpsc::Sender<AppEvent>) -> Self {
-        let id = Uuid::new_v4();
-        let db = redb::Database::create(std::env::temp_dir().join(id.to_string())).unwrap();
-        let txn = db.begin_write().unwrap();
-        {
-            let mut table = txn.open_table(DUMB_ITEMS).unwrap();
-            for i in 0..total_items {
-                table
-                    .insert(
-                        i,
-                        TransferItem {
-                            id: i,
-                            sent_bytes: (i * 123) as u64,
-                            path: PathBuf::from(format!("/media/karol/file-{}", i)),
-                            size: 123 * (i * i) as u64,
-                            is_file: true,
-                            err: None,
-                        },
-                    )
-                    .unwrap();
-            }
-        }
-        txn.commit().unwrap();
-
-        PendingTransfer {
-            name: "Default".into(),
-            processed_items: AtomicU32::new(123),
-            total_items,
-            total_size: 1231233312,
-            sent_bytes: AtomicU64::new(123432),
-            event_tx,
-            id,
-            target: VerifyingKey::default(),
-            direction: TransferDirection::Incoming,
-            items_queue: Mutex::new(FixedBitSet::new()),
-            failed: AtomicU32::new(10),
-            db,
-            root_path: PathBuf::from("/media/karol/example"),
-            cancel_token: CancellationToken::new(),
-            sem: Arc::new(Semaphore::new(69)),
-        }
-    }
     pub fn from_offer(
         event_tx: tokio::sync::mpsc::Sender<AppEvent>,
         target: DeviceId,
@@ -308,15 +254,12 @@ impl PendingTransfer {
 
         PendingTransfer {
             id,
-            name: offer.transfer_name,
             direction,
             failed: AtomicU32::new(0),
-            processed_items: AtomicU32::new(0),
-            sent_bytes: AtomicU64::new(0),
+            processed: AtomicU32::new(0),
             items_queue: Mutex::new(FixedBitSet::with_capacity(total_items as usize)),
             db,
             total_items,
-            total_size: offer.total_size,
             root_path,
             cancel_token: CancellationToken::new(),
             event_tx,
@@ -332,13 +275,9 @@ impl PendingTransfer {
     }
     /// Returns remaining items
     fn item_finished(&self) -> u32 {
-        self.processed_items.fetch_add(1, Relaxed) + 1
+        self.processed.fetch_add(1, Relaxed) + 1
     }
-    /// Returns remaining bytes
-    fn ack_sent_bytes(&self, bytes: u64) -> u64 {
-        self.sent_bytes.fetch_add(bytes, Relaxed) + bytes
-    }
-    pub fn get_item(&self, id: u32) -> Result<TransferItem, redb::Error> {
+    fn get_item(&self, id: u32) -> Result<TransferItem, redb::Error> {
         let txn = self.db.begin_read()?;
         Ok(txn
             .open_table(DUMB_ITEMS)?
@@ -373,7 +312,7 @@ impl PendingTransfer {
                     self.get_item(id as u32).expect("Transfer database error.")
                 }
                 None => {
-                    let processed = self.processed_items.load(Relaxed);
+                    let processed = self.processed.load(Relaxed);
                     let drained = processed == self.total_items;
 
                     info!("Processed {processed}. Total {}", self.total_items);
@@ -645,7 +584,7 @@ impl PendingTransfer {
                 let _ = self.item_finished();
 
                 self.failed.fetch_add(1, Relaxed);
-                self.processed_items.fetch_add(1, Relaxed) + 1
+                self.processed.fetch_add(1, Relaxed) + 1
             }
             // Recoverable (Network) errors - nop
             TransferItemError::StreamError | TransferItemError::Terminated => {
@@ -658,7 +597,7 @@ impl PendingTransfer {
                             .set_unchecked(id as usize, false);
                     }
                 }
-                self.processed_items.load(Relaxed)
+                self.processed.load(Relaxed)
             }
         }
     }
@@ -695,12 +634,8 @@ impl PendingTransfer {
 
 const TRANSFERS: TableDefinition<u128, &[u8]> = TableDefinition::new("transfers");
 
-pub struct PendingTransfers {
-    pub inner: std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>>,
-}
-
 pub struct Transfers {
-    pending_transfers: PendingTransfers,
+    pub pending_transfers: std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>>,
     devices: Devices,
     event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     // db: redb::Database,
@@ -711,9 +646,7 @@ impl Transfers {
         // let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
         // let db_dir = db_dir.join("transfers");
         // let db = redb::Database::create(db_dir).expect("Failed to create transfers database");
-        let pending_transfers = PendingTransfers {
-            inner: std::sync::RwLock::new(HashMap::new()),
-        };
+        let pending_transfers = std::sync::RwLock::new(HashMap::new());
 
         Transfers {
             event_tx,
@@ -721,20 +654,8 @@ impl Transfers {
             devices,
         }
     }
-    pub fn pending_transfers(&self) -> &std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>> {
-        &self.pending_transfers.inner
-    }
-    pub fn get_transfers(&self) -> Vec<TransferMeta> {
-        self.pending_transfers()
-            .read()
-            .unwrap()
-            .values()
-            .map(|t| TransferMeta {
-                id: t.id,
-                total_size: t.total_size,
-                sent_bytes: t.sent_bytes.load(Relaxed),
-            })
-            .collect()
+    pub async fn get_transfers() -> Vec<Transfer> {
+        Vec::new()
     }
 
     pub async fn add_transfer(
@@ -755,8 +676,8 @@ impl Transfers {
                 let _ = t.clone().start_sending(conn).await;
             }
         }
-        self.pending_transfers().write().unwrap().insert(id, t);
-        let _ = self.event_tx.send(AppEvent::TransfersUpdated).await;
+        self.pending_transfers.write().unwrap().insert(id, t);
+        self.event_tx.send(AppEvent::TransfersUpdated).await;
     }
 
     pub async fn forward_incoming_stream(
@@ -765,7 +686,7 @@ impl Transfers {
         stream: StreamPair,
     ) -> Result<()> {
         let Some(t) = self
-            .pending_transfers()
+            .pending_transfers
             .read()
             .unwrap()
             .get(&transfer_id)

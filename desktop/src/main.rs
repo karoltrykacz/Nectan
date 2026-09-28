@@ -12,10 +12,10 @@ use crate::devices::update_devices;
 use crate::handlers::{
     handle_add_device, handle_cancel_walker, handle_connection_offer,
     handle_incoming_transfer_offer, handle_scan_files, handle_scan_folders, handle_send,
-    handle_tabs, handle_window_controls, start_event_listener,
+    handle_window_controls, start_event_listener,
 };
 use crate::state::init_app_state;
-use crate::transfers::update_transfers_list;
+use crate::transfers::{handle_refresh_items_list, handle_refresh_transfers_list, set_transfers};
 use nectan_core::devices::Devices;
 use nectan_core::devices::UserInfo;
 use nectan_core::devices::Username;
@@ -34,10 +34,6 @@ async fn main() -> Result<(), slint::PlatformError> {
     init_app_state(&w);
 
     // let tray = Tray::new()?;
-
-    let api = w.global::<Api>();
-    api.on_make_transfer(move |data| DataTransfer::default());
-    api.on_read_transfer(move |data| data.plain_text().unwrap_or_default());
 
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -65,19 +61,22 @@ async fn main() -> Result<(), slint::PlatformError> {
 
     start_event_listener(&w, rx, Arc::clone(&state));
     handle_window_controls(&w);
-    handle_tabs(&w);
     handle_add_device(&w, Arc::clone(&state));
 
-    handle_scan_files(&w);
-    handle_scan_folders(&w);
-    handle_cancel_walker(&w);
     handle_send(&w, Arc::clone(&state));
 
     handle_incoming_transfer_offer(&w, Arc::clone(&state));
     handle_connection_offer(&w, Arc::clone(&state));
 
     update_devices(&w.as_weak(), &state);
-    update_transfers_list(&w.as_weak(), &state);
 
+    handle_scan_files(&w);
+    handle_scan_folders(&w);
+    handle_cancel_walker(&w);
+
+    handle_refresh_items_list(&w);
+    handle_refresh_transfers_list(&w);
+
+    set_transfers(&w.as_weak(), &state);
     w.run()
 }

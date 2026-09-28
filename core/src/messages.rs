@@ -72,13 +72,13 @@ pub enum AppEvent {
     IncomingTransferOffer { offer: TransferOfferRequest },
     TransferOfferDelivered,
     DeviceWentOffline { device_id: DeviceId },
-    TransferUpdated,
+    TransfersUpdated,
 }
 
 impl std::fmt::Debug for AppEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TransferUpdated => f.debug_struct("transfer_updated").finish(),
+            Self::TransfersUpdated => f.debug_struct("transfer_updated").finish(),
             Self::DeviceWentOffline { device_id } => f
                 .debug_struct("DeviceWentOffline")
                 .field("device_id", device_id)

@@ -1,0 +1,78 @@
+import { GeneralModal, PlainLineEdit, SvgIcon } from "elements.slint";
+import { Theme } from "theme.slint";
+
+export global SearchBridge {
+    in-out property <bool> visible;
+}
+
+export component Search inherits Rectangle {
+
+    GeneralModal {
+        open <=> SearchBridge.visible;
+        on-close => {}
+        on-enter => {}
+
+        Rectangle {
+            width: min(620px, parent.width * 0.8);
+            height: 64px;
+
+            background: Theme.colors.primary-col;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: Theme.colors.hover-col;
+
+            drop-shadow-blur: 28px;
+
+            HorizontalLayout {
+                alignment: start;
+                cross-axis-alignment: center;
+                padding-left: 24px;
+
+                SvgIcon {
+                    source: @image-url("icons/search.svg");
+                    fg: Theme.colors.fourth-font;
+                    size: 16px;
+                }
+
+                PlainLineEdit {
+                    placeholder-text: "Search...";
+                }
+            }
+        }
+    }
+}
+
+export component SearchBar inherits Rectangle {
+    background: h.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
+    height: 32px;
+    border-radius: 12px;
+
+    transform-scale: h.pressed ? 0.98 : 1.0;
+    animate transform-scale { duration: 100ms; }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        spacing: 8px;
+        cross-axis-alignment: center;
+
+        SvgIcon {
+            source: @image-url("icons/search.svg");
+            fg: Theme.colors.third-font;
+            size: 16px;
+        }
+
+        Text {
+            vertical-alignment: center;
+            text: "Search...";
+            font-size: 13px;
+            font-family: Theme.font-body;
+            color: Theme.colors.third-font;
+        }
+    }
+
+    h := TouchArea {
+        clicked => {
+            SearchBridge.visible = true;
+        }
+    }
+}

@@ -7,40 +7,46 @@ import {
 import { ScrollView, ListView } from "std-widgets.slint";
 import { GeneralModal } from "elements.slint";
 
-export struct TransferFile {
+export struct TransferItem {
     name: string,
     size-text: string,
     percent-text: string,
     progress: float,
 }
 
-export struct TransferItem {
+export struct Transfer {
     id: string,
     title: string,
+    total_files: int,
     status: string,
     progress: float,
     size-text: string,
     percent-text: string,
     speed-text: string,
-    files: [TransferFile],
     receiver-name: string,
-    outcoming: bool
+    outcoming: bool,
+    items: [TransferItem]
 }
 
 export global TransfersBridge {
-    in-out property <[TransferItem]> transfers: [];
+    in-out property <[Transfer]> transfers: [];
     in-out property <int> selected-transfer: -1;
 
     callback delete-transfer(string);
     callback pause-resume-transfer(string);
+    callback refresh-range(int, int);
+
+    callback refresh-transfers();
 }
 
 export component TransferTile inherits Rectangle {
-    in property <TransferItem> self;
+    in property <Transfer> self;
 
     callback clicked;
 
     background: touch.has-hover ? Theme.colors.third-col : Theme.colors.secondary-col;
+    border-color: Theme.colors.third-col;
+    border-width: 1px;
 
     border-radius: 8px;
     height: 81px;
@@ -169,7 +175,7 @@ component FileRow inherits Rectangle {
     in property <length> row-padding-left;
     in property <bool> is-last;
     height: 36px;
-    background: touch-area.has-hover ? Theme.colors.third-col : transparent;
+    background: touch-area.has-hover ? Theme.colors.fourth-col : transparent;
 
     HorizontalLayout {
         padding-left: row-padding-left;
@@ -248,7 +254,9 @@ component FileRow inherits Rectangle {
 
 
 export component TransferDetails inherits Rectangle {
-    in property <TransferItem> item;
+    in property <Transfer> transfer;
+    in-out property <[TransferItem]> files;
+
     property <bool> search-open: false;
     callback back;
     init => { search-open = false; }
@@ -278,7 +286,7 @@ export component TransferDetails inherits Rectangle {
                 }
 
                 Text {
-                    text: item.title;
+                    text: transfer.title;
                     font-family: Theme.font-heading;
                     font-weight: 700;
                     font-size: 22px;
@@ -287,7 +295,7 @@ export component TransferDetails inherits Rectangle {
             }
 
             Text {
-                text: item.percent-text;
+                text: transfer.percent-text;
                 font-family: Theme.font-heading;
                 color: Theme.colors.primary-font;
                 font-weight: 700;
@@ -295,6 +303,10 @@ export component TransferDetails inherits Rectangle {
                 vertical-alignment: top;
                 horizontal-alignment: right;
             }
+        }
+
+        Rectangle {
+            height: 8px;
         }
 
         HorizontalLayout {
@@ -307,14 +319,14 @@ export component TransferDetails inherits Rectangle {
                 color: Theme.colors.third-font;
                 font-size: 13px;
                 font-weight: 500;
-                text: item.outcoming ?
-                    "Sending to \{item.receiver-name}" :
-                    "Receiving from \{item.receiver-name}";
+                text: transfer.outcoming ?
+                    "Sending to \{transfer.receiver-name}" :
+                    "Receiving from \{transfer.receiver-name}";
             }
 
             Text {
                 horizontal-alignment: right;
-                text: item.status;
+                text: transfer.status;
                 color: Theme.colors.primary-font;
                 font-weight: 500;
                 font-size: 13px;
@@ -333,7 +345,7 @@ export component TransferDetails inherits Rectangle {
                     easing: ease;
                 }
                 x: 0;
-                width: parent.width * item.progress;
+                width: parent.width * transfer.progress;
                 height: parent.height;
                 border-radius: 2px;
                 background: Theme.colors.secondary-font;
@@ -349,7 +361,7 @@ export component TransferDetails inherits Rectangle {
             padding-left: 20px;
 
             Text {
-                text: item.size-text;
+                text: transfer.size-text;
                 color: Theme.colors.secondary-font;
                 font-size: 13px;
                 horizontal-stretch: 1;
@@ -358,7 +370,7 @@ export component TransferDetails inherits Rectangle {
             }
 
             Text {
-                text: item.speed-text;
+                text: transfer.speed-text;
                 color: Theme.colors.secondary-font;
                 font-size: 13px;
                 font-family: Theme.font-heading;
@@ -366,8 +378,12 @@ export component TransferDetails inherits Rectangle {
             }
         }
 
+        Rectangle {
+            height: 12px;
+        }
+
         VerticalLayout {
-            padding: 20px;
+            padding: 8px;
             Rectangle {
                 background: Theme.colors.secondary-col;
                 border-radius: 8px;
@@ -379,7 +395,7 @@ export component TransferDetails inherits Rectangle {
                         padding-left: 12px;
 
                         Text {
-                            text: "Contents (\{round(item.files.length)})";
+                            text: "Contents (\{round(transfer.total-files)})";
                             color: Theme.colors.primary-font;
                             font-size: 13px;
                             font-weight: 500;
@@ -406,16 +422,26 @@ export component TransferDetails inherits Rectangle {
                         height: 8px;
                     }
 
-                    ListView {
+                    Timer {
+                        interval: 1s;
+                        running: true;
+                        triggered() => {
+                            TransfersBridge.refresh-range(items.viewport-x / -36px, items.height / 36px);
+                        }
+                    }
+
+                    items := ListView {
                         vertical-scrollbar-policy: as-needed;
-                        for f[i] in item.files: FileRow {
-                            row-padding-right: 12px;
+                        horizontal-scrollbar-policy: always-off;
+                        // how to create timer that will update elements?
+                        for f[i] in transfer.items: FileRow {
+                            row-padding-right: 18px;
                             row-padding-left: 12px;
                             name: f.name;
                             size-text: f.size-text;
                             percent-text: f.percent-text;
                             progress: f.progress;
-                            is-last: i == item.files.length - 1;
+                            is-last: i == transfer.total-files - 1;
                         }
                     }
                 }
@@ -425,9 +451,20 @@ export component TransferDetails inherits Rectangle {
 }
 
 export component Transfers inherits Rectangle {
+
+    Timer {
+        interval: 50ms;
+        running: true;
+        triggered() => {
+            TransfersBridge.refresh-transfers();
+        }
+    }
+
     if TransfersBridge.selected-transfer < 0: VerticalLayout {
-        padding: 12px;
+        padding: 8px;
         ListView {
+            vertical-scrollbar-policy: as-needed;
+            horizontal-scrollbar-policy: always-off;
             for item[i] in TransfersBridge.transfers: VerticalLayout {
                 TransferTile {
                     self: item;
@@ -440,13 +477,14 @@ export component Transfers inherits Rectangle {
             }
         }
     }
-    if TransfersBridge.transfers.length == 0:VerticalLayout {
+
+    if TransfersBridge.transfers.length == 0: VerticalLayout {
         padding: 20px;
 
         Rectangle {
             background: Theme.colors.secondary-col;
             border-radius: 8px;
-            height: 81px;
+            height: 100%;
 
             Text {
                 text: "No ongoing transfers.";
@@ -456,7 +494,7 @@ export component Transfers inherits Rectangle {
     }
 
     if TransfersBridge.selected-transfer >= 0: TransferDetails {
-        item: TransfersBridge.transfers[TransfersBridge.selected-transfer];
+        transfer: TransfersBridge.transfers[TransfersBridge.selected-transfer];
         back => { TransfersBridge.selected-transfer = -1; }
     }
 }

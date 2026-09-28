@@ -1,89 +1,52 @@
-import { Theme } from "theme.slint";
-import { IconButton, SvgIcon, Spinner, PrimaryButton } from "elements.slint";
-import { Transfers } from "transfers.slint";
-import { SettingsBridge } from "settings.slint";
-import { DeviceRow, DeviceScreen, DevicesBridge } from "devices.slint";
-import { AddDeviceBridge } from "add_remote_modal.slint";
-
-// Containers, search
-export enum selected-window { transfers, device, containers }
-export struct NectanTab { display: string, id: int, kind: selected-window, ref-id: int }
-
-export global WindowBridge {
-    callback reorder-requested(int, int);
-    callback close-requested(int);
-
-    callback open-tab(selected-window, int, string);
-
-    in-out property <[NectanTab]> tabs: [];
-    in-out property <int> current-tab: 0;
-
-    in-out property <bool> is-dragging: false;
-    in-out property <length> ghost-x: 0px;
-    in-out property <length> ghost-y: 0px;
-    in-out property <string> dragging-title: "";
-
-    in-out property <bool> sidebar-visible: true;
-    in-out property <bool> sidebar-hover: true;
-    in-out property <length> sidebar-width: 200px;
-
-    in-out property <selected-window> current-window: transfers;
-
-    in-out property <int> current-ref-id: 0;
-
-    callback drag-window();
-
-    callback minimize-window();
-    callback maximize-window();
-    callback close-window();
-}
-
-export global Api {
-    pure callback make-transfer(string) -> data-transfer;
-    pure callback read-transfer(data-transfer) -> string;
-}
-
-component SplitTab inherits Rectangle {
-    vertical-stretch: 1;
-    horizontal-stretch: 1;
-    border-radius: 8px;
-    background: hov.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
-
-    animate background { duration: 40ms; }
-
-    hov := TouchArea { }
-}
-
-export component TabsGrid inherits GridLayout {
-    spacing: 8px;
-    padding: 8px;
-    padding-left: !WindowBridge.sidebar-visible ? 8px : WindowBridge.sidebar-width;
-    in-out property <int> tabs;
-
-    animate x, padding-left {
-        duration: 128ms;
-        easing: ease;
-    }
-
-    Row {
-
-        SplitTab {
-            background: black;
-            colspan: 2;
-        }
-    }
-
-    Row {
-        SplitTab { }
-
-        SplitTab { }
-    }
-
-    Row {
-        SplitTab { }
-    }
-
-    Row { }
-
-    Row { }
-}
+// import { Theme } from "theme.slint";
+// import { IconButton, SvgIcon, Spinner, PrimaryButton } from "elements.slint";
+// import { Transfers } from "transfers.slint";
+// import { SettingsBridge } from "settings.slint";
+// import { DeviceRow, DeviceScreen, DevicesBridge } from "devices.slint";
+// import { AddDeviceBridge } from "add_remote_modal.slint";
+//
+//
+// component SplitTab inherits Rectangle {
+//     vertical-stretch: 1;
+//     horizontal-stretch: 1;
+//     border-radius: 8px;
+//     background: hov.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
+//
+//     animate background { duration: 40ms; }
+//
+//     hov := TouchArea { }
+// }
+//
+// export component TabsGrid inherits GridLayout {
+//     spacing: 8px;
+//     padding: 8px;
+//     padding-left: !WindowBridge.sidebar-visible ? 8px : WindowBridge.sidebar-width;
+//     in-out property <int> tabs;
+//
+//     animate x, padding-left {
+//         duration: 128ms;
+//         easing: ease;
+//     }
+//
+//     Row {
+//
+//         SplitTab {
+//             background: black;
+//             colspan: 2;
+//         }
+//     }
+//
+//     Row {
+//         SplitTab { }
+//
+//         SplitTab { }
+//     }
+//
+//     Row {
+//         SplitTab { }
+//     }
+//
+//     Row { }
+//
+//     Row { }
+// }

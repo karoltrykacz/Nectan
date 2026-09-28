@@ -73,7 +73,6 @@ export component OutcomingTransferModal inherits Rectangle {
 
     callback send();
     send => {
-        debug("Sending offer");
         OutcomingTransferModalBridge.send(OutcomingTransferModalBridge.sending-destination-id,OutcomingTransferModalBridge.transfer-name, compression);
     }
 
@@ -260,21 +259,24 @@ export component OutcomingTransferModal inherits Rectangle {
                         title: "Compression";
                         subtitle: "Enable compression ";
 
-                        IconButton {
-                            width: 28px;
-                            height: 28px;
-                            SvgIcon {
-                                source: @image-url("icons/help-circle.svg");
-                                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                                size: 16px;
-                            }
-                        }
+                        HorizontalLayout {
+                            cross-axis-alignment: center;
+                            spacing: 12px;
 
-                        Rectangle { }
+                            // IconButton {
+                            //     width: 28px;
+                            //     height: 28px;
+                            //     SvgIcon {
+                            //         source: @image-url("icons/help-circle.svg");
+                            //         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                            //         size: 16px;
+                            //     }
+                            // }
 
-                        Switch {
-                            checked <=> root.compression;
-                            toggled => {
+                            Switch {
+                                checked <=> root.compression;
+                                toggled => {
+                                }
                             }
                         }
                     }
@@ -285,7 +287,7 @@ export component OutcomingTransferModal inherits Rectangle {
 
                     Rectangle {
                         height: 1px;
-                        background: Theme.colors.border-col;
+                        background: Theme.colors.third-col;
                     }
 
                     Rectangle {
@@ -310,7 +312,7 @@ export component OutcomingTransferModal inherits Rectangle {
 
                     Rectangle {
                         height: 1px;
-                        background: Theme.colors.border-col;
+                        background: Theme.colors.third-col;
                     }
 
                     Rectangle {
@@ -334,7 +336,7 @@ export component OutcomingTransferModal inherits Rectangle {
 
                     Rectangle {
                         height: 1px;
-                        background: Theme.colors.border-col;
+                        background: Theme.colors.third-col;
                     }
 
                     Rectangle { }
