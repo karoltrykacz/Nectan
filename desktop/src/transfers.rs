@@ -136,9 +136,14 @@ impl Model for TransfersModel {
 //     });
 // }
 
-pub async fn update_transfers(_w: &Weak<NectanWindow>, _state: &NectanState) {
-    // let transfers = _state.transfers.get_transfers().iter().map(|t|TransferItem{status: "Dow"});
-    // let _ = _w.upgrade_in_event_loop(move |w| {});
+pub fn update_transfers() {
+    let transfers = ui_state().transfers();
+    for i in 0..transfers.row_count() {
+        let mut item = transfers.row_data(i).unwrap();
+        item.progress = (item.progress + (0.01 * 2.0 * (i + 1) as f32)) % 1.0;
+        item.percent_text = format!("{:.3}%", item.progress * 100.0).into();
+        transfers.update_row(i, item);
+    }
 }
 
 /// Updates range of the transfer's contents list

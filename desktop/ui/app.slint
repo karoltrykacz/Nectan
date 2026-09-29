@@ -5,7 +5,7 @@ import {
     PrimaryButton,
     GeneralModal,
 } from "elements.slint";
-import { ListView } from "std-widgets.slint";
+import { ListView, VerticalBox } from "std-widgets.slint";
 import { SettingsBridge, SettingsModal, SettingsRow } from "settings.slint";
 import { TransfersBridge, Transfers, TransferItem } from "transfers.slint";
 import {
@@ -56,6 +56,8 @@ export global WindowBridge {
     in-out property <Window> current-window: transfers;
     in-out property <int> current-ref-id: 0;
 
+    in-out property <length> border-radius: 12px;
+
     callback drag-window();
 
     callback minimize-window();
@@ -74,7 +76,6 @@ component ActionButton inherits Rectangle {
 
     callback clicked();
 
-    // transform-origin: { x: root.width / 2, y: root.height };
     transform-scale: touch.pressed ? 0.97 : 1.0;
     animate transform-scale { duration: 100ms; }
 
@@ -84,6 +85,16 @@ component ActionButton inherits Rectangle {
     states [
         hovered when touch.has-hover: {
             background: Theme.colors.fourth-col;
+            tip.opacity: 1;
+            in {
+                animate tip.opacity {
+                    delay: 500ms;
+                    duration: 80ms;
+                }
+            }
+            out {
+                animate tip.opacity { duration: 80ms; }
+            }
         }
     ]
 
@@ -97,6 +108,23 @@ component ActionButton inherits Rectangle {
         source: icon;
         fg: Theme.colors.third-font;
         size: icon-size;
+    }
+
+    tip := Rectangle {
+        z: 4;
+        x: root.width + 4px;
+        height: 24px;
+        width: self.min-width + 20px;
+        border-radius: 4px;
+        background: Theme.colors.primary-col;
+        border-color: Theme.colors.fourth-col;
+        border-width: 1px;
+        opacity: 0;
+        Text {
+            text: text;
+            font-size: 12px;
+            font-family: Theme.font-heading;
+        }
     }
 }
 
@@ -188,73 +216,78 @@ component NectanModal inherits GeneralModal {
 }
 
 component SidebarDevice inherits Rectangle {
+
     in property <DeviceItem> device;
     in property <bool> selected: false;
 
     height: 36px;
     border-radius: 12px;
 
-    background: selected ? Theme.colors.fourth-col : area.has-hover ? Theme.colors.third-col : transparent;
+    background: drag.dragging ? Theme.colors.fourth-font : selected ? Theme.colors.fourth-col : area.has-hover ? Theme.colors.third-col : transparent;
 
     transform-scale: area.pressed ? 0.99 : 1.0;
     animate transform-scale { duration: 100ms; }
 
     callback clicked;
+    drag := DragArea {
+        data: Api.make-data();
+        allow-move: true;
+        allow-copy: true;
+        drag-image: @image-url("icons/link.svg");
 
-    HorizontalLayout {
-        padding-left: 12px;
-        alignment: start;
-        cross-axis-alignment: center;
+        HorizontalLayout {
+            padding-left: 12px;
+            alignment: start;
+            cross-axis-alignment: center;
 
-        Rectangle {
-            height: 6px;
-            width: 6px;
-            border-radius: 4px;
-            background: device.status == DeviceStatus.online ? #ff9800 :
-                (device.status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
+            Rectangle {
+                height: 6px;
+                width: 6px;
+                border-radius: 4px;
+                background: device.status == DeviceStatus.online ? #ff9800 :
+                    (device.status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
+            }
+
+            Rectangle {
+                width: 4px;
+            }
+
+            Text {
+                vertical-alignment: center;
+                text: device.name;
+                color: Theme.colors.primary-font;
+                font-size: 13px;
+                font-weight: 600;
+                font-family: Theme.font-heading;
+            }
         }
 
-        Rectangle {
-            width: 4px;
+        area := TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.clicked(); }
         }
-
-        Text {
-            vertical-alignment: center;
-            text: device.name;
-            color: Theme.colors.primary-font;
-            font-size: 13px;
-            font-weight: 600;
-            font-family: Theme.font-heading;
-        }
-    }
-
-    area := TouchArea {
-        width: 100%;
-        height: 100%;
-        clicked => { root.clicked(); }
     }
 }
 
+export global Api {
+    pure callback make-data() -> data-transfer;
+    pure callback can-drop() -> DragAction;
+    callback dropped();
+}
 
 export component NectanWindow inherits Window {
 
-    property <[DeviceItem]> devices: [
-        { id: "1", name: "Ozzy", status: DeviceStatus.online },
-        { id: "2", name: "Jim", status: DeviceStatus.offline },
-        { id: "3", name: "Igor", status: DeviceStatus.online },
-    ];
-
-    no-frame: true;
-    background: transparent;
     title: "Nectan";
     preferred-width: 1128px;
     preferred-height: 720px;
     min-width: 400px;
     min-height: 200px;
-    max-width: 20050px;
-    max-height: 20050px;
     default-font-family: Theme.font-body;
     resize-border-width: 8px;
+
+    no-frame: true;
+    background: transparent;
 
     in-out property <bool> error_open: false;
     in-out property <string> error_title: "";
@@ -398,25 +431,31 @@ export component NectanWindow inherits Window {
                         Row {
 
                             ActionButton {
+                                z: 3;
                                 horizontal-stretch: 1;
                                 icon: @image-url("icons/link.svg");
+                                text: "Add new device";
                                 clicked => {
                                     AddDeviceBridge.add_device_open = true;
                                 }
                             }
 
                             ActionButton {
+                                z: 2;
                                 horizontal-stretch: 1;
                                 icon: @image-url("icons/tranfsers.svg");
                                 icon-size: 17px;
+                                text: "Open transfers";
                                 clicked => {
                                     WindowBridge.current-window = Window.transfers;
                                 }
                             }
 
                             ActionButton {
+                                z: 1;
                                 horizontal-stretch: 1;
                                 icon: @image-url("icons/search.svg");
+                                text: "Search";
                                 clicked => {
                                     WindowBridge.current-window = Window.transfers;
                                 }

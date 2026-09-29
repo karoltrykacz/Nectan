@@ -452,6 +452,37 @@ export component TransferDetails inherits Rectangle {
 
 export component Transfers inherits Rectangle {
 
+    grid := GridLayout {
+        padding: 20px;
+        spacing: (self.width - 40px - (200px * 4)) / 3;
+
+        Row {
+            Rectangle {
+                width: 200px;
+                height: 200px;
+                background: Theme.colors.fourth-col;
+            }
+
+            Rectangle {
+                width: 200px;
+                height: 200px;
+                background: Theme.colors.fourth-col;
+            }
+
+            Rectangle {
+                width: 200px;
+                height: 200px;
+                background: Theme.colors.fourth-col;
+            }
+
+            Rectangle {
+                width: 200px;
+                height: 200px;
+                background: Theme.colors.fourth-col;
+            }
+        }
+    }
+
     Timer {
         interval: 50ms;
         running: true;

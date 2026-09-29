@@ -5,21 +5,27 @@ slint::include_modules!();
 use anyhow::Result;
 use nectan_core::common::get_signing_key;
 use nectan_core::storage_utils::KvStore;
+use nectan_core::walker::Walker;
 use slint::DataTransfer;
+use slint::winit_030::winit::event::Event;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::atomic::Ordering::{self, Relaxed};
+use std::time::{Duration, Instant};
 
 use crate::devices::update_devices;
 use crate::handlers::{
-    handle_add_device, handle_cancel_walker, handle_connection_offer,
-    handle_incoming_transfer_offer, handle_scan_files, handle_scan_folders, handle_send,
-    handle_window_controls, start_event_listener,
+    event_listener, handle_add_device, handle_cancel_walker, handle_connection_offer,
+    handle_drag_and_drop_files, handle_incoming_transfer_offer, handle_scan_files,
+    handle_scan_folders, handle_send, handle_window_controls, open_send_modal,
 };
-use crate::state::init_app_state;
+use crate::state::{UiState, init_app_state, ui_state};
 use crate::transfers::{handle_refresh_items_list, handle_refresh_transfers_list, set_transfers};
 use nectan_core::devices::Devices;
 use nectan_core::devices::UserInfo;
 use nectan_core::devices::Username;
 use nectan_core::setup_core;
+use slint::language::DragAction;
 use std::sync::Arc;
 
 mod devices;
@@ -27,11 +33,25 @@ mod handlers;
 mod state;
 mod transfers;
 
+struct DragPayload {}
+use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent};
+
 #[tokio::main]
 async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
 
     init_app_state(&w);
+
+    let api = w.global::<Api>();
+    api.on_make_data(|| {
+        let mut t = DataTransfer::default();
+        t.set_user_data(Rc::new(DragPayload {}));
+        t
+    });
+    api.on_can_drop(|| -> DragAction { DragAction::Copy });
+    api.on_dropped(|| {
+        println!("Dropped some shit");
+    });
 
     // let tray = Tray::new()?;
 
@@ -59,10 +79,12 @@ async fn main() -> Result<(), slint::PlatformError> {
         .unwrap();
     let state = Arc::new(state);
 
-    start_event_listener(&w, rx, Arc::clone(&state));
+    tokio::spawn(event_listener(w.as_weak(), rx, Arc::clone(&state)));
+
     handle_window_controls(&w);
     handle_add_device(&w, Arc::clone(&state));
 
+    handle_drag_and_drop_files(&w);
     handle_send(&w, Arc::clone(&state));
 
     handle_incoming_transfer_offer(&w, Arc::clone(&state));

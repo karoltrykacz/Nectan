@@ -1,5 +1,3 @@
-use std::{path::PathBuf, rc::Rc, sync::Arc, time::Duration};
-
 use nectan_core::{
     code_lookup::{CodeLookupError, gen_code, issue_code, lookup_code},
     common::gen_transfer_name,
@@ -14,7 +12,14 @@ use nectan_core::{
     walker::Walker,
 };
 use rfd::FileHandle;
-use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, winit_030::WinitWindowAccessor};
+use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent};
+use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, invoke_from_event_loop};
+use std::{
+    path::PathBuf,
+    rc::Rc,
+    sync::{Arc, atomic::Ordering::Relaxed},
+    time::Duration,
+};
 use tokio::sync::{mpsc::Receiver, oneshot};
 use tracing::{error, info, trace};
 use uuid::Uuid;
@@ -60,37 +65,38 @@ pub fn handle_window_controls(w: &NectanWindow) {
     });
 }
 
-pub fn start_event_listener(w: &NectanWindow, mut rx: Receiver<AppEvent>, state: Arc<NectanState>) {
-    let w = w.as_weak();
-    tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-            match msg {
-                AppEvent::TransfersUpdated => {
-                    update_transfers(&w, &state);
-                }
-                AppEvent::IncomingTransferOffer { offer } => {
-                    show_transfer_offer(&w, offer);
-                }
-                AppEvent::ConnectionOffer { offer } => {
-                    show_connection_offer(&w, offer);
-                }
-                AppEvent::FoundNearby { .. } => {
-                    update_devices(&w, &state);
-                }
-                AppEvent::Connected { .. } => {
-                    update_devices(&w, &state);
-                }
-                AppEvent::TransferOfferDelivered => {
-                    transfer_offer_delivered(&w);
-                }
-                AppEvent::DeviceWentOffline { .. } => {
-                    update_devices(&w, &state);
-                }
+pub async fn event_listener(
+    w: Weak<NectanWindow>,
+    mut rx: Receiver<AppEvent>,
+    state: Arc<NectanState>,
+) {
+    while let Some(msg) = rx.recv().await {
+        match msg {
+            AppEvent::TransfersUpdated => {
+                update_transfers();
+            }
+            AppEvent::IncomingTransferOffer { offer } => {
+                show_transfer_offer(&w, offer);
+            }
+            AppEvent::ConnectionOffer { offer } => {
+                show_connection_offer(&w, offer);
+            }
+            AppEvent::FoundNearby { .. } => {
+                update_devices(&w, &state);
+            }
+            AppEvent::Connected { .. } => {
+                update_devices(&w, &state);
+            }
+            AppEvent::TransferOfferDelivered => {
+                transfer_offer_delivered(&w);
+            }
+            AppEvent::DeviceWentOffline { .. } => {
+                update_devices(&w, &state);
             }
         }
-    });
+    }
 }
-pub fn transfer_offer_delivered(w: &Weak<NectanWindow>) {
+fn transfer_offer_delivered(w: &Weak<NectanWindow>) {
     let _ = w.upgrade_in_event_loop(move |w| {
         let bridge = w.global::<OutcomingTransferModalBridge>();
         bridge.set_send_state(SendModalState::WaitingForResponse);
@@ -110,7 +116,7 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
             let s = s.clone();
             tokio::spawn(async move {
                 s.respond_transfer_offer(UiResponse::Reject {
-                    reason: Some("User rejected the offer.".to_string()),
+                    reason: Some("User rejected.".to_string()),
                 })
                 .await;
             });
@@ -128,7 +134,7 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
             let s = s.clone();
             tokio::spawn(async move {
                 s.respond_transfer_offer(UiResponse::Reject {
-                    reason: Some("User rejected the offer.".to_string()),
+                    reason: Some("User rejected.".to_string()),
                 })
                 .await;
             });
@@ -220,6 +226,7 @@ pub fn show_connection_offer(w: &Weak<NectanWindow>, offer: ConnectionOffer) {
         let b = w.global::<ConnectionOfferBridge>();
         b.set_open(true);
         b.set_remote_device_name(offer.username.as_string().into());
+        // TODO
     });
 }
 pub fn handle_connection_offer(w: &NectanWindow, state: Arc<NectanState>) {
@@ -242,138 +249,7 @@ pub fn handle_connection_offer(w: &NectanWindow, state: Arc<NectanState>) {
     });
 }
 
-// pub fn handle_tabs(w: &NectanWindow) {
-// let bridge = w.global::<WindowBridge>();
-
-// let initial_tabs = vec![NectanTab {
-//     display: "Transfers".into(),
-//     id: 0,
-//     kind: selected_window::Transfers,
-//     ref_id: 0,
-// }];
-
-// let tabs_model = Rc::new(VecModel::from(initial_tabs));
-// bridge.set_tabs(ModelRc::from(tabs_model.clone()));
-
-// let ui_weak = w.as_weak();
-
-// bridge.on_close_requested({
-//     // let tabs_model = tabs_model.clone();
-//     let ui_weak = ui_weak.clone();
-//     move |id| {
-//         let Some(ui) = ui_weak.upgrade() else { return };
-//         let bridge = ui.global::<WindowBridge>();
-//
-//         let Some(idx) = (0..tabs_model.row_count())
-//             .find(|&i| tabs_model.row_data(i).map(|t| t.id) == Some(id.clone()))
-//         else {
-//             return;
-//         };
-//
-//         tabs_model.remove(idx);
-//
-//         if tabs_model.row_count() == 0 {
-//             let fresh = NectanTab {
-//                 display: "Transfers".into(),
-//                 id: 2,
-//                 kind: selected_window::Transfers,
-//                 ref_id: 2,
-//             };
-//
-//             tabs_model.push(fresh);
-//             bridge.set_current_tab(0);
-//             return;
-//         }
-//
-//         let current = bridge.get_current_tab();
-//         if current == idx as i32 {
-//             let new_current = idx.min(tabs_model.row_count() - 1);
-//             bridge.set_current_tab(new_current as i32);
-//         } else if current > idx as i32 {
-//             bridge.set_current_tab(current - 1);
-//         }
-//     }
-// });
-//
-// bridge.on_reorder_requested({
-//     let tabs_model = tabs_model.clone();
-//     let ui_weak = ui_weak.clone();
-//     move |from_idx, to_idx| {
-//         let Some(ui) = ui_weak.upgrade() else { return };
-//         let bridge = ui.global::<WindowBridge>();
-//
-//         let from = from_idx as usize;
-//         let to = to_idx as usize;
-//
-//         if from >= tabs_model.row_count() || to >= tabs_model.row_count() || from == to {
-//             return;
-//         }
-//
-//         if let Some(item) = tabs_model.row_data(from) {
-//             tabs_model.remove(from);
-//             tabs_model.insert(to, item);
-//             bridge.set_current_tab(to_idx);
-//         }
-//     }
-// });
-// bridge.on_open_tab({
-//     let ui_weak = ui_weak.clone();
-//     move |kind, ref_id, display_n| {
-//         trace!("Opening new tab. {kind:?} {ref_id:?} {display_n:?}",);
-//
-//         let Some(ui) = ui_weak.upgrade() else { return };
-//         let bridge = ui.global::<WindowBridge>();
-//         let tabs = bridge.get_tabs();
-//         let mut found_idx: Option<usize> = None;
-//
-//         for i in 0..tabs.row_count() {
-//             let tab = tabs.row_data(i).unwrap();
-//             let same_kind = tab.kind == kind;
-//             let same_ref = match kind {
-//                 selected_window::Transfers | selected_window::Containers => true,
-//                 selected_window::Device => tab.ref_id == ref_id,
-//             };
-//             if same_kind && same_ref {
-//                 found_idx = Some(i);
-//
-//                 break;
-//             }
-//         }
-//         if let Some(idx) = found_idx {
-//             bridge.set_current_tab(idx as i32);
-//             bridge.set_current_window(kind);
-//             bridge.set_current_ref_id(ref_id.clone());
-//         } else {
-//             let new_id = (0..tabs.row_count())
-//                 .filter_map(|i| tabs.row_data(i))
-//                 .map(|t| t.id)
-//                 .max()
-//                 .unwrap_or(-1)
-//                 + 1;
-//
-//             let new_idx = tabs.row_count() as i32;
-//
-//             let new_tab = NectanTab {
-//                 display: display_n.into(),
-//                 id: new_id,
-//                 kind,
-//                 ref_id: ref_id.clone().into(),
-//             };
-//
-//             if let Some(model) = tabs.as_any().downcast_ref::<VecModel<NectanTab>>() {
-//                 model.push(new_tab);
-//             }
-//
-//             bridge.set_current_tab(new_idx);
-//             bridge.set_current_window(kind);
-//             bridge.set_current_ref_id(ref_id);
-//         }
-//     }
-// });
-// }
-
 pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
-    // Handlecode request
     let bridge = w.global::<AddDeviceBridge>();
     let ui_weak = w.as_weak();
     let s = state.clone();
@@ -392,7 +268,7 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
 
         tokio::spawn(async move {
             let result = issue_code(&state, code).await;
-            slint::invoke_from_event_loop(move || {
+            invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
                     let bridge = ui.global::<AddDeviceBridge>();
                     match result {
@@ -486,7 +362,8 @@ pub fn handle_scan_files(w: &NectanWindow) {
                 if let Some(h) = rfd::AsyncFileDialog::new().pick_files().await
                     && !h.is_empty()
                 {
-                    open_send_modal(weak, h);
+                    let paths = filehandle_to_paths(h);
+                    open_send_modal(weak, paths);
                 }
             });
         });
@@ -503,7 +380,9 @@ pub fn handle_scan_folders(w: &NectanWindow) {
                 if h.is_empty() {
                     return;
                 }
-                open_send_modal(weak, h);
+
+                let paths = filehandle_to_paths(h);
+                open_send_modal(weak, paths);
             });
         });
 }
@@ -521,16 +400,22 @@ pub fn handle_cancel_walker(w: &NectanWindow) {
         });
 }
 
-pub fn open_send_modal(w: Weak<NectanWindow>, h: Vec<FileHandle>) {
-    let h_c = h.clone();
-    let paths = filehandle_to_paths(h);
-
+pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
+    let paths_clone = paths.clone();
     let walker = Walker::new(paths, true);
-    // Store the walker so it can be cancelled at demand
 
+    // Store the walker in ui state so it can be cancelled at demand
     let walker2 = walker.clone();
+
     let _ = w.upgrade_in_event_loop(move |w| {
-        *ui_state().walker() = Some(walker2);
+        {
+            let state = ui_state();
+            let mut walker_lock = state.walker();
+            if let Some(old_walker) = &*walker_lock {
+                old_walker.stop();
+            }
+            *walker_lock = Some(walker2);
+        }
 
         let transfer_name = gen_transfer_name();
         let bridge = w.global::<OutcomingTransferModalBridge>();
@@ -541,14 +426,19 @@ pub fn open_send_modal(w: Weak<NectanWindow>, h: Vec<FileHandle>) {
         bridge.set_send_state(SendModalState::Initial);
         bridge.set_sending_open(true);
 
-        let nodes: Vec<TreeNode> = h_c
+        let nodes: Vec<TreeNode> = paths_clone
             .iter()
             .map(|h| TreeNode {
                 depth: 0,
                 expanded: false,
-                is_file: h.path().is_file(),
-                filename: h.file_name().into(),
-                path: h.path().to_string_lossy().to_string().into(),
+                is_file: h.is_file(),
+                filename: h
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+                    .into(),
+                path: h.to_string_lossy().to_string().into(),
             })
             .collect();
         let model = VecModel::from(nodes);
@@ -653,5 +543,52 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
                 }
             });
         }
+    });
+}
+pub fn handle_drag_and_drop_files(w: &NectanWindow) {
+    let weak = w.as_weak();
+    w.window().on_winit_window_event(move |_win, event| {
+        let state = ui_state();
+        match event {
+            WindowEvent::HoveredFile(file) => {
+                let total = state.get_total();
+                state.insert_path(file.into());
+
+                let me = total.fetch_add(1, Relaxed) + 1;
+                let weak = weak.clone();
+
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    let total = total.load(Relaxed);
+                    if me == total {
+                        let _ = weak.upgrade_in_event_loop(move |w| {
+                            let paths = ui_state().take_paths();
+                            println!("Starting walker for {paths:#?}");
+                            open_send_modal(w.as_weak(), paths);
+                        });
+                    }
+                });
+            }
+            WindowEvent::HoveredFileCancelled => {
+                let Some(walker) = &*state.walker() else {
+                    return EventResult::Propagate;
+                };
+                // Cancel the walker if the drag was cancelled
+                if !state.get_ready().load(Relaxed) {
+                    walker.stop();
+                    if let Some(w) = weak.upgrade() {
+                        let b = w.global::<OutcomingTransferModalBridge>();
+                        b.set_sending_open(false);
+                    }
+                }
+                state.get_ready().store(false, Relaxed);
+                state.take_paths();
+            }
+            WindowEvent::DroppedFile(_file) => {
+                state.get_ready().store(true, Relaxed);
+            }
+            _ => {}
+        };
+        EventResult::Propagate
     });
 }
