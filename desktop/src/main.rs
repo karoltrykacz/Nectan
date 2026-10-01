@@ -34,13 +34,10 @@ mod state;
 mod transfers;
 
 struct DragPayload {}
-use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent};
 
 #[tokio::main]
 async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
-
-    init_app_state(&w);
 
     let api = w.global::<Api>();
     api.on_make_data(|| {
@@ -78,6 +75,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         .await
         .unwrap();
     let state = Arc::new(state);
+
+    init_app_state(&w, state.transfers.clone());
 
     tokio::spawn(event_listener(w.as_weak(), rx, Arc::clone(&state)));
 

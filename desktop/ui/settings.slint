@@ -265,6 +265,19 @@ component SettingsGeneralTab inherits Rectangle {
             }
         }
 
+        SettingsRow {
+            title: "Advanced | Cat File hashing | Multithreaded mmap scanner";
+            subtitle: "";
+
+            PrimaryButton {
+                text: "Dołącz";
+
+                clicked => {
+                    SettingsBridge.join_discord();
+                }
+            }
+        }
+
         Rectangle {
             height: 1px;
             background: Theme.colors.border-col;

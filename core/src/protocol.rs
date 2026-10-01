@@ -4,6 +4,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use futures::StreamExt;
 pub use iroh::EndpointId;
+use iroh::address_lookup::AddressLookup;
 use iroh::endpoint::Path;
 use iroh::{
     Endpoint, EndpointAddr,
@@ -375,6 +376,7 @@ impl NectanState {
         store: KvStore,
     ) -> Self {
         let user_data: UserData = STANDARD.encode(device_id.to_bytes()).parse().unwrap();
+        // TODO
         let builder = Endpoint::builder(presets::N0).user_data_for_address_lookup(user_data);
         let endpoint = builder.bind().await.expect("Failed to bind endpoint");
 
@@ -410,6 +412,7 @@ impl NectanState {
             .set(router.clone())
             .expect("Router already attached");
     }
+    pub fn toggle_mdns(&self) {}
     pub fn router(&self) -> Router {
         self.router.get().unwrap().clone()
     }

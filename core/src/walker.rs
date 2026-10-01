@@ -103,6 +103,7 @@ impl Walker {
 
                             #[cfg(unix)]
                             let size = meta.size();
+
                             #[cfg(not(unix))]
                             let size = meta.len();
 

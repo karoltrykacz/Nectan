@@ -73,7 +73,7 @@ pub async fn event_listener(
     while let Some(msg) = rx.recv().await {
         match msg {
             AppEvent::TransfersUpdated => {
-                update_transfers();
+                update_transfers(&w, &state);
             }
             AppEvent::IncomingTransferOffer { offer } => {
                 show_transfer_offer(&w, offer);
@@ -112,7 +112,6 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
         if let Some(w) = weak.upgrade() {
             let b = w.global::<IncomingTransferOfferBridge>();
             b.set_is_open(false);
-
             let s = s.clone();
             tokio::spawn(async move {
                 s.respond_transfer_offer(UiResponse::Reject {

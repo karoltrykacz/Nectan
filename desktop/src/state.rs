@@ -1,7 +1,7 @@
 use crate::{
     DevicesBridge, NectanWindow, TransfersBridge, devices::DevicesModel, transfers::TransfersModel,
 };
-use nectan_core::walker::Walker;
+use nectan_core::{transfers::Transfers, walker::Walker};
 use slint::{Global, ModelRc};
 use std::{
     cell::{Cell, OnceCell, RefCell},
@@ -72,9 +72,9 @@ pub fn ui_state() -> Rc<UiState> {
     })
 }
 
-pub fn init_app_state(w: &NectanWindow) {
+pub fn init_app_state(w: &NectanWindow, transfers: Arc<Transfers>) {
     let devices_model = Rc::new(DevicesModel::new());
-    let transfers_model = Rc::new(TransfersModel::new());
+    let transfers_model = Rc::new(TransfersModel::new(transfers));
 
     DevicesBridge::get(w).set_devices(ModelRc::from(devices_model.clone()));
     TransfersBridge::get(w).set_transfers(ModelRc::from(transfers_model.clone()));

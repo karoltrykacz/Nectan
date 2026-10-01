@@ -128,9 +128,9 @@ impl std::fmt::Display for TransferOfferError {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransferMeta {
-    id: Uuid,
-    total_size: u64,
-    sent_bytes: u64,
+    pub id: Uuid,
+    pub total_size: u64,
+    pub sent_bytes: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -201,24 +201,29 @@ pub enum TransferDirection {
     Outcoming,
     Incoming,
 }
+impl TransferDirection {
+    pub fn is_incoming(self) -> bool {
+        matches!(self, Self::Incoming)
+    }
+}
 
 const DUMB_ITEMS: TableDefinition<u32, TransferItem> = TableDefinition::new("items");
 
 pub struct PendingTransfer {
-    id: Uuid,
+    pub id: Uuid,
     target: DeviceId,
-    direction: TransferDirection,
+    pub direction: TransferDirection,
     items_queue: Mutex<FixedBitSet>,
-    failed: AtomicU32,
+    pub failed: AtomicU32,
     pub name: String,
     pub total_items: u32,
     pub total_size: u64,
-    processed_items: AtomicU32,
-    sent_bytes: AtomicU64,
+    pub processed_items: AtomicU32,
+    pub sent_bytes: AtomicU64,
     db: redb::Database,
     /// When sending, common parent of all items
     /// When receiving, target directory
-    root_path: PathBuf,
+    pub root_path: PathBuf,
     cancel_token: CancellationToken,
     event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     sem: Arc<Semaphore>,
@@ -723,6 +728,14 @@ impl Transfers {
     }
     pub fn pending_transfers(&self) -> &std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>> {
         &self.pending_transfers.inner
+    }
+    pub fn get_pending_transfers(&self) -> Vec<Arc<PendingTransfer>> {
+        self.pending_transfers()
+            .read()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect()
     }
     pub fn get_transfers(&self) -> Vec<TransferMeta> {
         self.pending_transfers()
