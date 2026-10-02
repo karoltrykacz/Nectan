@@ -5,7 +5,7 @@ use crate::{
         ALPN, NectanProtocol, NectanState, announce_endpoint, start_mdns_discovery,
         start_registration_loop,
     },
-    storage_utils::KvStore,
+    storage::Storage,
 };
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
@@ -25,7 +25,8 @@ pub mod format;
 pub mod messages;
 pub mod path_tree;
 pub mod protocol;
-pub mod storage_utils;
+pub mod storage;
+mod storage_utils;
 pub mod stream;
 pub mod transfers;
 pub mod walker;
@@ -36,7 +37,7 @@ pub async fn setup_core(
     userinfo: UserInfo,
     signing_key: SigningKey,
     devices: Devices,
-    store: KvStore,
+    storage: Storage,
 ) -> Result<NectanState> {
     let transport = QuicTransportConfig::builder()
         .stream_receive_window(32_000_000u32.into())
@@ -68,9 +69,10 @@ pub async fn setup_core(
         signing_key,
         devices,
         app_event_tx,
-        store,
+        storage,
     )
     .await;
+
     let prot = NectanProtocol::new(endpoint.clone(), Arc::new(state.clone()));
     let router = Router::builder(endpoint).accept(ALPN, prot).spawn();
     state.attach_router(&router);

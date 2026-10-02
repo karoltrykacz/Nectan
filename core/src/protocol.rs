@@ -28,6 +28,7 @@ use tracing::{Instrument, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::messages::{ConnectionOffer, StreamableMessage};
+use crate::storage::{Key, Storage, Value};
 use crate::storage_utils::KvStore;
 use crate::transfers::TransferDirection;
 use crate::{
@@ -363,7 +364,7 @@ pub struct NectanState {
     device_id: DeviceId,
     http_client: Client,
     pub seq_num: SeqNumber,
-    pub store: KvStore,
+    pub storage: Arc<Storage>,
 }
 
 impl NectanState {
@@ -373,7 +374,7 @@ impl NectanState {
         signing_key: SigningKey,
         devices: Devices,
         app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
-        store: KvStore,
+        storage: Storage,
     ) -> Self {
         let user_data: UserData = STANDARD.encode(device_id.to_bytes()).parse().unwrap();
         // TODO
@@ -401,7 +402,7 @@ impl NectanState {
             device_id,
             http_client: Client::new(),
             seq_num: SeqNumber::new(),
-            store,
+            storage: Arc::new(storage),
         }
     }
     pub fn device_id(&self) -> DeviceId {
@@ -702,14 +703,8 @@ pub fn start_registration_loop(state: &NectanState) -> JoinHandle<()> {
         let payload = postcard::to_allocvec(&payload).unwrap();
 
         loop {
-            let registered = state
-                .store
-                .get("registered")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-
-            if registered {
-                info!("User is registered.");
+            if let Some(Value::Registered(true)) = state.storage.get(Key::Registered) {
+                info!("User registered.");
                 break;
             }
 
@@ -722,14 +717,8 @@ pub fn start_registration_loop(state: &NectanState) -> JoinHandle<()> {
             {
                 Ok(response) => match response.status() {
                     StatusCode::CREATED => {
-                        if state
-                            .store
-                            .set("registered", serde_json::Value::Bool(true))
-                            .is_ok()
-                        {
-                            info!("Device succesfully registered");
-                            break;
-                        }
+                        info!("Device succesfully registered");
+                        state.storage.set(Value::Registered(true));
                     }
                     StatusCode::OK => {
                         break;

@@ -10,7 +10,10 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{devices::DeviceStatus::Offline, storage_utils::DataWriter};
+use crate::{
+    devices::DeviceStatus::Offline,
+    storage_utils::{DataWriter, KvStore},
+};
 
 pub type DeviceId = VerifyingKey;
 
@@ -143,43 +146,31 @@ impl fmt::Display for Device {
         write!(f, "Username {}", self.username)
     }
 }
-// struct DevicesInner{
-//     devices: RwLock<HashMap<DeviceId, Device>>,
-//     nearby_endpoints: RwLock<HashMap<EndpointId, DeviceId>>,
-//     writer: DataWriter,
-// }
 
 #[derive(Clone)]
 pub struct Devices {
-    inner: Arc<RwLock<HashMap<DeviceId, Device>>>,
     nearby_endpoints: Arc<RwLock<HashSet<EndpointId>>>,
-    writer: DataWriter,
+    inner: Arc<RwLock<HashMap<DeviceId, Device>>>,
+    writer: Arc<DataWriter>,
 }
 
 impl Devices {
     pub fn new(path: Option<PathBuf>) -> Result<Self, std::io::Error> {
         let mut base_path = match path {
             Some(p) => p,
-            // for windows and unix - on ios and androud the path should be provided
             None => dirs::data_dir()
                 .expect("No path provided and system data directory could not be determined"),
         };
 
         base_path.push("Nectan");
-        let store = DataWriter::new(base_path, "nectan_devices_store")?;
 
-        let initial: HashMap<DeviceId, Device> = store
-            .load()
-            .and_then(|v| {
-                let stored: Vec<Device> = serde_json::from_value(v).ok()?;
-                Some(stored.into_iter().map(|s| (s.id, s)).collect())
-            })
-            .unwrap_or_default();
+        let writer = DataWriter::new(base_path, "nectan_devices_store")?;
+        let initial = writer.load().unwrap_or_default();
 
         Ok(Self {
             inner: Arc::new(RwLock::new(initial)),
             nearby_endpoints: Arc::new(RwLock::new(HashSet::new())),
-            writer: store,
+            writer: Arc::new(writer),
         })
     }
 

@@ -4,7 +4,10 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::SigningKey;
 use rand::{rand_core::UnwrapErr, rngs::SysRng};
 
-use crate::storage_utils::KvStore;
+use crate::storage::{
+    Key::{self},
+    Storage, Value,
+};
 
 // fn validate_path_component(component: &str) -> anyhow::Result<()> {
 //     anyhow::ensure!(
@@ -34,23 +37,14 @@ pub fn common_parent(paths: &[PathBuf]) -> PathBuf {
     common
 }
 
-pub fn get_signing_key(store: &KvStore) -> SigningKey {
-    match store.get("key") {
-        Some(bytes) => {
-            let signing_key_str = bytes.as_str().expect("signing_key is not an string");
-            signing_key_from_string(signing_key_str).expect("Failed to deserialize signing key")
-        }
-        None => {
-            let mut csprng = UnwrapErr(SysRng);
-            let signing_key = SigningKey::generate(&mut csprng);
-            store
-                .set(
-                    "key",
-                    serde_json::Value::String(signing_key_to_string(&signing_key)),
-                )
-                .expect("Failed to set signing key.");
-            signing_key
-        }
+pub fn get_signing_key(storage: &Storage) -> SigningKey {
+    if let Some(Value::Key(key)) = storage.get(Key::Key) {
+        key
+    } else {
+        let mut csprng = UnwrapErr(SysRng);
+        let signing_key = SigningKey::generate(&mut csprng);
+        let _ = storage.set(Value::Key(signing_key.clone()));
+        signing_key
     }
 }
 

@@ -72,8 +72,8 @@ export global WindowBridge {
 }
 
 component ToolTip inherits Rectangle {
+    in property <string> text;
     z: 4;
-    x: root.width + 4px;
     height: 24px;
     width: self.min-width + 20px;
     border-radius: 4px;
@@ -134,7 +134,10 @@ component ActionButton inherits Rectangle {
         }
     }
 
-    tip := ToolTip { }
+    tip := ToolTip {
+        x: root.width - 8px;
+        text: text;
+    }
 }
 
 

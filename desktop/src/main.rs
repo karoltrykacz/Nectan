@@ -5,7 +5,7 @@ slint::include_modules!();
 use anyhow::Result;
 use arboard::Clipboard;
 use nectan_core::common::get_signing_key;
-use nectan_core::storage_utils::KvStore;
+use nectan_core::storage::Storage;
 use nectan_core::walker::Walker;
 use slint::DataTransfer;
 use slint::winit_030::winit::event::Event;
@@ -21,6 +21,7 @@ use crate::handlers::{
     handle_paste, handle_scan_files, handle_scan_folders, handle_send, handle_window_controls,
     open_send_modal,
 };
+
 use crate::state::{UiState, init_app_state, ui_state};
 use crate::transfers::{handle_refresh_items_list, handle_refresh_transfers_list, set_transfers};
 use nectan_core::devices::Devices;
@@ -68,12 +69,12 @@ async fn main() -> Result<(), slint::PlatformError> {
     let data_dir = dirs::data_dir()
         .unwrap_or_else(|| std::env::temp_dir())
         .join("Nectan");
-    let store = KvStore::new(data_dir, "store").expect("Failed to create persistent storage.");
+    let storage = Storage::new(data_dir);
 
-    let key = get_signing_key(&store);
+    let key = get_signing_key(&storage);
     let device_id = key.verifying_key();
 
-    let state = setup_core(tx, device_id, userinfo, key, devices, store)
+    let state = setup_core(tx, device_id, userinfo, key, devices, storage)
         .await
         .unwrap();
     let state = Arc::new(state);
