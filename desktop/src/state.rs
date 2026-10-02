@@ -1,10 +1,12 @@
 use crate::{
     DevicesBridge, NectanWindow, TransfersBridge, devices::DevicesModel, transfers::TransfersModel,
 };
+use arboard::{Clipboard, Get};
+use ignore::{IncrementalMatch, WalkBuilder};
 use nectan_core::{transfers::Transfers, walker::Walker};
 use slint::{Global, ModelRc};
 use std::{
-    cell::{Cell, OnceCell, RefCell},
+    cell::{Cell, OnceCell, RefCell, RefMut},
     cmp::Ordering,
     collections::HashSet,
     path::PathBuf,
@@ -16,14 +18,20 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub struct OutcomingTransfer {
+    pub walker: Mutex<Option<Walker>>,
+    pub total: AtomicU64,
+    pub ready: AtomicBool,
+    pub match_builder: Mutex<Option<WalkBuilder>>,
+}
+
 pub struct UiState {
-    total: Arc<AtomicU64>,
-    ready: Arc<AtomicBool>,
     // paths: Arc<Mutex<Vec<PathBuf>>>,
-    paths: Rc<RefCell<HashSet<PathBuf>>>,
+    paths: RefCell<HashSet<PathBuf>>,
     devices_model: Rc<DevicesModel>,
     transfers_model: Rc<TransfersModel>,
-    walker: Arc<Mutex<Option<Walker>>>,
+    outcoming_transfer: Arc<OutcomingTransfer>,
+    clipboard: RefCell<Clipboard>,
 }
 
 impl UiState {
@@ -36,15 +44,11 @@ impl UiState {
     }
 
     pub fn walker(&self) -> MutexGuard<'_, Option<Walker>> {
-        self.walker.lock().unwrap()
+        self.outcoming_transfer.walker.lock().unwrap()
     }
 
-    pub fn get_walker(&self) -> Arc<Mutex<Option<Walker>>> {
-        self.walker.clone()
-    }
-
-    pub fn get_total(&self) -> Arc<AtomicU64> {
-        self.total.clone()
+    pub fn outcoming_transfer(&self) -> Arc<OutcomingTransfer> {
+        self.outcoming_transfer.clone()
     }
 
     pub fn insert_path(&self, p: PathBuf) {
@@ -54,9 +58,8 @@ impl UiState {
     pub fn take_paths(&self) -> Vec<PathBuf> {
         self.paths.replace(HashSet::new()).drain().collect()
     }
-
-    pub fn get_ready(&self) -> Arc<AtomicBool> {
-        self.ready.clone()
+    pub fn get_clipboard(&self) -> RefMut<'_, Clipboard> {
+        self.clipboard.borrow_mut()
     }
 }
 
@@ -80,12 +83,18 @@ pub fn init_app_state(w: &NectanWindow, transfers: Arc<Transfers>) {
     TransfersBridge::get(w).set_transfers(ModelRc::from(transfers_model.clone()));
 
     let ui = Rc::new(UiState {
-        total: Arc::new(AtomicU64::new(0)),
-        ready: Arc::new(AtomicBool::new(false)),
-        paths: Rc::new(RefCell::new(HashSet::new())),
+        paths: RefCell::new(HashSet::new()),
         devices_model,
         transfers_model,
-        walker: Arc::new(Mutex::new(None)),
+        clipboard: RefCell::new(
+            Clipboard::new().expect("Failed to initialize clipboard instance."),
+        ),
+        outcoming_transfer: Arc::new(OutcomingTransfer {
+            ready: AtomicBool::default(),
+            total: AtomicU64::default(),
+            walker: Mutex::default(),
+            match_builder: Mutex::default(),
+        }),
     });
 
     UI.with(|c| c.set(ui).ok().expect("UiState already initialized."));

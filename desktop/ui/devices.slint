@@ -106,7 +106,6 @@ export component DeviceScreen inherits Rectangle {
         OutcomingTransferModalBridge.sending-destination-name = device.name;
         OutcomingTransferModalBridge.sending-destination-id = device.id;
     }
-    background: drop.has-drag ? darkred : black;
 
     drop := DropArea {
         can-drop(event) => {

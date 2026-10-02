@@ -42,12 +42,18 @@ export {
 }
 export enum Window { transfers, device, add_remote }
 
+export global NotificationsBridge {
+    in-out property <bool> notifications-visible: false;
+}
+
 export global WindowBridge {
 
     callback reorder-requested(int, int);
     callback close-requested(int);
 
     in-out property <bool> nectan-modal-visible: false;
+
+    in-out property <bool> topbar-hover: false;
 
     in-out property <bool> sidebar-visible: true;
     in-out property <bool> sidebar-hover: true;
@@ -63,6 +69,24 @@ export global WindowBridge {
     callback minimize-window();
     callback maximize-window();
     callback close-window();
+}
+
+component ToolTip inherits Rectangle {
+    z: 4;
+    x: root.width + 4px;
+    height: 24px;
+    width: self.min-width + 20px;
+    border-radius: 4px;
+    background: Theme.colors.primary-col;
+    border-color: Theme.colors.fourth-col;
+    border-width: 1px;
+    opacity: 0;
+    Text {
+        text: text;
+        font-size: 12px;
+        font-family: Theme.font-heading;
+        color: Theme.colors.primary-font;
+    }
 }
 
 
@@ -98,56 +122,22 @@ component ActionButton inherits Rectangle {
         }
     ]
 
-    touch := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-
     if icon != @image-url(""): SvgIcon {
         source: icon;
         fg: Theme.colors.third-font;
         size: icon-size;
     }
 
-    tip := Rectangle {
-        z: 4;
-        x: root.width + 4px;
-        height: 24px;
-        width: self.min-width + 20px;
-        border-radius: 4px;
-        background: Theme.colors.primary-col;
-        border-color: Theme.colors.fourth-col;
-        border-width: 1px;
-        opacity: 0;
-        Text {
-            text: text;
-            font-size: 12px;
-            font-family: Theme.font-heading;
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
         }
     }
+
+    tip := ToolTip { }
 }
 
 
-// export component MyTray inherits SystemTrayIcon {
-//     icon: @image-url("icons/icon512.png");
-//     tooltip: "Nectan";
-//
-//     callback show-window();
-//     callback hide-window();
-//
-//     Menu {
-//         MenuItem {
-//             title: "Show";
-//             activated => { show-window(); }
-//         }
-//
-//         MenuItem {
-//             title: "Hide";
-//             activated => { hide-window(); }
-//         }
-//     }
-// }
 
 component NectanModal inherits GeneralModal {
 
@@ -276,6 +266,327 @@ export global Api {
     callback dropped();
 }
 
+component TopBarShower inherits Rectangle {
+    x: WindowBridge.sidebar-hover ? WindowBridge.sidebar-width : 0;
+    z: 0;
+    y: 0;
+    width: 100%;
+    height: WindowBridge.topbar-hover ? 60px : 30px;
+    TouchArea {
+        property <bool> maybe-dragging: false;
+        moved => {
+            if (self.maybe-dragging) {
+                WindowBridge.drag-window();
+            }
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                self.maybe-dragging = true;
+            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                self.maybe-dragging = false;
+            }
+            if self.mouse-y > 32px {
+                WindowBridge.topbar-hover = false;
+            }
+            if self.mouse-y < 30px {
+                WindowBridge.topbar-hover = true;
+            }
+        }
+    }
+}
+
+component MainWindowTouchArea inherits TouchArea {
+    width: 100%;
+    height: 100%;
+    pointer-event(event) => {
+        debug(self.mouse-y);
+        if self.mouse-y < 300px {
+            WindowBridge.topbar-hover = true;
+        } else {
+            WindowBridge.topbar-hover = false;
+        }
+    }
+    scroll-event(event) => {
+        debug(self.mouse-y);
+        if event.delta-x > 10px {
+            WindowBridge.sidebar-visible = true;
+        }
+        if event.delta-x < -10px {
+            WindowBridge.sidebar-visible = false;
+        }
+        return accept;
+    }
+}
+
+component SidebarShower inherits Rectangle {
+    x: 0;
+    z: 1;
+    width: WindowBridge.sidebar-visible ? 0 : WindowBridge.sidebar-hover ? WindowBridge.sidebar-width + 60px : 20px;
+    sidebar-toggle := TouchArea {
+        pointer-event(event) => {
+            if self.mouse-x > WindowBridge.sidebar-width {
+                WindowBridge.sidebar-hover = false;
+            }
+            if self.mouse-x < 20px {
+                WindowBridge.sidebar-hover = true;
+            }
+        }
+    }
+}
+
+component Sidebar inherits Rectangle {
+    x: WindowBridge.sidebar-visible ? 0 : (WindowBridge.sidebar-hover ? 0 : -WindowBridge.sidebar-width);
+    width: WindowBridge.sidebar-width;
+    z: 2;
+    background: Theme.colors.primary-col.with-alpha(1.0);
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: WindowBridge.sidebar-visible ? transparent : Theme.colors.border-col;
+
+    animate x, border-color {
+        duration: 128ms;
+        easing: ease;
+    }
+    TouchArea {
+
+        property <bool> maybe-dragging: false;
+        moved => {
+            if (self.maybe-dragging) {
+                WindowBridge.drag-window();
+            }
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                self.maybe-dragging = true;
+            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                self.maybe-dragging = false;
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding: 8px;
+        padding-bottom: 4px;
+
+        HorizontalLayout {
+            // alignment: space-between;
+
+            IconButton {
+                width: 28px;
+                height: 28px;
+
+                Image {
+                    source: @image-url("icons/tray.png");
+                    width: 16px;
+                    height: 16px;
+                }
+
+                clicked => {
+                    WindowBridge.nectan-modal-visible = true;
+                }
+            }
+
+            Rectangle { }
+
+            // IconButton {
+            //     width: 28px;
+            //     height: 28px;
+            //
+            //     SvgIcon {
+            //         source: @image-url("icons/bell.svg");
+            //         size: 16px;
+            //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+            //     }
+            //
+            //     clicked => {
+            //         NotificationsBridge.notifications-visible = !NotificationsBridge.notifications-visible;
+            //     }
+            // }
+
+            IconButton {
+                width: 28px;
+                height: 28px;
+                SvgIcon {
+                    source: @image-url("icons/sidebar.svg");
+                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                    size: 16px;
+                }
+
+                clicked => {
+                    WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+                }
+            }
+        }
+
+        Rectangle {
+            height: 8px;
+        }
+
+        SearchBar { }
+
+        Rectangle {
+            height: 8px;
+        }
+
+        GridLayout {
+            spacing: 8px;
+            Row {
+
+                ActionButton {
+                    z: 3;
+                    horizontal-stretch: 1;
+                    icon: @image-url("icons/link.svg");
+                    text: "Add new device";
+                    clicked => {
+                        AddDeviceBridge.add_device_open = true;
+                    }
+                }
+
+                ActionButton {
+                    z: 2;
+                    horizontal-stretch: 1;
+                    icon: @image-url("icons/tranfsers.svg");
+                    icon-size: 17px;
+                    text: "Open transfers";
+                    clicked => {
+                        WindowBridge.current-window = Window.transfers;
+                    }
+                }
+
+                ActionButton {
+                    z: 1;
+                    horizontal-stretch: 1;
+                    icon: @image-url("icons/search.svg");
+                    text: "Search";
+                    clicked => {
+                        WindowBridge.current-window = Window.transfers;
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 8px;
+        }
+
+        for d[i] in DevicesBridge.devices: SidebarDevice {
+            device: d;
+            selected: true;
+            clicked => {
+                DevicesBridge.device-details-open-idx = i;
+                WindowBridge.current-window = Window.device;
+            }
+        }
+
+        Rectangle { }
+
+        HorizontalLayout {
+            alignment: space-between;
+            IconButton {
+                width: 28px;
+                height: 28px;
+                SvgIcon {
+                    source: @image-url("icons/settings.svg");
+                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                    size: 16px;
+                }
+
+                clicked => {
+                    SettingsBridge.settings-open = true;
+                }
+            }
+
+            IconButton {
+                width: 28px;
+                height: 28px;
+                SvgIcon {
+                    source: @image-url("icons/plus.svg");
+                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                    size: 16px;
+                }
+
+                clicked => {
+                    AddDeviceBridge.add_device_open = true;
+                }
+            }
+        }
+
+        Rectangle {
+            height: 4px;
+        }
+    }
+}
+
+    component Topbar inherits Rectangle {
+    x: 0;
+    y: 0;
+    z: 2;
+    height: 20px;
+    opacity: WindowBridge.topbar-hover ? 1.0 : 0.0;
+
+    animate opacity {
+        delay: 50ms;
+        duration: 128ms;
+        easing: ease;
+    }
+
+    HorizontalLayout {
+        padding-top: 7px;
+        padding-right: 8px;
+        height: 28px;
+        alignment: end;
+        spacing: 12px;
+
+        IconButton {
+            width: 20px;
+            height: 20px;
+            inner-bg: transparent;
+            enabled: WindowBridge.topbar-hover;
+            SvgIcon {
+                source: @image-url("icons/minimize.svg");
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.fourth-font;
+                size: 16px;
+            }
+
+            clicked => {
+                WindowBridge.minimize-window();
+            }
+        }
+
+        IconButton {
+            width: 20px;
+            height: 20px;
+            inner-bg: transparent;
+            enabled: WindowBridge.topbar-hover;
+            SvgIcon {
+                source: @image-url("icons/maximize.svg");
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.fourth-font;
+                size: 16px;
+            }
+
+            clicked => {
+                WindowBridge.maximize-window();
+            }
+        }
+
+        IconButton {
+            width: 20px;
+            height: 20px;
+            inner-bg: transparent;
+            enabled: WindowBridge.topbar-hover;
+            SvgIcon {
+                source: @image-url("icons/close.svg");
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.fourth-font;
+                size: 16px;
+            }
+
+            clicked => {
+                WindowBridge.close-window();
+            }
+        }
+    }
+}
+
 export component NectanWindow inherits Window {
 
     title: "Nectan";
@@ -290,12 +601,16 @@ export component NectanWindow inherits Window {
     background: transparent;
 
     in-out property <bool> error_open: false;
+
     in-out property <string> error_title: "";
     in-out property <string> error_message: "";
+
     callback show-error(string, string);
     callback close-error();
+    callback pasted();
 
     show-error(title, message) => {
+        debug("Showing error ", title);
         root.error_open = true;
         root.error_message = message;
         root.error_title = title;
@@ -314,210 +629,52 @@ export component NectanWindow inherits Window {
 
         key-pressed(event) => {
 
-            if (event.text == Key.S
-                && (event.modifiers.control || event.modifiers.meta)) {
-                WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
-                WindowBridge.sidebar-hover = false;
+            if (event.text == Key.F11) {
+                root.maximized = !root.maximized;
+            }
+            if (event.modifiers.control || event.modifiers.meta) {
+
+                if (event.text == Key.S) {
+                    debug("Toggled sidebar");
+                    WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+                    WindowBridge.sidebar-hover = false;
+                }
+                if (event.text == Key.V) {
+                    debug("Pasted");
+                    pasted();
+                }
                 return accept;
             }
             return reject;
         }
 
-        TouchArea {
-            width: 100%;
-            height: 100%;
-            scroll-event(event) => {
-                if event.delta-x > 10px {
-                    WindowBridge.sidebar-visible = true;
-                }
-                if event.delta-x < -10px {
-                    WindowBridge.sidebar-visible = false;
-                }
-                return accept;
-            }
-        }
+        // MainWindowTouchArea { }
 
         Rectangle {
             width: 100%;
             height: 100%;
             background: Theme.colors.primary-col;
-            border-width: 1px;
+            // background: @linear-gradient(-30deg, #3f87a6 0%, #833AB4 50%, #f69d3c 100%);
+
+            border-width: root.maximized ? 0 : 1px;
+            border-radius: root.maximized ? 0 : 12px;
+
             border-color: Theme.colors.fourth-col;
-            border-radius: 12px;
             padding: 20px;
             clip: true;
 
-            Rectangle {
-                x: 0;
-                z: 1;
-                width: WindowBridge.sidebar-visible ? 0 : WindowBridge.sidebar-hover ? WindowBridge.sidebar-width + 60px : 20px;
-                sidebar-toggle := TouchArea {
-                    pointer-event(event) => {
-                        if self.mouse-x > WindowBridge.sidebar-width {
-                            WindowBridge.sidebar-hover = false;
-                        }
-                        if self.mouse-x < 20px {
-                            WindowBridge.sidebar-hover = true;
-                        }
-                    }
-                }
-            }
+            TopBarShower { }
 
-            Rectangle {
-                x: WindowBridge.sidebar-visible ? 0 : (WindowBridge.sidebar-hover ? 4px : -WindowBridge.sidebar-width);
-                width: WindowBridge.sidebar-width;
-                z: 2;
-                background: Theme.colors.primary-col;
-                height: parent.height - 8px;
-                border-radius: 8px;
-                border-width: 1px;
-                border-color: WindowBridge.sidebar-visible ? transparent : Theme.colors.border-col;
+            SidebarShower { }
 
-                animate x, border-color {
-                    duration: 128ms;
-                    easing: ease;
-                }
+            Sidebar { }
 
-                VerticalLayout {
-                    padding: 8px;
-                    padding-bottom: 0px;
-
-                    HorizontalLayout {
-                        alignment: space-between;
-                        padding-left: 4px;
-
-                        IconButton {
-                            width: 28px;
-                            height: 28px;
-
-                            Image {
-                                source: @image-url("icons/tray.png");
-                                width: 16px;
-                                height: 16px;
-                            }
-
-                            clicked => {
-                                WindowBridge.nectan-modal-visible = true;
-                            }
-                        }
-
-                        IconButton {
-                            width: 28px;
-                            height: 28px;
-                            SvgIcon {
-                                source: @image-url("icons/sidebar.svg");
-                                fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                                size: 16px;
-                            }
-
-                            clicked => {
-                                WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        height: 8px;
-                    }
-
-                    SearchBar { }
-
-                    Rectangle {
-                        height: 8px;
-                    }
-
-                    GridLayout {
-                        spacing: 8px;
-                        Row {
-
-                            ActionButton {
-                                z: 3;
-                                horizontal-stretch: 1;
-                                icon: @image-url("icons/link.svg");
-                                text: "Add new device";
-                                clicked => {
-                                    AddDeviceBridge.add_device_open = true;
-                                }
-                            }
-
-                            ActionButton {
-                                z: 2;
-                                horizontal-stretch: 1;
-                                icon: @image-url("icons/tranfsers.svg");
-                                icon-size: 17px;
-                                text: "Open transfers";
-                                clicked => {
-                                    WindowBridge.current-window = Window.transfers;
-                                }
-                            }
-
-                            ActionButton {
-                                z: 1;
-                                horizontal-stretch: 1;
-                                icon: @image-url("icons/search.svg");
-                                text: "Search";
-                                clicked => {
-                                    WindowBridge.current-window = Window.transfers;
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        height: 8px;
-                    }
-
-                    for d[i] in DevicesBridge.devices: SidebarDevice {
-                        device: d;
-                        selected: true;
-                        clicked => {
-                            DevicesBridge.device-details-open-idx = i;
-                            WindowBridge.current-window = Window.device;
-                        }
-                    }
-
-                    Rectangle { }
-
-                    HorizontalLayout {
-                        alignment: space-between;
-                        IconButton {
-                            width: 28px;
-                            height: 28px;
-                            SvgIcon {
-                                source: @image-url("icons/settings.svg");
-                                fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                                size: 16px;
-                            }
-
-                            clicked => {
-                                SettingsBridge.settings-open = true;
-                            }
-                        }
-
-                        IconButton {
-                            width: 28px;
-                            height: 28px;
-                            SvgIcon {
-                                source: @image-url("icons/plus.svg");
-                                fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                                size: 16px;
-                            }
-
-                            clicked => {
-                                AddDeviceBridge.add_device_open = true;
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        height: 4px;
-                    }
-                }
-            }
+            Topbar { }
 
             HorizontalLayout {
                 spacing: 8px;
                 padding: 8px;
+                padding-top: WindowBridge.topbar-hover ? 24px : 8px;
                 padding-left: !WindowBridge.sidebar-visible ? 8px : WindowBridge.sidebar-width;
 
                 animate x, padding-left {
@@ -525,8 +682,15 @@ export component NectanWindow inherits Window {
                     easing: ease;
                 }
 
+                animate padding-top {
+                    delay: 50ms;
+                    duration: 128ms;
+                    easing: ease;
+                }
+
                 Rectangle {
-                    background: Theme.colors.secondary-col;
+                    // opacity: 0.5;
+                    background: Theme.colors.third-col;
                     border-radius: 8px;
 
                     if WindowBridge.current-window == Window.device: DeviceScreen { }
@@ -536,6 +700,18 @@ export component NectanWindow inherits Window {
             }
         }
 
+        // VerticalBox {
+        //     padding-bottom: NotificationsBridge.notifications-visible ? parent.height : 0;
+        //     animate padding-bottom {
+        //         duration: 80ms;
+        //         easing: ease;
+        //     }
+        //     opacity: 0.8;
+        //     Rectangle {
+        //         background: red;
+        //     }
+        // }
+
         if SettingsBridge.settings_open: SettingsModal { }
 
         if WindowBridge.nectan-modal-visible: NectanModal { }
@@ -544,6 +720,37 @@ export component NectanWindow inherits Window {
 
         if SearchBridge.visible: Search { }
 
-        if OutcomingTransferModalBridge.sending-open: OutcomingTransferModal { }
+        if OutcomingTransferModalBridge.sending-open: OutcomingTransferModal {
+            on-closed => {
+                focus-scope.focus();
+            }
+        }
+
+        if error_open: ErrorModal {
+            title <=> error_title;
+            message <=> error_message;
+            open <=> error_open;
+            closed => { error_open = false; }
+        }
     }
 }
+
+// export component MyTray inherits SystemTrayIcon {
+//     icon: @image-url("icons/icon512.png");
+//     tooltip: "Nectan";
+//
+//     callback show-window();
+//     callback hide-window();
+//
+//     Menu {
+//         MenuItem {
+//             title: "Show";
+//             activated => { show-window(); }
+//         }
+//
+//         MenuItem {
+//             title: "Hide";
+//             activated => { hide-window(); }
+//         }
+//     }
+// }

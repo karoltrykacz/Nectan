@@ -65,6 +65,8 @@ export component OutcomingTransferModal inherits Rectangle {
 
     property send-state <=> OutcomingTransferModalBridge.send-state;
 
+    callback on-closed();
+
     changed send-state => {
         if (send-state == SendModalState.Initial) {
             modal.focus();
@@ -77,17 +79,22 @@ export component OutcomingTransferModal inherits Rectangle {
     }
 
     modal := GeneralModal {
-        init => { self.focus(); }
         open <=> OutcomingTransferModalBridge.sending-open;
+
+        init => { self.focus(); }
+
         on-close => {
+            on-closed();
             OutcomingTransferModalBridge.transfer-walk-cancelled();
         }
+
         on-enter => {
             if (OutcomingTransferModalBridge.walk-finished) {
                 root.send();
                 send-state = SendModalState.SendingOffer;
             }
         }
+
         Rectangle {
 
             property <bool> is-initial: 

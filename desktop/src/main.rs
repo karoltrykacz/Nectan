@@ -3,6 +3,7 @@
 slint::include_modules!();
 
 use anyhow::Result;
+use arboard::Clipboard;
 use nectan_core::common::get_signing_key;
 use nectan_core::storage_utils::KvStore;
 use nectan_core::walker::Walker;
@@ -16,8 +17,9 @@ use std::time::{Duration, Instant};
 use crate::devices::update_devices;
 use crate::handlers::{
     event_listener, handle_add_device, handle_cancel_walker, handle_connection_offer,
-    handle_drag_and_drop_files, handle_incoming_transfer_offer, handle_scan_files,
-    handle_scan_folders, handle_send, handle_window_controls, open_send_modal,
+    handle_drag_and_drop_files, handle_incoming_transfer_offer, handle_outcoming_transfer,
+    handle_paste, handle_scan_files, handle_scan_folders, handle_send, handle_window_controls,
+    open_send_modal,
 };
 use crate::state::{UiState, init_app_state, ui_state};
 use crate::transfers::{handle_refresh_items_list, handle_refresh_transfers_list, set_transfers};
@@ -80,12 +82,15 @@ async fn main() -> Result<(), slint::PlatformError> {
 
     tokio::spawn(event_listener(w.as_weak(), rx, Arc::clone(&state)));
 
+    handle_paste(&w);
+
     handle_window_controls(&w);
     handle_add_device(&w, Arc::clone(&state));
 
     handle_drag_and_drop_files(&w);
     handle_send(&w, Arc::clone(&state));
 
+    handle_outcoming_transfer(&w);
     handle_incoming_transfer_offer(&w, Arc::clone(&state));
     handle_connection_offer(&w, Arc::clone(&state));
 

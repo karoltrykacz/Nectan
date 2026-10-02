@@ -1,6 +1,7 @@
+use ignore::WalkBuilder;
 use nectan_core::{
     code_lookup::{CodeLookupError, gen_code, issue_code, lookup_code},
-    common::gen_transfer_name,
+    common::{common_parent, gen_transfer_name},
     devices::device_id_from_base64,
     format::{DecimalBytes, RoundedDecimalBytes},
     messages::{
@@ -12,9 +13,13 @@ use nectan_core::{
     walker::Walker,
 };
 use rfd::FileHandle;
-use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent};
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, invoke_from_event_loop};
+use slint::{
+    ToSharedString,
+    winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent},
+};
 use std::{
+    fs::DirEntry,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, atomic::Ordering::Relaxed},
@@ -29,6 +34,17 @@ use crate::{
     LookupState, NectanWindow, OutcomingTransferModalBridge, SendModalState, TreeNode,
     WindowBridge, devices::update_devices, state::ui_state, transfers::update_transfers,
 };
+
+fn show_error(
+    weak: &slint::Weak<NectanWindow>,
+    title: impl Into<slint::SharedString>,
+    msg: impl Into<slint::SharedString>,
+) {
+    let (title, msg) = (title.into(), msg.into());
+    let _ = weak.upgrade_in_event_loop(move |w| {
+        w.invoke_show_error(title, msg);
+    });
+}
 
 pub fn handle_window_controls(w: &NectanWindow) {
     let w_weak = w.as_weak();
@@ -168,7 +184,7 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
     //
     //     nodes[id as usize].expanded = true;
     //
-    //     let offer = app_state().transfer_offer();
+    //     let offer = ui_state().transfer_offer();
     //     let weak = w.as_weak();
     //
     //     // Read from the tree the sender sent us
@@ -400,15 +416,21 @@ pub fn handle_cancel_walker(w: &NectanWindow) {
 }
 
 pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
-    let paths_clone = paths.clone();
-    let walker = Walker::new(paths, true);
+    println!("Starting walker for {paths:#?}");
 
-    // Store the walker in ui state so it can be cancelled at demand
+    let common = common_parent(&paths);
+    let builder = WalkBuilder::new(common);
+
+    let walker = Walker::new(paths.clone(), true);
+
+    // Store the walker in ui state so it can be cancelled
     let walker2 = walker.clone();
 
     let _ = w.upgrade_in_event_loop(move |w| {
         {
             let state = ui_state();
+            *state.outcoming_transfer().match_builder.lock().unwrap() = Some(builder);
+
             let mut walker_lock = state.walker();
             if let Some(old_walker) = &*walker_lock {
                 old_walker.stop();
@@ -425,7 +447,7 @@ pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
         bridge.set_send_state(SendModalState::Initial);
         bridge.set_sending_open(true);
 
-        let nodes: Vec<TreeNode> = paths_clone
+        let nodes: Vec<TreeNode> = paths
             .iter()
             .map(|h| TreeNode {
                 depth: 0,
@@ -550,19 +572,18 @@ pub fn handle_drag_and_drop_files(w: &NectanWindow) {
         let state = ui_state();
         match event {
             WindowEvent::HoveredFile(file) => {
-                let total = state.get_total();
+                let outcoming = state.outcoming_transfer();
                 state.insert_path(file.into());
 
-                let me = total.fetch_add(1, Relaxed) + 1;
+                let me = outcoming.total.fetch_add(1, Relaxed) + 1;
                 let weak = weak.clone();
 
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_millis(10)).await;
-                    let total = total.load(Relaxed);
+                    let total = outcoming.total.load(Relaxed);
                     if me == total {
                         let _ = weak.upgrade_in_event_loop(move |w| {
                             let paths = ui_state().take_paths();
-                            println!("Starting walker for {paths:#?}");
                             open_send_modal(w.as_weak(), paths);
                         });
                     }
@@ -573,21 +594,123 @@ pub fn handle_drag_and_drop_files(w: &NectanWindow) {
                     return EventResult::Propagate;
                 };
                 // Cancel the walker if the drag was cancelled
-                if !state.get_ready().load(Relaxed) {
+                if !state.outcoming_transfer().ready.load(Relaxed) {
                     walker.stop();
                     if let Some(w) = weak.upgrade() {
                         let b = w.global::<OutcomingTransferModalBridge>();
                         b.set_sending_open(false);
                     }
                 }
-                state.get_ready().store(false, Relaxed);
+                state.outcoming_transfer().ready.store(false, Relaxed);
                 state.take_paths();
             }
             WindowEvent::DroppedFile(_file) => {
-                state.get_ready().store(true, Relaxed);
+                state.outcoming_transfer().ready.store(true, Relaxed);
             }
             _ => {}
         };
         EventResult::Propagate
     });
+}
+pub fn handle_outcoming_transfer(w: &NectanWindow) {
+    let weak = w.as_weak();
+    let b = w.global::<OutcomingTransferModalBridge>();
+    b.on_toggle_node(move |id, path| {
+        let Some(w) = weak.upgrade() else {
+            return;
+        };
+        let id = id as usize;
+        let outcoming = ui_state().outcoming_transfer();
+        let weak = weak.clone();
+        let bridge = w.global::<OutcomingTransferModalBridge>();
+        let mut nodes: Vec<TreeNode> = bridge.get_nodes().iter().map(|node| node.clone()).collect();
+        if nodes[id].is_file {
+            return;
+        }
+        let parent_depth = nodes[id].depth;
+
+        if nodes[id].expanded {
+            nodes[id].expanded = false;
+
+            // Close the nodes
+            let mut end = id as usize + 1;
+            while end < nodes.len() && nodes[end].depth > parent_depth {
+                end += 1;
+            }
+            nodes.drain(id as usize + 1..end);
+
+            let model = VecModel::from(nodes);
+            bridge.set_nodes(ModelRc::from(Rc::new(model)));
+            return;
+        }
+
+        nodes[id as usize].expanded = true;
+
+        // Need to build the fucking walker beacuse the pathtree from walker is yielded after the walk is finished
+        // Don;t block the ui thread
+        std::thread::spawn(move || match std::fs::read_dir(path.clone()) {
+            Ok(dir) => {
+                let mut lock = outcoming.match_builder.lock().unwrap();
+                let builder = lock.as_mut().unwrap();
+
+                let path = PathBuf::from(path.to_string());
+                builder.add(path);
+                let mut matchers = builder.build_matchers();
+
+                // Match children of the node with ignore patterns
+                let children: Vec<DirEntry> = dir.flatten().collect();
+                let mut result = Vec::new();
+                'outer: for entry in &children {
+                    let Ok(is_dir) = entry.file_type().map(|t| t.is_dir()) else {
+                        continue;
+                    };
+                    for matcher in &mut matchers {
+                        if matcher.matched(entry.path(), is_dir).is_ignore() {
+                            break 'outer;
+                        }
+                    }
+
+                    let node = TreeNode {
+                        depth: parent_depth + 1,
+                        expanded: false,
+                        is_file: !is_dir,
+                        filename: entry.file_name().to_string_lossy().to_shared_string(),
+                        path: entry.path().to_string_lossy().to_shared_string(),
+                    };
+                    result.push(node);
+                }
+                // Append the nodes to the tree
+                nodes.splice((id + 1) as usize..(id + 1) as usize, result);
+                println!("Result nodes {nodes:#?}");
+
+                let _ = weak.upgrade_in_event_loop(move |w| {
+                    let bridge = w.global::<OutcomingTransferModalBridge>();
+                    let model = VecModel::from(nodes);
+                    bridge.set_nodes(ModelRc::from(Rc::new(model)));
+                });
+            }
+            Err(e) => {
+                show_error(&weak, "Failed to read directory", e.to_string());
+            }
+        });
+    });
+}
+pub fn handle_paste(w: &NectanWindow) {
+    let weak = w.as_weak();
+    w.on_pasted(move || {
+        let weak = weak.clone();
+        let ui = ui_state();
+        let mut cl = ui.get_clipboard();
+        let contents = cl.get();
+
+        if let Ok(list) = contents.file_list() {
+            let list: Vec<PathBuf> = list
+                .into_iter()
+                .map(|p| PathBuf::from(p.to_string_lossy().trim_end_matches(['\r', '\n'])))
+                .collect();
+            open_send_modal(weak, list);
+        } else {
+            println!("Failed to get files list from clipboard.");
+        }
+    })
 }

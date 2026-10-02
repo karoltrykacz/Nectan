@@ -1,3 +1,5 @@
+use std::path::{self, Component, PathBuf};
+
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::SigningKey;
 use rand::{rand_core::UnwrapErr, rngs::SysRng};
@@ -11,6 +13,26 @@ use crate::storage_utils::KvStore;
 //     );
 //     Ok(())
 // }
+
+/// Only for absolute paths
+pub fn common_parent(paths: &[PathBuf]) -> PathBuf {
+    let Some(first) = paths.first() else {
+        return PathBuf::new();
+    };
+    let mut common = PathBuf::new();
+
+    for (idx, component) in first.components().enumerate() {
+        if paths
+            .iter()
+            .any(|p| p.components().nth(idx) != Some(component))
+        {
+            break;
+        }
+        common.push(component);
+    }
+
+    common
+}
 
 pub fn get_signing_key(store: &KvStore) -> SigningKey {
     match store.get("key") {

@@ -11,12 +11,13 @@ use std::{cell::RefCell, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use crate::Transfer;
-use crate::{NectanWindow, TransferItem, TransfersBridge, state::ui_state};
+use crate::state::ui_state;
+use crate::{NectanWindow, TransferItem, TransfersBridge};
 
 // idk how to call that crap
 pub struct TransferObject {
     pending: Arc<PendingTransfer>,
-    ui_shit: Transfer,
+    ui_state_shit: Transfer,
 }
 
 pub struct TransfersModel {
@@ -101,7 +102,7 @@ impl TransfersModel {
             .iter()
             .map(|t| TransferObject {
                 pending: t.clone(),
-                ui_shit: Transfer {
+                ui_state_shit: Transfer {
                     outcoming: false,
                     percent_text: "12%".to_shared_string(),
                     progress: 0.12,
@@ -125,7 +126,7 @@ impl TransfersModel {
         let p = &t.pending;
         let new = Transfer {
             id: p.id.to_shared_string(),
-            items: t.ui_shit.items.clone(),
+            items: t.ui_state_shit.items.clone(),
             outcoming: !p.direction.is_incoming(),
             percent_text: "pizda".into(),
             progress: 0.0,
@@ -137,7 +138,7 @@ impl TransfersModel {
             total_files: 123,
         };
         // let
-        t.ui_shit = new;
+        t.ui_state_shit = new;
         self.notify.row_changed(row);
     }
 
@@ -154,7 +155,10 @@ impl Model for TransfersModel {
     }
 
     fn row_data(&self, row: usize) -> Option<Self::Data> {
-        self.transfers.borrow().get(row).map(|t| t.ui_shit.clone())
+        self.transfers
+            .borrow()
+            .get(row)
+            .map(|t| t.ui_state_shit.clone())
     }
 
     fn model_tracker(&self) -> &dyn ModelTracker {
@@ -205,7 +209,7 @@ pub fn set_transfers(_w: &Weak<NectanWindow>, state: &NectanState) {
 //     let bridge = w.global::<TransfersBridge>();
 //     let s = state.clone();
 //     bridge.on_delete_transfer(move |id| {
-//         let transfer_id = Uuid::parse_str(&id).unwrap();
+//         let transfer_id = Uui_stated::parse_str(&id).unwrap();
 //         let s = s.clone();
 //         tokio::spawn(async move {
 //             let _ = s.transfers_pool.delete_transfer(transfer_id).await;
@@ -213,7 +217,7 @@ pub fn set_transfers(_w: &Weak<NectanWindow>, state: &NectanState) {
 //     });
 //
 //     bridge.on_pause_resume_transfer(move |id| {
-//         let transfer_id = Uuid::parse_str(&id).unwrap();
+//         let transfer_id = Uui_stated::parse_str(&id).unwrap();
 //         let s = state.clone();
 //         tokio::spawn(async move {
 //             let _ = s

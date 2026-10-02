@@ -1,5 +1,4 @@
 /target
 /container
 Cargo.lock
-.nvim.lua
 debug.sh

@@ -83,6 +83,8 @@ impl Walker {
             let mut tree = PathTree::new();
             for p in c.paths.iter() {
                 let (tx, rx) = channel::<PathTree>();
+                // let matcher = WalkBuilder::build_matchers();
+
                 let walker = WalkBuilder::new(p)
                     .hidden(c.ignore_hidden_files)
                     .build_parallel();
@@ -186,6 +188,7 @@ mod tests {
 
                     #[cfg(unix)]
                     let size = meta.size();
+
                     #[cfg(not(unix))]
                     let size = meta.len();
 
