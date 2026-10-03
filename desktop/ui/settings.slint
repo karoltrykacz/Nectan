@@ -378,9 +378,9 @@ component ChangeUsernameModal inherits Rectangle {
 
     GeneralModal {
 
-        open <=> SettingsBridge.username-modal;
-
-        on-close => {}
+        on-close => {
+            SettingsBridge.username-modal = false;
+        }
         on-enter => { save(); }
 
         Rectangle {
@@ -442,7 +442,6 @@ component ChangeUsernameModal inherits Rectangle {
                         background: Theme.colors.third-col;
                         VerticalLayout {
                             PlainLineEdit {
-                                open: SettingsBridge.username-modal;
                                 placeholder-text: "Enter username";
                                 input-text <=> new-username;
                                 accepted => { save(); }
@@ -479,23 +478,21 @@ component ChangeUsernameModal inherits Rectangle {
 
 export component SettingsModal inherits GeneralModal {
 
-    open <=> SettingsBridge.settings_open;
+    on-close => { SettingsBridge.settings_open = false; }
 
     Rectangle {
         width: min(820px, parent.width - 40px);
         height: min(560px,parent.height - 40px);
         clip: true;
 
-        drop-shadow-color: #00000099;
-        drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.colors.fourth-col.with-alpha(0.5);
 
         TouchArea {
-            width: 100%;
             height: 100%;
+            width: 100%;
             clicked => {}
         }
 
@@ -541,7 +538,7 @@ export component SettingsModal inherits GeneralModal {
         }
     }
 
-    ChangeUsernameModal { }
+    if false: ChangeUsernameModal { }
 }
 
 

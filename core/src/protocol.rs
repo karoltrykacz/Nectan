@@ -170,6 +170,12 @@ impl ProtocolHandler for NectanProtocol {
         .write(&mut stream_tx)
         .await;
 
+        state
+            .emit(AppEvent::Connected {
+                device_id: remote_device_id,
+            })
+            .await;
+
         let device = Device {
             username: remote_username.clone(),
             id: remote_device_id,
@@ -182,12 +188,6 @@ impl ProtocolHandler for NectanProtocol {
         };
 
         let _ = devices.insert(remote_device_id, &device);
-
-        state
-            .emit(AppEvent::Connected {
-                device_id: remote_device_id,
-            })
-            .await;
 
         info!("Accepted connetion {}", remote_username);
         tokio::spawn(handle_connection(state, device, conn));
@@ -202,7 +202,7 @@ async fn handle_connection(state: Arc<NectanState>, device: Device, conn: Connec
     info!("Handling connetion {conn_id}");
     let id = conn.stable_id().to_string();
     let span = debug_span!("connection", id);
-    let sender_name: Arc<str> = device.username.as_string().into();
+    let sender_name = device.username;
 
     async move {
         while let Ok(pair) = StreamPair::accept(&conn).await {
@@ -220,7 +220,7 @@ async fn handle_stream(
     state: Arc<NectanState>,
     mut stream: StreamPair,
     sender: DeviceId,
-    sender_name: Arc<str>,
+    sender_name: Username,
 ) -> Result<()> {
     let msg: NetMessage = stream.read().await?;
 
@@ -291,7 +291,7 @@ async fn handle_transfer_offer(
     state: Arc<NectanState>,
     mut stream: StreamPair,
     sender: DeviceId,
-    sender_name: Arc<str>,
+    sender_name: Username,
     offer: TransferOffer<CompressedPathTree>,
 ) -> Result<()> {
     let (respond, mut rx) = tokio::sync::mpsc::channel(1);
@@ -325,7 +325,6 @@ async fn handle_transfer_offer(
     }
     let offer = offer.unwrap();
 
-    // TODO! (expensive clone)
     state
         .emit(AppEvent::IncomingTransferOffer {
             offer: offer.clone(),
@@ -341,7 +340,12 @@ async fn handle_transfer_offer(
     if let UiResponse::Accept = r {
         state
             .transfers
-            .add_transfer(sender, TransferDirection::Incoming, offer.inner)
+            .add_transfer(
+                sender,
+                sender_name,
+                TransferDirection::Incoming,
+                offer.inner,
+            )
             .await;
     }
 
@@ -375,20 +379,8 @@ impl NectanState {
         devices: Devices,
         app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
         storage: Storage,
+        mdns: MdnsAddressLookup,
     ) -> Self {
-        let user_data: UserData = STANDARD.encode(device_id.to_bytes()).parse().unwrap();
-        // TODO
-        let builder = Endpoint::builder(presets::N0).user_data_for_address_lookup(user_data);
-        let endpoint = builder.bind().await.expect("Failed to bind endpoint");
-
-        let mdns = MdnsAddressLookup::builder()
-            .service_name("nectan_user")
-            .advertise(true)
-            .build(endpoint.id())
-            .unwrap();
-
-        endpoint.address_lookup().unwrap().add(mdns.clone());
-
         NectanState {
             transfers: Arc::new(Transfers::new(devices.clone(), app_event_tx.clone())),
             app_event_tx,
@@ -751,7 +743,7 @@ pub struct ResolveDevicesRequest {
 }
 
 pub async fn resolve_devices(
-    state: &NectanState,
+    state: Arc<NectanState>,
     devices: Option<Vec<DeviceId>>,
 ) -> Result<ResolveDevicesResponse> {
     let client = state.http_client.clone();

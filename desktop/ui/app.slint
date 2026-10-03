@@ -34,6 +34,7 @@ export {
     Theme,
     DeviceItem,
     TransferItem,
+    SearchBridge,
     DevicesBridge,
     SettingsBridge,
     AddDeviceBridge,
@@ -146,7 +147,7 @@ component ActionButton inherits Rectangle {
 
 component NectanModal inherits GeneralModal {
 
-    open <=> WindowBridge.nectan-modal-visible;
+    on-close => { WindowBridge.nectan-modal-visible = false; }
 
     Rectangle {
         width: min(620px, parent.width * 0.8);
@@ -273,10 +274,11 @@ export global Api {
 
 component TopBarShower inherits Rectangle {
     x: WindowBridge.sidebar-hover ? WindowBridge.sidebar-width : 0;
-    z: 0;
+    z: 3;
     y: 0;
     width: 100%;
-    height: WindowBridge.topbar-hover ? 60px : 30px;
+    height: WindowBridge.sidebar-hover ? 30px : 50px;
+
     TouchArea {
         property <bool> maybe-dragging: false;
         moved => {
@@ -290,10 +292,10 @@ component TopBarShower inherits Rectangle {
             } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
                 self.maybe-dragging = false;
             }
-            if self.mouse-y > 32px {
+            if self.mouse-y > 20px {
                 WindowBridge.topbar-hover = false;
             }
-            if self.mouse-y < 30px {
+            if self.mouse-y < 15px {
                 WindowBridge.topbar-hover = true;
             }
         }
@@ -533,10 +535,10 @@ component Sidebar inherits Rectangle {
     }
 }
 
-    component Topbar inherits Rectangle {
+component Topbar inherits Rectangle {
     x: 0;
     y: 0;
-    z: 2;
+    z: 10;
     height: 20px;
     opacity: WindowBridge.topbar-hover ? 1.0 : 0.0;
 
@@ -648,16 +650,28 @@ export component NectanWindow inherits Window {
             if (event.text == Key.F11) {
                 root.maximized = !root.maximized;
             }
+            if (event.modifiers.shift) {
+                if (event.text == "A") {
+                    AddDeviceBridge.add_device_open = true;
+                }
+            }
             if (event.modifiers.control || event.modifiers.meta) {
 
                 if (event.text == Key.S) {
-                    debug("Toggled sidebar");
                     WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
                     WindowBridge.sidebar-hover = false;
                 }
                 if (event.text == Key.V) {
-                    debug("Pasted");
                     pasted();
+                }
+                if (event.text == Key.F) {
+                    SearchBridge.visible = true;
+                }
+                if (event.text == Key.I) {
+                    SettingsBridge.settings_open = true;
+                }
+                if (event.text == Key.T) {
+                    WindowBridge.current-window = Window.transfers;
                 }
                 return accept;
             }
@@ -699,14 +713,14 @@ export component NectanWindow inherits Window {
                 }
 
                 animate padding-top {
-                    delay: 50ms;
+                    delay: 200ms;
                     duration: 128ms;
                     easing: ease;
                 }
 
                 Rectangle {
                     // opacity: 0.5;
-                    background: Theme.colors.third-col;
+                    background: Theme.colors.secondary-col;
                     border-radius: 8px;
 
                     if WindowBridge.current-window == Window.device: DeviceScreen { }
@@ -727,6 +741,17 @@ export component NectanWindow inherits Window {
         //         background: red;
         //     }
         // }
+	property <bool> any-modal-open:
+    	SettingsBridge.settings_open
+            || WindowBridge.nectan-modal-visible
+            || AddDeviceBridge.add_device_open
+            || SearchBridge.visible
+            || OutcomingTransferModalBridge.sending-open;
+        changed any-modal-open => {
+            if !any-modal-open {
+                focus-scope.focus();
+            }
+        }
 
         if SettingsBridge.settings_open: SettingsModal { }
 
@@ -736,11 +761,7 @@ export component NectanWindow inherits Window {
 
         if SearchBridge.visible: Search { }
 
-        if OutcomingTransferModalBridge.sending-open: OutcomingTransferModal {
-            on-closed => {
-                focus-scope.focus();
-            }
-        }
+        if OutcomingTransferModalBridge.sending-open: OutcomingTransferModal { }
 
         if error_open: ErrorModal {
             title <=> error_title;

@@ -1,5 +1,6 @@
 use crate::devices::DeviceId;
 use crate::devices::Devices;
+use crate::devices::Username;
 use crate::messages::AppEvent;
 use crate::messages::NetMessage;
 use crate::messages::StreamableMessage;
@@ -191,7 +192,10 @@ pub async fn send_contents(
     info!("Transfer accepted.");
 
     // Transfer accepted, start processing
-    state.transfers.add_transfer(target, Outcoming, offer).await;
+    state
+        .transfers
+        .add_transfer(target, device.username, Outcoming, offer)
+        .await;
 
     Ok(())
 }
@@ -209,17 +213,37 @@ impl TransferDirection {
 
 const DUMB_ITEMS: TableDefinition<u32, TransferItem> = TableDefinition::new("items");
 
+#[derive(Clone, Copy)]
+pub enum TransferStatus {
+    Downloading,
+    Finished,
+}
+
+impl TransferStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Downloading => "Downloading",
+            Self::Finished => "Finished",
+        }
+    }
+}
+
 pub struct PendingTransfer {
     pub id: Uuid,
+    pub target_name: Username,
     target: DeviceId,
     pub direction: TransferDirection,
     items_queue: Mutex<FixedBitSet>,
     pub failed: AtomicU32,
     pub name: String,
-    pub total_items: u32,
-    pub total_size: u64,
+    pub total_files: u32,
+    /// Contains folders symlinks etc
+    pub total_entries: u32,
+    /// Counter for sent or unrecoverably failed items
     pub processed_items: AtomicU32,
+    pub total_size: u64,
     pub sent_bytes: AtomicU64,
+    pub speed: AtomicU64,
     db: redb::Database,
     /// When sending, common parent of all items
     /// When receiving, target directory
@@ -227,6 +251,16 @@ pub struct PendingTransfer {
     cancel_token: CancellationToken,
     event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     sem: Arc<Semaphore>,
+    status: Mutex<TransferStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum TransferControl {
+    /// Acknowledges received bytes
+    Ack(u64),
+    /// Informs peer about error
+    Error(TransferItemError),
+    AckHeader,
 }
 
 impl PendingTransfer {
@@ -255,11 +289,14 @@ impl PendingTransfer {
         txn.commit().unwrap();
 
         PendingTransfer {
+            target_name: Username::default(),
             name: "Default".into(),
             processed_items: AtomicU32::new(123),
-            total_items,
+            total_files: 123,
+            total_entries: 123123,
             total_size: 1231233312,
             sent_bytes: AtomicU64::new(123432),
+            speed: AtomicU64::new(100000000),
             event_tx,
             id,
             target: VerifyingKey::default(),
@@ -270,11 +307,14 @@ impl PendingTransfer {
             root_path: PathBuf::from("/media/karol/example"),
             cancel_token: CancellationToken::new(),
             sem: Arc::new(Semaphore::new(69)),
+            status: Mutex::new(TransferStatus::Downloading),
         }
     }
+
     pub fn from_offer(
         event_tx: tokio::sync::mpsc::Sender<AppEvent>,
         target: DeviceId,
+        target_name: Username,
         direction: TransferDirection,
         offer: TransferOffer<PathTree>,
     ) -> Self {
@@ -291,12 +331,14 @@ impl PendingTransfer {
         let db_dir = db_dir.join(format!("Nectan/t-{id}-{}", dir));
         let db = redb::Database::create(db_dir).expect("Failed to create database");
 
-        let mut c = 0u32;
         let txn = db.begin_write().unwrap();
+        let mut total_entries = 0u32;
+        let mut total_files = 0;
         {
             let mut table = txn.open_table(DUMB_ITEMS).unwrap();
             for (path, is_file, file_size, id) in &*offer.tree {
-                c += 1;
+                total_entries += 1;
+                total_files += is_file as u32;
                 let item = TransferItem {
                     path,
                     is_file,
@@ -309,7 +351,6 @@ impl PendingTransfer {
             }
         }
         let _ = txn.commit();
-        let total_items = c;
 
         PendingTransfer {
             id,
@@ -318,31 +359,48 @@ impl PendingTransfer {
             failed: AtomicU32::new(0),
             processed_items: AtomicU32::new(0),
             sent_bytes: AtomicU64::new(0),
-            items_queue: Mutex::new(FixedBitSet::with_capacity(total_items as usize)),
+            items_queue: Mutex::new(FixedBitSet::with_capacity(total_entries as usize)),
+            speed: AtomicU64::new(0),
             db,
-            total_items,
+            total_files,
+            total_entries,
             total_size: offer.total_size,
             root_path,
             cancel_token: CancellationToken::new(),
             event_tx,
             target,
+            target_name,
             sem: Arc::new(Semaphore::new(4)),
+            status: Mutex::new(TransferStatus::Downloading),
         }
     }
+
+    pub fn set_status(&self, s: TransferStatus) {
+        *self.status.lock().unwrap() = s;
+    }
+
+    pub fn status(&self) -> TransferStatus {
+        *self.status.lock().unwrap()
+    }
+
     pub fn cancelled(&self) -> WaitForCancellationFuture<'_> {
         self.cancel_token.cancelled()
     }
+
     pub fn cancel(&self) {
         self.cancel_token.cancel()
     }
+
     /// Returns remaining items
     fn item_finished(&self) -> u32 {
         self.processed_items.fetch_add(1, Relaxed) + 1
     }
+
     /// Returns remaining bytes
     fn ack_sent_bytes(&self, bytes: u64) -> u64 {
         self.sent_bytes.fetch_add(bytes, Relaxed) + bytes
     }
+
     pub fn get_item(&self, id: u32) -> Result<TransferItem, redb::Error> {
         let txn = self.db.begin_read()?;
         Ok(txn
@@ -351,6 +409,7 @@ impl PendingTransfer {
             .expect("Item must be in database.")
             .value())
     }
+
     fn unsent_batch(&self) -> Vec<usize> {
         let mut queue = self.items_queue.lock().unwrap();
         let batch: Vec<usize> = queue.zeroes().take(10).collect();
@@ -359,13 +418,13 @@ impl PendingTransfer {
         }
         batch
     }
+
     async fn start_sending(self: Arc<Self>, conn: Connection) -> Result<()> {
         info!(
             "Starting sending [{}] [{} ITEMS]",
             &self.id.to_string()[0..8],
             self.items_queue.lock().unwrap().zeroes().count()
         );
-        // siema
 
         // Get first batch of items
         let mut queue = Vec::new();
@@ -379,14 +438,15 @@ impl PendingTransfer {
                 }
                 None => {
                     let processed = self.processed_items.load(Relaxed);
-                    let drained = processed == self.total_items;
+                    let drained = processed == self.total_entries;
 
-                    info!("Processed {processed}. Total {}", self.total_items);
+                    info!("Processed {processed}. Total {}", self.total_entries);
 
                     if drained {
                         // All transfers processed, wait until sem is free and exit
                         info!("All transfers drained. Waiting for last items to finish.");
                         let _ = self.sem.acquire_many(4).await;
+                        self.set_status(TransferStatus::Finished);
                         return Ok(());
                     } else {
                         let unsent = self.unsent_batch();
@@ -414,7 +474,7 @@ impl PendingTransfer {
                         s.item_finished();
                     }
                     Err(e) => {
-                        info!("Transfer sending failed! {e:?}");
+                        error!("Sending item failed! {e:?}");
                         s.handle_item_err(item_id, e);
                     }
                 }
@@ -430,9 +490,8 @@ impl PendingTransfer {
         info!("Processing stream for {}", &self.id.to_string()[0..8]);
         ensure!(self.direction == TransferDirection::Incoming);
 
-        info!("Reading header");
         let header: TransferItemHeader = stream.read().await?;
-        info!("Read header {:?}", header);
+        info!("Read header {:#?}", header);
         let id = header.id;
 
         let r = match self.recieve_item(header, stream, permit).await {
@@ -447,6 +506,8 @@ impl PendingTransfer {
 
         Ok(())
     }
+
+    // Todo - make second channel for transfer controls
 
     async fn recieve_item(
         &self,
@@ -470,6 +531,7 @@ impl PendingTransfer {
                     .await
                     .map_err(|_| TransferItemError::FileIOError)?;
             }
+
             return Ok(());
         }
 
@@ -502,37 +564,50 @@ impl PendingTransfer {
 
         const CHUNK_SIZE: usize = 128 * 1024;
         let mut total_written = header.sent_bytes;
+        let (mut rx, mut tx) = stream.into_split();
+
+        let period = Duration::from_millis(250);
+        let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
 
         loop {
             tokio::select! {
-                _ = self.cancelled() =>{
-                    warn!("Receiving [{}] cancelled.", item_path.display());
-                    return Err(TransferItemError::Terminated);
-                }
-                r = stream.rx().read_chunk(CHUNK_SIZE) => {
-                    let chunk = r.map_err(|_| TransferItemError::StreamError)?;
-                    let Some(chunk) = chunk else{
-                        if total_written < file_size {
-                            // Stream ended prematurely
-                            out_file
-                                .flush()
-                                .await
-                                .map_err(|_| TransferItemError::FileIOError)?;
-                            warn!("RxStream ended prematurely [{}]", item_path.display());
-                            return Err(TransferItemError::StreamError);
-                        }
-                        break;
-                    };
-
-                    out_file
-                        .write_all(&chunk)
-                        .await
-                        .map_err(|_| TransferItemError::FileIOError)?;
-
-                    let len = chunk.len() as u64;
-                    total_written += len;
-                }
+                    _ = self.cancelled() =>{
+                        warn!("Receiving [{}] cancelled.", item_path.display());
+                        return Err(TransferItemError::Terminated);
+                    }
+                    _ = tick.tick() => {
+                        TransferControl::Ack(total_written)
+                            .write(&mut tx)
+                            .await
+                            .map_err(|_| {
+                            error!("Failed to write the ack.");
+                            TransferItemError::StreamError
+                    })?;
             }
+                    r = rx.read_chunk(CHUNK_SIZE) => {
+                        let chunk = r.map_err(|_| TransferItemError::StreamError)?;
+                        let Some(chunk) = chunk else{
+                            if total_written < file_size {
+                                // Stream ended prematurely
+                                out_file
+                                    .flush()
+                                    .await
+                                    .map_err(|_| TransferItemError::FileIOError)?;
+                                warn!("RxStream ended prematurely [{}]", item_path.display());
+                                return Err(TransferItemError::StreamError);
+                            }
+                            break;
+                        };
+
+                        out_file
+                            .write_all(&chunk)
+                            .await
+                            .map_err(|_| TransferItemError::FileIOError)?;
+
+                        let len = chunk.len() as u64;
+                        total_written += len;
+                    }
+                }
         }
 
         info!("Flushing {}", item_path.display());
@@ -541,16 +616,13 @@ impl PendingTransfer {
             .await
             .map_err(|_| TransferItemError::FileIOError)?;
 
-        info!("Flushing {}", item_path.display());
-
         std::fs::rename(&lock_path, &output_dir).map_err(|_| TransferItemError::FileIOError)?;
 
         // Final ack
-        // stream
-        //     .tx()
-        //     .write_all(&total_written.to_be_bytes())
-        //     .await
-        //     .map_err(|_| TransferItemError::StreamError)?;
+        TransferControl::Ack(total_written)
+            .write(&mut tx)
+            .await
+            .map_err(|_| TransferItemError::StreamError)?;
 
         info!("Received {}", item_path.display());
         Ok(())
@@ -588,7 +660,10 @@ impl PendingTransfer {
                 transfer_id: self.id,
             })
             .await
-            .map_err(|_| TransferItemError::StreamError)?;
+            .map_err(|_| {
+                error!("Failed to open transfer stream");
+                TransferItemError::StreamError
+            })?;
 
         stream
             .write(&TransferItemHeader {
@@ -599,12 +674,27 @@ impl PendingTransfer {
                 path: path.clone(),
             })
             .await
-            .map_err(|_| TransferItemError::StreamError)?;
+            .map_err(|_| {
+                error!("Failed to send item header.");
+                TransferItemError::StreamError
+            })?;
 
         if !item.is_file {
-            // If its folder just send the header
+            // If its folder just send the header - and listen for the response?
+            self.ack_sent_bytes(item.size);
             return Ok(());
         }
+
+        let (mut rx, mut tx) = stream.into_split();
+
+        let (ctrl_tx, mut ctrl_rx) = mpsc::channel::<TransferControl>(8);
+        let reader = tokio::spawn(async move {
+            while let Ok(c) = TransferControl::read_async(&mut rx).await {
+                if ctrl_tx.send(c).await.is_err() {
+                    break;
+                }
+            }
+        });
 
         let mut buf = Vec::with_capacity(64 * 1024);
 
@@ -612,27 +702,35 @@ impl PendingTransfer {
             tokio::select! {
                 _ = self.cancelled() => {
                     warn!("Sending item [{}] terminated.", path.display());
+                    reader.abort();
                     return Err(TransferItemError::Terminated);
                 }
+                Some(ctrl) = ctrl_rx.recv() => {
+                    info!("Got ctrl event {ctrl:?}");
+                }
                 result = file.read_buf(&mut buf)=>{
-                    let n = result.map_err(|e| {
-                        error!("Failed to read file {e:?}");
-                        TransferItemError::FileIOError})?;
+                    let n = result.map_err(|_| {
+                        error!("Failed to read file.");
+                        TransferItemError::FileIOError
+                    })?;
                     if n == 0 {
                         break;
                     }
                     item.sent_bytes += n as u64;
 
                     let chunk = std::mem::replace(&mut buf, Vec::with_capacity(64 * 1024));
-                    stream
-                        .tx()
+                    tx
                         .write_chunk(chunk.into())
                         .await
-                        .map_err(|_| TransferItemError::StreamError)?;
+                        .map_err(|_|{
+                            error!("Failed to write chunk.");
+                            TransferItemError::StreamError
+                        })?;
                 }
             };
         }
         info!("Sending {} finished", path.display());
+        self.ack_sent_bytes(item.size);
 
         Ok(())
     }
@@ -729,6 +827,7 @@ impl Transfers {
     pub fn pending_transfers(&self) -> &std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>> {
         &self.pending_transfers.inner
     }
+
     pub fn get_pending_transfers(&self) -> Vec<Arc<PendingTransfer>> {
         self.pending_transfers()
             .read()
@@ -737,6 +836,16 @@ impl Transfers {
             .cloned()
             .collect()
     }
+
+    // pub fn get_pending_transfers(&self) -> Vec<Arc<PendingTransfer>> {
+    //     self.pending_transfers()
+    //         .read()
+    //         .unwrap()
+    //         .values()
+    //         .cloned()
+    //         .collect()
+    // }
+
     pub fn get_transfers(&self) -> Vec<TransferMeta> {
         self.pending_transfers()
             .read()
@@ -753,6 +862,7 @@ impl Transfers {
     pub async fn add_transfer(
         &self,
         target: DeviceId,
+        target_username: Username,
         direction: TransferDirection,
         offer: TransferOffer<PathTree>,
     ) {
@@ -760,6 +870,7 @@ impl Transfers {
         let t = Arc::new(PendingTransfer::from_offer(
             self.event_tx.clone(),
             target,
+            target_username,
             direction,
             offer,
         ));

@@ -18,9 +18,14 @@ impl DevicesModel {
             notify: ModelNotify::default(),
         }
     }
+
     pub fn update(&self, new_devices: Vec<DeviceItem>) {
         *self.devices.borrow_mut() = new_devices;
         self.notify.reset();
+    }
+
+    pub fn items(&self) -> Vec<DeviceItem> {
+        self.devices.borrow().clone()
     }
 }
 

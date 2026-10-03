@@ -1,33 +1,65 @@
 use nectan_core::format::BinaryBytes;
 use nectan_core::protocol::NectanState;
-use nectan_core::transfers::{PendingTransfer, PendingTransfers, Transfers};
-use slint::{
-    ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, Timer, TimerMode, ToSharedString,
-    Weak,
-};
+use nectan_core::transfers::{PendingTransfer, TransferStatus, Transfers};
+use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, ToSharedString, Weak};
 use std::rc::Rc;
-use std::time::Instant;
-use std::{cell::RefCell, sync::Arc, time::Duration};
-use uuid::Uuid;
+use std::sync::atomic::Ordering::Relaxed;
+use std::{cell::RefCell, sync::Arc};
 
 use crate::Transfer;
 use crate::state::ui_state;
-use crate::{NectanWindow, TransferItem, TransfersBridge};
+use crate::{NectanWindow, TransfersBridge};
 
-// idk how to call that crap
+/// One transfer: backend handle + cached UI row.
 pub struct TransferObject {
     pending: Arc<PendingTransfer>,
-    ui_state_shit: Transfer,
+    ui: Transfer,
+}
+
+impl TransferObject {
+    fn new(pending: Arc<PendingTransfer>) -> Self {
+        let ui = build_row(&pending);
+        Self { pending, ui }
+    }
+}
+
+fn build_row(p: &PendingTransfer) -> Transfer {
+    let sent = p.sent_bytes.load(Relaxed) as f32;
+    let progress = if p.total_size == 0 {
+        0.0
+    } else {
+        sent / p.total_size as f32
+    };
+    let receiver_name = p.target_name.to_string().into();
+
+    let status = match p.status() {
+        TransferStatus::Downloading => crate::TransferStatus::Processing,
+        TransferStatus::Finished => crate::TransferStatus::Finished,
+    };
+
+    Transfer {
+        id: p.id.to_shared_string(),
+        outcoming: !p.direction.is_incoming(),
+        percent_text: format!("{:.2}%", progress * 100.0).into(),
+        progress,
+        receiver_name,
+        size_text: BinaryBytes(p.total_size).to_string().into(),
+        speed_text: "60 MB/s".into(), // TODO
+        status,
+        title: p.name.clone().into(),
+        total_files: p.total_files as i32,
+    }
 }
 
 pub struct TransfersModel {
     pool: Arc<Transfers>,
     transfers: RefCell<Vec<TransferObject>>,
     notify: ModelNotify,
+    /// Single files list: only one transfer's contents visible at a time.
     files: Rc<LazyFiles>,
 }
 
-/// Lazy (files) files loader for transfer contents
+/// Lazy loader for the contents of ONE selected transfer.
 pub struct LazyFiles {
     src: RefCell<Option<Arc<PendingTransfer>>>,
     notify: ModelNotify,
@@ -41,6 +73,7 @@ impl LazyFiles {
         })
     }
 
+    /// Switch source. `None` = close list.
     pub fn set_source(&self, src: Option<Arc<PendingTransfer>>) {
         *self.src.borrow_mut() = src;
         self.notify.reset();
@@ -62,21 +95,25 @@ impl Model for LazyFiles {
         self.src
             .borrow()
             .as_ref()
-            .map_or(0, |s| s.total_items as usize)
+            .map_or(0, |s| s.total_entries as usize)
     }
 
     fn row_data(&self, row: usize) -> Option<Self::Data> {
         let src = self.src.borrow();
         let item = src.as_ref()?.get_item(row as u32).ok()?;
+
+        if row >= self.row_count() {
+            return None;
+        }
+
+        let progress = item.sent_bytes as f32 / item.size as f32;
+        let percent_text = format!("{:.2}%", progress * 100.0).into();
+
         Some(crate::TransferItem {
             name: item.name().into(),
-            percent_text: format!(
-                "{:.0}%",
-                (item.sent_bytes as f32 / item.size as f32).max(100.0)
-            )
-            .into(),
+            percent_text,
             size_text: BinaryBytes(item.size).to_string().into(),
-            progress: 0.12,
+            progress,
         })
     }
 
@@ -94,28 +131,17 @@ impl TransfersModel {
             files: LazyFiles::new(),
         }
     }
+
+    pub fn files(&self) -> Rc<LazyFiles> {
+        self.files.clone()
+    }
+
     pub fn update_all(&self) {
-        let start = Instant::now();
-        println!("Map took {:?}", start.elapsed());
-        let pending = self.pool.get_pending_transfers();
-        let new = pending
+        let new = self
+            .pool
+            .get_pending_transfers()
             .iter()
-            .map(|t| TransferObject {
-                pending: t.clone(),
-                ui_state_shit: Transfer {
-                    outcoming: false,
-                    percent_text: "12%".to_shared_string(),
-                    progress: 0.12,
-                    receiver_name: "Huj".to_shared_string(),
-                    speed_text: "piz".to_shared_string(),
-                    status: "huj".into(),
-                    title: "Kurwy".into(),
-                    total_files: 696969,
-                    id: t.id.to_shared_string(),
-                    size_text: "123 GB".into(),
-                    items: ModelRc::new(LazyFiles::new()),
-                },
-            })
+            .map(|t| TransferObject::new(t.clone()))
             .collect();
         *self.transfers.borrow_mut() = new;
         self.notify.reset();
@@ -127,26 +153,18 @@ impl TransfersModel {
             let Some(t) = transfers.get_mut(row) else {
                 return;
             };
-            let p = &t.pending;
-            t.ui_state_shit = Transfer {
-                id: p.id.to_shared_string(),
-                items: t.ui_state_shit.items.clone(),
-                outcoming: !p.direction.is_incoming(),
-                percent_text: "pizda".into(),
-                progress: 0.0,
-                receiver_name: "Cwel".into(),
-                size_text: "HUj".into(),
-                speed_text: "Kurwa".into(),
-                status: "sex".into(),
-                title: "Jukuwry".into(),
-                total_files: 123,
-            };
-        } // borrow dropped here
-
+            t.ui = build_row(&t.pending);
+        }
         self.notify.row_changed(row);
     }
 
-    pub fn open_files(&self, src: Option<Arc<PendingTransfer>>) {
+    pub fn select_files(&self, id: &str) {
+        let src = self
+            .transfers
+            .borrow()
+            .iter()
+            .find(|t| t.pending.id.to_string() == id)
+            .map(|t| t.pending.clone());
         self.files.set_source(src);
     }
 }
@@ -159,10 +177,7 @@ impl Model for TransfersModel {
     }
 
     fn row_data(&self, row: usize) -> Option<Self::Data> {
-        self.transfers
-            .borrow()
-            .get(row)
-            .map(|t| t.ui_state_shit.clone())
+        self.transfers.borrow().get(row).map(|t| t.ui.clone())
     }
 
     fn model_tracker(&self) -> &dyn ModelTracker {
@@ -170,27 +185,41 @@ impl Model for TransfersModel {
     }
 }
 
-/// Called when transfer state changed or
-pub fn update_transfers(w: &Weak<NectanWindow>, state: &NectanState) {
+/// Called when transfer state changed.
+pub fn update_transfers(w: &Weak<NectanWindow>, _state: &NectanState) {
     let _ = w.upgrade_in_event_loop(move |_w| {
         ui_state().transfers().update_all();
     });
 }
 
-/// Updates range of the transfer's contents list
-pub fn handle_refresh_items_list(w: &NectanWindow) {
-    let bridge = w.global::<TransfersBridge>();
-    bridge.on_refresh_range(move |first, count| {
-        ui_state()
-            .transfers()
-            .files
-            .refresh_range(first.max(0) as usize, count.max(0) as usize);
+pub fn set_transfers(w: &Weak<NectanWindow>, _state: &NectanState) {
+    tracing::info!("Updating transfers.");
+    let _ = w.upgrade_in_event_loop(move |_w| {
+        ui_state().transfers().update_all();
     });
 }
 
+/// UI picked transfer whose files to show.
+pub fn handle_lazyfiles_source(w: &NectanWindow) {
+    w.global::<TransfersBridge>()
+        .on_selected_lazyfiles_source(|id| {
+            ui_state().transfers().select_files(id.as_str());
+        });
+}
+
+/// Updates range of the transfer's contents list.
+pub fn handle_refresh_items_list(w: &NectanWindow) {
+    w.global::<TransfersBridge>()
+        .on_refresh_range(move |first, count| {
+            ui_state()
+                .transfers()
+                .files
+                .refresh_range(first.max(0) as usize, count.max(0) as usize);
+        });
+}
+
 pub fn handle_refresh_transfers_list(w: &NectanWindow) {
-    let bridge = w.global::<TransfersBridge>();
-    bridge.on_refresh_transfers(move || {
+    w.global::<TransfersBridge>().on_refresh_transfers(move || {
         let transfers = ui_state().transfers();
         for i in 0..transfers.row_count() {
             transfers.update_row(i);
@@ -198,36 +227,31 @@ pub fn handle_refresh_transfers_list(w: &NectanWindow) {
     });
 }
 
-pub fn set_transfers(_w: &Weak<NectanWindow>, state: &NectanState) {
-    tracing::info!("Updating transfers.");
-    let event_tx = state.app_event_tx.clone();
-    let _ = _w.upgrade_in_event_loop(move |_w| {
-        let model = ui_state().transfers();
-        // let lazy = LazyFiles::new();
-        // lazy.set_source(Some(Arc::new(PendingTransfer::default(10_000, event_tx))));
-        model.update_all();
-    });
+pub fn init_models(w: &NectanWindow) {
+    let m = ui_state().transfers(); // Rc<TransfersModel>
+    let b = w.global::<TransfersBridge>();
+    b.set_transfers(ModelRc::from(m.clone()));
+    b.set_files(ModelRc::from(m.files()));
 }
 
-// pub fn handle_transfer_controls(w: &NectanWindow, state: Arc<NectanState>) {
-//     let bridge = w.global::<TransfersBridge>();
-//     let s = state.clone();
-//     bridge.on_delete_transfer(move |id| {
-//         let transfer_id = Uui_stated::parse_str(&id).unwrap();
-//         let s = s.clone();
-//         tokio::spawn(async move {
-//             let _ = s.transfers_pool.delete_transfer(transfer_id).await;
-//         });
-//     });
-//
-//     bridge.on_pause_resume_transfer(move |id| {
-//         let transfer_id = Uui_stated::parse_str(&id).unwrap();
-//         let s = state.clone();
-//         tokio::spawn(async move {
-//             let _ = s
-//                 .transfers_pool
-//                 .pause_resume_transfer(transfer_id, true)
-//                 .await;
-//         });
-//     });
-// }
+pub fn handle_transfer_controls(w: &NectanWindow, state: Arc<NectanState>) {
+    let bridge = w.global::<TransfersBridge>();
+
+    let s = state.clone();
+    bridge.on_delete_transfer(move |_id| {
+        let _s = s.clone();
+        // tokio::spawn(async move {
+        //     let _ = _s.transfers_pool.delete_transfer(transfer_id).await;
+        // });
+    });
+
+    bridge.on_pause_resume_transfer(move |_id| {
+        let _s = state.clone();
+        // tokio::spawn(async move {
+        //     let _ = _s
+        //         .transfers_pool
+        //         .pause_resume_transfer(transfer_id, true)
+        //         .await;
+        // });
+    });
+}

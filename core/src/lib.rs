@@ -50,6 +50,17 @@ pub async fn setup_core(
         .keep_alive_interval(Duration::from_secs(5))
         .build();
 
+    let builder = Endpoint::builder(presets::N0);
+    let endpoint = builder.bind().await.expect("Failed to bind endpoint");
+
+    let mdns = MdnsAddressLookup::builder()
+        .service_name("nectan_user")
+        .advertise(true)
+        .build(endpoint.id())
+        .unwrap();
+
+    endpoint.address_lookup().unwrap().add(mdns.clone());
+
     let state = NectanState::build(
         userinfo,
         device_id,
@@ -57,38 +68,21 @@ pub async fn setup_core(
         devices,
         app_event_tx,
         storage,
+        mdns,
     )
     .await;
 
-    let s = state.clone();
-    tokio::spawn(async move {
-        let endpoint = loop {
-            let Ok(e) = Endpoint::builder(presets::N0)
-                .transport_config(transport.clone())
-                .bind()
-                .await
-            else {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                continue;
-            };
-            break e;
-        };
-        let mdns = MdnsAddressLookup::builder()
-            .service_name("nectan_user")
-            .advertise(true)
-            .build(endpoint.id())
-            .unwrap();
+    let s = Arc::new(state.clone());
+    let prot = NectanProtocol::new(endpoint.clone(), s.clone());
+    let router = Router::builder(endpoint).accept(ALPN, prot).spawn();
 
-        endpoint.address_lookup().unwrap().add(mdns.clone());
-        let prot = NectanProtocol::new(endpoint.clone(), Arc::new(s.clone()));
-        let router = Router::builder(endpoint).accept(ALPN, prot).spawn();
-        s.attach_router(&router);
+    state.attach_router(&router);
 
-        start_registration_loop(&s);
-        announce_endpoint(&s);
-        start_mdns_discovery(&s);
-        let _ = resolve_devices(&s, None).await;
-    });
+    start_mdns_discovery(&state);
+    start_registration_loop(&state);
+    announce_endpoint(&state);
+
+    tokio::spawn(resolve_devices(s, None));
 
     Ok(state)
 }

@@ -80,12 +80,12 @@ export component OutcomingTransferModal inherits Rectangle {
     }
 
     modal := GeneralModal {
-        open <=> OutcomingTransferModalBridge.sending-open;
 
         init => { self.focus(); }
 
         on-close => {
             on-closed();
+            OutcomingTransferModalBridge.sending-open = false;
             OutcomingTransferModalBridge.transfer-walk-cancelled();
         }
 
@@ -595,9 +595,9 @@ export global IncomingTransferOfferBridge {
 
 export component IncomingTransferOfferModal inherits Rectangle {
     GeneralModal {
-        open <=> IncomingTransferOfferBridge.is-open;
 
         on-close => {
+            IncomingTransferOfferBridge.is-open = false;
             IncomingTransferOfferBridge.reject();
         }
         on-enter => {

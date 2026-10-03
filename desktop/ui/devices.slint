@@ -258,7 +258,7 @@ export component DeviceScreen inherits Rectangle {
     export component DeviceOptionsModal inherits Rectangle {
     property <DeviceItem> device: DevicesBridge.devices[DevicesBridge.device-details-open-idx];
     GeneralModal {
-        open <=> DevicesBridge.device-details-open;
+        on-close => { DevicesBridge.device-details-open = false; }
 
         Rectangle {
             width: min(512px, parent.width - 40px);

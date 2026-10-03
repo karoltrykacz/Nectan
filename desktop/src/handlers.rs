@@ -13,6 +13,10 @@ use nectan_core::{
     transfers::{TransferOfferError, send_contents},
     walker::Walker,
 };
+use nucleo::{
+    Config, Matcher,
+    pattern::{AtomKind, CaseMatching, Normalization, Pattern},
+};
 use rfd::FileHandle;
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, invoke_from_event_loop};
 use slint::{
@@ -20,6 +24,7 @@ use slint::{
     winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent},
 };
 use std::{
+    cell::RefCell,
     fs::DirEntry,
     path::PathBuf,
     rc::Rc,
@@ -31,9 +36,10 @@ use tracing::{error, info, trace};
 use uuid::Uuid;
 
 use crate::{
-    AddDeviceBridge, ConnectionOfferBridge, IncomingTransferOffer, IncomingTransferOfferBridge,
-    LookupState, NectanWindow, OutcomingTransferModalBridge, SendModalState, SettingsBridge,
-    TreeNode, WindowBridge, devices::update_devices, state::ui_state, transfers::update_transfers,
+    AddDeviceBridge, ConnectionOfferBridge, DeviceItem, IncomingTransferOffer,
+    IncomingTransferOfferBridge, LookupState, NectanWindow, OutcomingTransferModalBridge,
+    SearchBridge, SendModalState, SettingsBridge, TreeNode, WindowBridge, devices::update_devices,
+    state::ui_state, transfers::update_transfers,
 };
 
 fn show_error(
@@ -613,6 +619,7 @@ pub fn handle_drag_and_drop_files(w: &NectanWindow) {
         EventResult::Propagate
     });
 }
+
 pub fn handle_outcoming_transfer(w: &NectanWindow) {
     let weak = w.as_weak();
     let b = w.global::<OutcomingTransferModalBridge>();
@@ -696,6 +703,7 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
         });
     });
 }
+
 pub fn handle_paste(w: &NectanWindow) {
     let weak = w.as_weak();
     w.on_pasted(move || {
@@ -715,6 +723,7 @@ pub fn handle_paste(w: &NectanWindow) {
         }
     })
 }
+
 pub fn handle_username_change(w: &NectanWindow, s: Arc<NectanState>) {
     let b = w.global::<SettingsBridge>();
     let weak = w.as_weak();
@@ -735,5 +744,37 @@ pub fn handle_username_change(w: &NectanWindow, s: Arc<NectanState>) {
                 show_error(&weak, "Invalid username", e.to_string());
             }
         }
+    });
+}
+
+pub fn setup_search(w: &NectanWindow) {
+    let weak = w.as_weak();
+    let matcher = Rc::new(RefCell::new(Matcher::new(Config::DEFAULT)));
+
+    w.global::<SearchBridge>().on_query_changed(move |q| {
+        let Some(w) = weak.upgrade() else { return };
+        let all = ui_state().devices().items();
+
+        let results: Vec<DeviceItem> = if q.trim().is_empty() {
+            all
+        } else {
+            let pattern = Pattern::new(
+                q.as_str(),
+                CaseMatching::Ignore,
+                Normalization::Smart,
+                AtomKind::Fuzzy,
+            );
+            let mut m = matcher.borrow_mut();
+            let names: Vec<String> = all.iter().map(|d| d.name.to_string()).collect();
+            let ranked = pattern.match_list(names.iter().map(|s| s.as_str()), &mut m);
+
+            ranked
+                .into_iter()
+                .filter_map(|(name, _score)| all.iter().find(|d| d.name.as_str() == name).cloned())
+                .collect()
+        };
+
+        w.global::<SearchBridge>()
+            .set_results(ModelRc::new(VecModel::from(results)));
     });
 }

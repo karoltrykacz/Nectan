@@ -1,41 +1,121 @@
+
+
 import { GeneralModal, PlainLineEdit, SvgIcon } from "elements.slint";
+import { DeviceItem, DeviceRow, DevicesBridge } from "devices.slint";
 import { Theme } from "theme.slint";
+import { ListView } from "std-widgets.slint";
 
 export global SearchBridge {
     in-out property <bool> visible;
+    in-out property <[DeviceItem]> results;
+    callback query-changed(string);
+    callback select-device(string);
 }
 
-export component Search inherits Rectangle {
+export component Search inherits GeneralModal {
+    property <string> query;
+    property <int> selected: 0;
 
-    GeneralModal {
-        open <=> SearchBridge.visible;
-        on-close => {}
-        on-enter => {}
+    function pick(id: string) {
+        SearchBridge.select-device(id);
+        SearchBridge.visible = false;
+    }
 
-        Rectangle {
-            width: min(620px, parent.width * 0.8);
-            height: 64px;
+    function move(delta: int) {
+        let n = SearchBridge.results.length;
+        if (n == 0) { return; }
+        root.selected = Math.mod(root.selected + delta + n, n);
 
-            background: Theme.colors.primary-col;
-            border-radius: 14px;
-            border-width: 1px;
-            border-color: Theme.colors.hover-col;
+        let row-top = root.selected * 52px;
+        if (row-top < -list.viewport-y) {
+            list.viewport-y = -row-top;
+        } else if (row-top + 52px > -list.viewport-y + list.height) {
+            list.viewport-y = -(row-top + 52px - list.height);
+        }
+    }
 
-            drop-shadow-blur: 28px;
+    init => { SearchBridge.query-changed(""); }
 
-            HorizontalLayout {
-                alignment: start;
-                cross-axis-alignment: center;
-                padding-left: 24px;
+    on-close => { SearchBridge.visible = false; }
 
-                SvgIcon {
-                    source: @image-url("icons/search.svg");
-                    fg: Theme.colors.fourth-font;
-                    size: 16px;
+    on-enter => {
+        if SearchBridge.results.length > 0 {
+            pick(SearchBridge.results[min(root.selected, SearchBridge.results.length - 1)].id);
+        }
+    }
+
+    Rectangle {
+        width: min(820px, parent.width * 0.8);
+        height: layout.preferred-height;
+        y: parent.height / 3;
+        x: (parent.width - self.width) / 2;
+
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.hover-col;
+
+        TouchArea { }
+
+        FocusScope {
+            capture-key-pressed(e) => {
+                if e.text == Key.DownArrow { root.move(1); return accept; }
+                if e.text == Key.UpArrow { root.move(-1); return accept; }
+                reject
+            }
+
+            layout := VerticalLayout {
+                HorizontalLayout {
+                    height: 56px;
+                    cross-axis-alignment: center;
+                    padding-left: 20px;
+                    spacing: 8px;
+
+                    SvgIcon {
+                        source: @image-url("icons/search.svg");
+                        fg: Theme.colors.fourth-font;
+                        size: 16px;
+                    }
+
+                    PlainLineEdit {
+                        input-text <=> root.query;
+                        placeholder-text: "Search...";
+                        edited(t) => {
+                            root.selected = 0;
+                            list.viewport-y = 0;
+                            SearchBridge.query-changed(t);
+                        }
+                        accepted => { root.on-enter(); }
+                    }
                 }
 
-                PlainLineEdit {
-                    placeholder-text: "Search...";
+                VerticalLayout {
+                    padding-top: 0;
+                    padding: 8px;
+
+                    list := ListView {
+                        visible: SearchBridge.results.length > 0;
+                        height: SearchBridge.results.length > 0
+                            ? min(320px, SearchBridge.results.length * 52px)
+                            : 0px;
+                        for d[i] in SearchBridge.results: DeviceRow {
+                            border-radius: 8px;
+                            name: d.name;
+                            status: d.status;
+                            selected: i == root.selected;
+                            clicked => { root.pick(d.id); }
+                        }
+                    }
+
+                    if SearchBridge.results.length == 0 && root.query != "": Text {
+                        height: 52px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        text: "No results";
+                        font-size: 13px;
+                        font-family: Theme.font-body;
+                        color: Theme.colors.third-font;
+                    }
                 }
             }
         }

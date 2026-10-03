@@ -15,11 +15,14 @@ use crate::handlers::{
     event_listener, handle_add_device, handle_cancel_walker, handle_connection_offer,
     handle_drag_and_drop_files, handle_incoming_transfer_offer, handle_outcoming_transfer,
     handle_paste, handle_scan_files, handle_scan_folders, handle_send, handle_username_change,
-    handle_window_controls,
+    handle_window_controls, setup_search,
 };
 
 use crate::state::init_app_state;
-use crate::transfers::{handle_refresh_items_list, handle_refresh_transfers_list, set_transfers};
+use crate::transfers::{
+    handle_lazyfiles_source, handle_refresh_items_list, handle_refresh_transfers_list,
+    handle_transfer_controls, init_models, set_transfers,
+};
 use nectan_core::devices::Devices;
 use nectan_core::devices::UserInfo;
 use nectan_core::devices::Username;
@@ -125,30 +128,34 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     }
     handle_settings(&w);
-
     init_app_state(&w, state.transfers.clone());
+    setup_search(&w);
 
     tokio::spawn(event_listener(w.as_weak(), rx, Arc::clone(&state)));
 
     handle_paste(&w);
-
-    handle_window_controls(&w);
-    handle_add_device(&w, Arc::clone(&state));
-
+    handle_scan_files(&w);
+    handle_scan_folders(&w);
     handle_drag_and_drop_files(&w);
     handle_send(&w, Arc::clone(&state));
 
+    init_models(&w);
+    handle_lazyfiles_source(&w);
+    handle_refresh_items_list(&w);
+    handle_transfer_controls(&w, Arc::clone(&state));
+
+    handle_window_controls(&w);
+
     handle_outcoming_transfer(&w);
     handle_incoming_transfer_offer(&w, Arc::clone(&state));
+
     handle_connection_offer(&w, Arc::clone(&state));
+    handle_add_device(&w, Arc::clone(&state));
 
     update_devices(&w.as_weak(), &state);
 
-    handle_scan_files(&w);
-    handle_scan_folders(&w);
     handle_cancel_walker(&w);
 
-    handle_refresh_items_list(&w);
     handle_refresh_transfers_list(&w);
 
     set_transfers(&w.as_weak(), &state);

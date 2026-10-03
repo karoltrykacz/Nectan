@@ -13,30 +13,41 @@ export struct TransferItem {
     percent-text: string,
     progress: float,
 }
+export enum TransferStatus { processing, finished, error, offline }
+
 
 export struct Transfer {
     id: string,
     title: string,
     total_files: int,
-    status: string,
+    status: TransferStatus,
     progress: float,
     size-text: string,
     percent-text: string,
     speed-text: string,
     receiver-name: string,
     outcoming: bool,
-    items: [TransferItem]
 }
 
 export global TransfersBridge {
     in-out property <[Transfer]> transfers: [];
     in-out property <int> selected-transfer: -1;
+    in property <[TransferItem]> files;
+
+    callback selected-lazyfiles-source(string);
 
     callback delete-transfer(string);
     callback pause-resume-transfer(string);
     callback refresh-range(int, int);
 
     callback refresh-transfers();
+
+    pure public function status-to-string(s: TransferStatus) -> string {
+        if (s == TransferStatus.processing) { return "Processing"; }
+        if (s == TransferStatus.finished) { return "Finished"; }
+        if (s == TransferStatus.error) { return "Error"; }
+        return "offline";
+    }
 }
 
 export component TransferTile inherits Rectangle {
@@ -44,7 +55,7 @@ export component TransferTile inherits Rectangle {
 
     callback clicked;
 
-    background: touch.has-hover ? Theme.colors.third-col : Theme.colors.secondary-col;
+    background: touch.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
     border-color: Theme.colors.third-col;
     border-width: 1px;
 
@@ -87,7 +98,7 @@ export component TransferTile inherits Rectangle {
             Rectangle { }
 
             Text {
-                text: root.self.status;
+                text: TransfersBridge.status-to-string(root.self.status);
                 color: Theme.colors.primary-font;
                 font-weight: 600;
                 font-size: 13px;
@@ -128,7 +139,7 @@ export component TransferTile inherits Rectangle {
         Rectangle {
             height: 2.5px;
             border-radius: 2px;
-            background: Theme.colors.third-col;
+            background: Theme.colors.hover-col;
             Rectangle {
                 animate width {
                     duration: 100ms;
@@ -217,6 +228,10 @@ component FileRow inherits Rectangle {
             }
         }
 
+        Rectangle {
+            width: 12px;
+        }
+
         Text {
             text: size-text;
             color: Theme.colors.secondary-font;
@@ -257,9 +272,7 @@ export component TransferDetails inherits Rectangle {
     in property <Transfer> transfer;
     in-out property <[TransferItem]> files;
 
-    property <bool> search-open: false;
     callback back;
-    init => { search-open = false; }
 
     VerticalLayout {
 
@@ -326,7 +339,7 @@ export component TransferDetails inherits Rectangle {
 
             Text {
                 horizontal-alignment: right;
-                text: transfer.status;
+                text: TransfersBridge.status-to-string(transfer.status);
                 color: Theme.colors.primary-font;
                 font-weight: 500;
                 font-size: 13px;
@@ -338,7 +351,8 @@ export component TransferDetails inherits Rectangle {
             width: root.width - 40px;
             height: 3px;
             border-radius: 2px;
-            background: Theme.colors.third-col;
+            background: Theme.colors.hover-col;
+
             Rectangle {
                 animate width {
                     duration: 200ms;
@@ -424,7 +438,7 @@ export component TransferDetails inherits Rectangle {
 
                     Timer {
                         interval: 1s;
-                        running: true;
+                        running: transfer.status == TransferStatus.processing;
                         triggered() => {
                             TransfersBridge.refresh-range(items.viewport-x / -36px, items.height / 36px);
                         }
@@ -433,8 +447,8 @@ export component TransferDetails inherits Rectangle {
                     items := ListView {
                         vertical-scrollbar-policy: as-needed;
                         horizontal-scrollbar-policy: always-off;
-                        // how to create timer that will update elements?
-                        for f[i] in transfer.items: FileRow {
+
+                        for f[i] in TransfersBridge.files: FileRow {
                             row-padding-right: 18px;
                             row-padding-left: 12px;
                             name: f.name;
@@ -452,39 +466,8 @@ export component TransferDetails inherits Rectangle {
 
 export component Transfers inherits Rectangle {
 
-    // grid := GridLayout {
-    //     padding: 20px;
-    //     spacing: (self.width - 40px - (200px * 4)) / 3;
-    //
-    //     Row {
-    //         Rectangle {
-    //             width: 200px;
-    //             height: 200px;
-    //             background: Theme.colors.fourth-col;
-    //         }
-    //
-    //         Rectangle {
-    //             width: 200px;
-    //             height: 200px;
-    //             background: Theme.colors.fourth-col;
-    //         }
-    //
-    //         Rectangle {
-    //             width: 200px;
-    //             height: 200px;
-    //             background: Theme.colors.fourth-col;
-    //         }
-    //
-    //         Rectangle {
-    //             width: 200px;
-    //             height: 200px;
-    //             background: Theme.colors.fourth-col;
-    //         }
-    //     }
-    // }
-
     Timer {
-        interval: 50ms;
+        interval: 41ms;
         running: true;
         triggered() => {
             TransfersBridge.refresh-transfers();
@@ -499,7 +482,10 @@ export component Transfers inherits Rectangle {
             for item[i] in TransfersBridge.transfers: VerticalLayout {
                 TransferTile {
                     self: item;
-                    clicked => { TransfersBridge.selected-transfer = i; }
+                    clicked => {
+                        TransfersBridge.selected-transfer = i;
+                        TransfersBridge.selected-lazyfiles-source(item.id);
+                    }
                 }
 
                 Rectangle {

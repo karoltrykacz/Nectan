@@ -36,15 +36,23 @@ impl<R: RecvStream, W: SendStream> StreamPair<R, W> {
     pub fn stream_id(&self) -> u64 {
         self.reader.id()
     }
+
+    pub fn into_split(self) -> (R, W) {
+        (self.reader, self.writer)
+    }
+
     pub fn new(reader: R, writer: W) -> Self {
         Self { reader, writer }
     }
+
     pub fn tx(&mut self) -> &mut W {
         &mut self.writer
     }
+
     pub fn rx(&mut self) -> &mut R {
         &mut self.reader
     }
+
     pub async fn read<M: crate::messages::StreamableMessage>(&mut self) -> Result<M> {
         Ok(M::read_async(&mut self.reader).await?)
     }
