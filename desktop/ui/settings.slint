@@ -1,5 +1,5 @@
 import { ScrollView, TextEdit, VerticalBox, LineEdit } from "std-widgets.slint";
-import { Theme } from "theme.slint";
+import { Theme, ThemeMode } from "theme.slint";
 import { PrimaryButton, GeneralModal, PlainLineEdit } from "elements.slint";
 
 export struct ShortcutItem {
@@ -102,7 +102,6 @@ export component SettingsRow {
     }
 }
 
-
 component ShortcutGroupView {
     in property <string> category;
     in property <[ShortcutItem]> items;
@@ -110,7 +109,7 @@ component ShortcutGroupView {
     Rectangle {
         border-radius: 8px;
         border-width: 1px;
-        border-color: Theme.colors.border-col;
+        border-color: Theme.colors.fourth-col.with-alpha(0.5);
 
         VerticalLayout {
             padding: 16px;
@@ -149,7 +148,7 @@ component ShortcutGroupView {
 
                     if item.show_border: Rectangle {
                         height: 1px;
-                        border-color: Theme.colors.border-col;
+                        background: Theme.colors.fourth-col.with-alpha(0.5);
                     }
                 }
             }
@@ -188,29 +187,6 @@ component SettingsTab inherits Rectangle {
     }
 }
 
-component BlockedTab inherits Rectangle {
-
-    width: 100%;
-    height: 100%;
-    opacity: SettingsBridge.active-tab == 3 ? 1.0 : 0.0;
-
-    VerticalLayout {
-        padding: 20px;
-        spacing: 12px;
-        alignment: start;
-
-        Text {
-            text: "Blocked devices";
-            color: Theme.colors.primary-font;
-            font-size: 20px;
-            font-weight: 700;
-        }
-
-        Rectangle {
-            height: 4px;
-        }
-    }
-}
 
 component SettingsGeneralTab inherits Rectangle {
 
@@ -220,6 +196,7 @@ component SettingsGeneralTab inherits Rectangle {
 
     VerticalLayout {
         padding: 20px;
+        padding-top: 16px;
         spacing: 12px;
         alignment: start;
 
@@ -249,7 +226,7 @@ component SettingsGeneralTab inherits Rectangle {
 
         Rectangle {
             height: 1px;
-            background: Theme.colors.border-col;
+            background: Theme.colors.fourth-col.with-alpha(0.5);
         }
 
         SettingsRow {
@@ -265,22 +242,9 @@ component SettingsGeneralTab inherits Rectangle {
             }
         }
 
-        SettingsRow {
-            title: "Advanced | Cat File hashing | Multithreaded mmap scanner";
-            subtitle: "";
-
-            PrimaryButton {
-                text: "Dołącz";
-
-                clicked => {
-                    SettingsBridge.join_discord();
-                }
-            }
-        }
-
         Rectangle {
             height: 1px;
-            background: Theme.colors.border-col;
+            background: Theme.colors.fourth-col.with-alpha(0.5);
         }
 
         SettingsRow {
@@ -298,7 +262,7 @@ component SettingsGeneralTab inherits Rectangle {
 
         Rectangle {
             height: 1px;
-            background: Theme.colors.border-col;
+            background: Theme.colors.fourth-col.with-alpha(0.5);
         }
 
         SettingsRow {
@@ -316,14 +280,14 @@ component SettingsGeneralTab inherits Rectangle {
 
         Rectangle {
             height: 1px;
-            background: Theme.colors.border-col;
+            background: Theme.colors.fourth-col.with-alpha(0.5);
         }
 
         SettingsRow {
             title: "Theme";
             subtitle: "Change theme of application";
             PrimaryButton {
-                text: Theme.mode == "dark" ? "Dark" : "Light";
+                text: Theme.mode == ThemeMode.dark ? "Dark" : "Light";
                 clicked => {
                     Theme.toggle-mode();
                 }
@@ -332,7 +296,7 @@ component SettingsGeneralTab inherits Rectangle {
 
         Rectangle {
             height: 1px;
-            background: Theme.colors.border-col;
+            background: Theme.colors.fourth-col.with-alpha(0.5);
         }
 
         SettingsRow {
@@ -385,6 +349,7 @@ component SettingShortcutsTab inherits Rectangle {
 
         VerticalLayout {
             padding: 20px;
+            padding-top: 16px;
             spacing: 20px;
 
             Text {
@@ -402,7 +367,118 @@ component SettingShortcutsTab inherits Rectangle {
     }
 }
 
+
+component ChangeUsernameModal inherits Rectangle {
+    property <string> new-username;
+
+    function save() {
+        SettingsBridge.change-username(new-username);
+        SettingsBridge.username-modal = false;
+    }
+
+    GeneralModal {
+
+        open <=> SettingsBridge.username-modal;
+
+        on-close => {}
+        on-enter => { save(); }
+
+        Rectangle {
+
+            width: min(520px, parent.width - 80px);
+            height: min(256px, parent.height - 80px);
+
+            animate width, height {
+                duration: 200ms;
+                easing: cubic-bezier(0.34, 1, 0.64, 1);
+            }
+
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            clip: true;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 14px;
+
+                VerticalLayout {
+                    spacing: 12px;
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        alignment: start;
+                        Text {
+                            text: "Change username";
+                            font-size: 20px;
+                            color: Theme.colors.primary-font;
+                            font-family: Theme.font-heading;
+                            font-weight: 600;
+                        }
+
+                        VerticalLayout {
+                            alignment: start;
+                            Text {
+                                text: "New username will be visible to other devices after app restart.";
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
+                            }
+                        }
+                    }
+
+                    Rectangle { }
+
+                    Rectangle {
+                        border-radius: 8px;
+                        background: Theme.colors.third-col;
+                        VerticalLayout {
+                            PlainLineEdit {
+                                open: SettingsBridge.username-modal;
+                                placeholder-text: "Enter username";
+                                input-text <=> new-username;
+                                accepted => { save(); }
+                            }
+                        }
+                    }
+
+                    Rectangle { }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        PrimaryButton {
+                            text: "Cancel";
+                            alt: true;
+                            clicked => {
+                                SettingsBridge.username-modal = false;
+                            }
+                        }
+
+                        Rectangle {
+                            width: 12px;
+                        }
+
+                        PrimaryButton {
+                            text: "Save";
+                            clicked => { save(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component SettingsModal inherits GeneralModal {
+
     open <=> SettingsBridge.settings_open;
 
     Rectangle {
@@ -415,7 +491,7 @@ export component SettingsModal inherits GeneralModal {
         background: Theme.colors.primary-col;
         border-radius: 12px;
         border-width: 1px;
-        border-color: Theme.colors.border-col;
+        border-color: Theme.colors.fourth-col.with-alpha(0.5);
 
         TouchArea {
             width: 100%;
@@ -449,30 +525,25 @@ export component SettingsModal inherits GeneralModal {
                         tab-id: 2;
                         tab: "Advanced";
                     }
-
-                    SettingsTab {
-                        active-tab <=> SettingsBridge.active-tab;
-                        tab-id: 3;
-                        tab: "Blocked";
-                    }
                 }
             }
 
             Rectangle {
                 width: 1px;
-                background: Theme.colors.border-col;
+                background: Theme.colors.fourth-col.with-alpha(0.5);
             }
 
             Rectangle {
                 SettingsGeneralTab { }
 
                 SettingShortcutsTab { }
-
-                BlockedTab { }
             }
         }
     }
+
+    ChangeUsernameModal { }
 }
+
 
 export global SettingsBridge {
 
@@ -489,110 +560,4 @@ export global SettingsBridge {
     callback open_privacy();
     callback toggle_autostart();
     callback change-username(string);
-}
-
-
-export component ChangeUsernameModal inherits Rectangle {
-    property <string> new-username;
-    GeneralModal {
-        open <=> SettingsBridge.username-modal;
-
-        on-close => {}
-        on-enter => {
-            SettingsBridge.change-username("LUJ");
-        }
-
-        Rectangle {
-
-            width: min(520px, parent.width - 80px);
-            height: min(256px, parent.height - 80px);
-
-            animate width, height {
-                duration: 200ms;
-                easing: cubic-bezier(0.34, 1, 0.64, 1);
-            }
-
-            drop-shadow-color: #00000099;
-            drop-shadow-blur: 28px;
-            background: Theme.colors.primary-col;
-            border-radius: 12px;
-            border-width: 1px;
-            border-color: Theme.colors.border-col;
-            clip: true;
-
-            TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => {}
-            }
-
-            VerticalLayout {
-                padding: 20px;
-
-                VerticalLayout {
-                    spacing: 12px;
-
-                    HorizontalLayout {
-                        VerticalLayout {
-                            alignment: start;
-                            Text {
-                                text: "Change username";
-                                font-size: 20px;
-                                color: Theme.colors.primary-font;
-                                font-family: Theme.font-heading;
-                                font-weight: 600;
-                            }
-
-                            HorizontalLayout {
-                                alignment: start;
-
-                                Text {
-                                    text: "Change your username visible to other devices.";
-                                    font-size: 13px;
-                                    color: Theme.colors.secondary-font;
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle { }
-
-                    Rectangle {
-                        border-radius: 8px;
-                        background: Theme.colors.secondary-col;
-                        VerticalLayout {
-                            PlainLineEdit {
-                                placeholder-text: "Enter username";
-                                input-text <=> new-username;
-                            }
-                        }
-                    }
-
-                    Rectangle { }
-
-                    HorizontalLayout {
-                        alignment: end;
-                        PrimaryButton {
-                            text: "Cancel";
-                            alt: true;
-                            clicked => {
-                                SettingsBridge.username-modal = false;
-                            }
-                        }
-
-                        Rectangle {
-                            width: 12px;
-                        }
-
-                        PrimaryButton {
-                            text: "Save";
-                            clicked => {
-                                SettingsBridge.change-username("asd");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }

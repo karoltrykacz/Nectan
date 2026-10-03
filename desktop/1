@@ -74,7 +74,6 @@ async fn main() -> Result<(), slint::PlatformError> {
         .unwrap_or_else(|| std::env::temp_dir())
         .join("Nectan");
     let storage = Storage::new(data_dir);
-
     let key = get_signing_key(&storage);
     let device_id = key.verifying_key();
 

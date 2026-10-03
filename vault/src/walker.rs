@@ -79,7 +79,7 @@ impl Walker {
                 info!(
                     "Scanning [{elapsed:?}]. [{files} files] [{folders} folders] [{symlinks} symlinks]",
                 );
-                std::thread::sleep(Duration::from_millis(40));
+                std::thread::sleep(Duration::from_millis(15));
             }
         });
 

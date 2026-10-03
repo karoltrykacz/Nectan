@@ -31,12 +31,10 @@ import {
 import { SearchBridge, Search, SearchBar } from "search.slint";
 
 export {
-    Theme,
     DeviceItem,
+    AddDeviceBridge,
     TransferItem,
     DevicesBridge,
-    SettingsBridge,
-    AddDeviceBridge,
     TransfersBridge,
     ConnectionOfferBridge,
     IncomingTransferOfferBridge,
@@ -437,46 +435,35 @@ component Sidebar inherits Rectangle {
             spacing: 8px;
             Row {
 
-                IconButton {
-                    border-radius: 12px;
-                    height: 42px;
-                    inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-                    transform-y: 0;
-                    SvgIcon {
-                        source: @image-url("icons/link.svg");
-                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                        size: 16px;
+                ActionButton {
+                    z: 3;
+                    horizontal-stretch: 1;
+                    icon: @image-url("icons/link.svg");
+                    text: "Add new device";
+                    clicked => {
+                        AddDeviceBridge.add_device_open = true;
                     }
-
-                    clicked => { AddDeviceBridge.add_device_open = true; }
                 }
 
-                IconButton {
-                    border-radius: 12px;
-                    height: 42px;
-                    inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-                    transform-y: 0;
-                    SvgIcon {
-                        source: @image-url("icons/tranfsers.svg");
-                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                        size: 17px;
+                ActionButton {
+                    z: 2;
+                    horizontal-stretch: 1;
+                    icon: @image-url("icons/tranfsers.svg");
+                    icon-size: 17px;
+                    text: "Open transfers";
+                    clicked => {
+                        WindowBridge.current-window = Window.transfers;
                     }
-
-                    clicked => { WindowBridge.current-window = Window.transfers; }
                 }
 
-                IconButton {
-                    border-radius: 12px;
-                    height: 42px;
-                    inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-                    transform-y: 0;
-                    SvgIcon {
-                        source: @image-url("icons/archive.svg");
-                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                        size: 15px;
+                ActionButton {
+                    z: 1;
+                    horizontal-stretch: 1;
+                    icon: @image-url("icons/search.svg");
+                    text: "Search";
+                    clicked => {
+                        WindowBridge.current-window = Window.transfers;
                     }
-
-                    clicked => { WindowBridge.current-window = Window.transfers; }
                 }
             }
         }
@@ -560,7 +547,7 @@ component Sidebar inherits Rectangle {
             enabled: WindowBridge.topbar-hover;
             SvgIcon {
                 source: @image-url("icons/minimize.svg");
-                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.fourth-font;
                 size: 16px;
             }
 
@@ -576,7 +563,7 @@ component Sidebar inherits Rectangle {
             enabled: WindowBridge.topbar-hover;
             SvgIcon {
                 source: @image-url("icons/maximize.svg");
-                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.fourth-font;
                 size: 16px;
             }
 
@@ -592,7 +579,7 @@ component Sidebar inherits Rectangle {
             enabled: WindowBridge.topbar-hover;
             SvgIcon {
                 source: @image-url("icons/close.svg");
-                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.fourth-font;
                 size: 16px;
             }
 

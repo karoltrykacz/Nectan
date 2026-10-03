@@ -122,23 +122,27 @@ impl TransfersModel {
     }
 
     pub fn update_row(&self, row: usize) {
-        let t = &mut self.transfers.borrow_mut()[row];
-        let p = &t.pending;
-        let new = Transfer {
-            id: p.id.to_shared_string(),
-            items: t.ui_state_shit.items.clone(),
-            outcoming: !p.direction.is_incoming(),
-            percent_text: "pizda".into(),
-            progress: 0.0,
-            receiver_name: "Cwel".into(),
-            size_text: "HUj".into(),
-            speed_text: "Kurwa".into(),
-            status: "sex".into(),
-            title: "Jukuwry".into(),
-            total_files: 123,
-        };
-        // let
-        t.ui_state_shit = new;
+        {
+            let mut transfers = self.transfers.borrow_mut();
+            let Some(t) = transfers.get_mut(row) else {
+                return;
+            };
+            let p = &t.pending;
+            t.ui_state_shit = Transfer {
+                id: p.id.to_shared_string(),
+                items: t.ui_state_shit.items.clone(),
+                outcoming: !p.direction.is_incoming(),
+                percent_text: "pizda".into(),
+                progress: 0.0,
+                receiver_name: "Cwel".into(),
+                size_text: "HUj".into(),
+                speed_text: "Kurwa".into(),
+                status: "sex".into(),
+                title: "Jukuwry".into(),
+                total_files: 123,
+            };
+        } // borrow dropped here
+
         self.notify.row_changed(row);
     }
 

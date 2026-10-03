@@ -74,6 +74,7 @@ export component OutcomingTransferModal inherits Rectangle {
     }
 
     callback send();
+
     send => {
         OutcomingTransferModalBridge.send(OutcomingTransferModalBridge.sending-destination-id,OutcomingTransferModalBridge.transfer-name, compression);
     }
@@ -98,8 +99,9 @@ export component OutcomingTransferModal inherits Rectangle {
         Rectangle {
 
             property <bool> is-initial: 
-	   	root.send-state == SendModalState.Initial ||
+		root.send-state == SendModalState.Initial ||
                 root.send-state == SendModalState.Advanced;
+
             width: is-initial ? min(820px, parent.width - 80px) : min(520px, parent.width - 80px);
             height: is-initial ? min(520px, parent.height - 80px) : min(256px, parent.height - 80px);
 
@@ -131,10 +133,9 @@ export component OutcomingTransferModal inherits Rectangle {
                 send-state == SendModalState.Offline ||
                 send-state == SendModalState.Rejected:
     	    GeneralFocusScope {
-                on-close => {
-                }
-                on-enter => {
-                }
+                on-close => {}
+                on-enter => {}
+
                 VerticalLayout {
                     padding: 20px;
                     HorizontalLayout {
@@ -184,7 +185,6 @@ export component OutcomingTransferModal inherits Rectangle {
                         }
                     }
 
-                    // Should the offer be cancellable? 
                     HorizontalLayout {
                         alignment: end;
                         spacing: 12px;

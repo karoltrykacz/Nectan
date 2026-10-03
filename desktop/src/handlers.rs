@@ -2,13 +2,14 @@ use ignore::WalkBuilder;
 use nectan_core::{
     code_lookup::{CodeLookupError, gen_code, issue_code, lookup_code},
     common::{common_parent, gen_transfer_name},
-    devices::device_id_from_base64,
+    devices::{Username, device_id_from_base64},
     format::{DecimalBytes, RoundedDecimalBytes},
     messages::{
         AppEvent::{self},
         ConnectionOffer, UiResponse,
     },
     protocol::{NectanState, TransferOffer, TransferOfferRequest, connect},
+    storage,
     transfers::{TransferOfferError, send_contents},
     walker::Walker,
 };
@@ -31,8 +32,8 @@ use uuid::Uuid;
 
 use crate::{
     AddDeviceBridge, ConnectionOfferBridge, IncomingTransferOffer, IncomingTransferOfferBridge,
-    LookupState, NectanWindow, OutcomingTransferModalBridge, SendModalState, TreeNode,
-    WindowBridge, devices::update_devices, state::ui_state, transfers::update_transfers,
+    LookupState, NectanWindow, OutcomingTransferModalBridge, SendModalState, SettingsBridge,
+    TreeNode, WindowBridge, devices::update_devices, state::ui_state, transfers::update_transfers,
 };
 
 fn show_error(
@@ -713,4 +714,26 @@ pub fn handle_paste(w: &NectanWindow) {
             println!("Failed to get files list from clipboard.");
         }
     })
+}
+pub fn handle_username_change(w: &NectanWindow, s: Arc<NectanState>) {
+    let b = w.global::<SettingsBridge>();
+    let weak = w.as_weak();
+    b.on_change_username(move |username| {
+        if let Some(w) = weak.upgrade() {
+            let b = w.global::<SettingsBridge>();
+            b.set_username_modal(false);
+            b.set_username(username.clone());
+        }
+
+        match Username::new(username) {
+            Ok(u) => {
+                if let Err(e) = s.storage.set(storage::Value::Username(u)) {
+                    show_error(&weak, "Error", e.to_string());
+                }
+            }
+            Err(e) => {
+                show_error(&weak, "Invalid username", e.to_string());
+            }
+        }
+    });
 }

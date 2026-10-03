@@ -17,14 +17,6 @@ import "./fonts/Rubik-Regular.ttf";
 import "./fonts/Rubik-SemiBold.ttf";
 import "./fonts/RubikMono.ttf";
 
-import "./fonts/FuturaCyrillicBold.ttf";
-import "./fonts/FuturaCyrillicExtraBold.ttf";
-import "./fonts/FuturaCyrillicBook.ttf";
-import "./fonts/FuturaCyrillicDemi.ttf";
-import "./fonts/FuturaCyrillicHeavy.ttf";
-import "./fonts/FuturaCyrillicLight.ttf";
-import "./fonts/FuturaCyrillicMedium.ttf";
-
 
 import "./fonts/Montserrat-Black.ttf";
 import "./fonts/Montserrat-ExtraBold.ttf";
@@ -49,9 +41,10 @@ export struct ThemeColors {
     hover-col: color,
     border-col: color,
 }
+export enum ThemeMode { dark, light }
 
 export global Theme {
-    in-out property <string> mode: "dark";
+    in-out property <ThemeMode> mode: dark;
 
     out property <ThemeColors> dark-theme: {
         primary-col: #1a1a1a,
@@ -78,24 +71,27 @@ export global Theme {
         hover-col: #00000022,
     };
 
-    out property <ThemeColors> colors: root.mode == "light" ? root.light-theme : root.dark-theme;
+    out property <ThemeColors> colors: root.mode == ThemeMode.light ? root.light-theme : root.dark-theme;
 
     out property <string> font-heading: "Rubik";
     out property <string> font-body: "Inter";
-    out property <string> font-mono: "Rubik Mono One";
+
+    callback mode-changed(ThemeMode);
 
     public function toggle-mode() {
-        root.mode = root.mode == "light" ? "dark" : "light";
+        root.mode = root.mode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+        mode-changed(root.mode);
     }
 
-    public function set-mode(new-mode: string) {
+    public function set-mode(new-mode: ThemeMode) {
         root.mode = new-mode;
     }
 
     public pure function is-light() -> bool {
-        root.mode == "light"
+        root.mode == ThemeMode.light;
     }
+
     public pure function is-dark() -> bool {
-        root.mode == "dark"
+        root.mode == ThemeMode.dark;
     }
 }

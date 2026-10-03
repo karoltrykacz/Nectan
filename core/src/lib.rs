@@ -2,8 +2,8 @@ use crate::{
     devices::{DeviceId, Devices, UserInfo},
     messages::AppEvent,
     protocol::{
-        ALPN, NectanProtocol, NectanState, announce_endpoint, start_mdns_discovery,
-        start_registration_loop,
+        ALPN, NectanProtocol, NectanState, announce_endpoint, resolve_devices,
+        start_mdns_discovery, start_registration_loop,
     },
     storage::Storage,
 };
@@ -50,19 +50,6 @@ pub async fn setup_core(
         .keep_alive_interval(Duration::from_secs(5))
         .build();
 
-    let endpoint = Endpoint::builder(presets::N0)
-        .transport_config(transport)
-        .bind()
-        .await?;
-
-    let mdns = MdnsAddressLookup::builder()
-        .service_name("nectan_user")
-        .advertise(true)
-        .build(endpoint.id())
-        .unwrap();
-
-    endpoint.address_lookup().unwrap().add(mdns.clone());
-
     let state = NectanState::build(
         userinfo,
         device_id,
@@ -73,13 +60,35 @@ pub async fn setup_core(
     )
     .await;
 
-    let prot = NectanProtocol::new(endpoint.clone(), Arc::new(state.clone()));
-    let router = Router::builder(endpoint).accept(ALPN, prot).spawn();
-    state.attach_router(&router);
+    let s = state.clone();
+    tokio::spawn(async move {
+        let endpoint = loop {
+            let Ok(e) = Endpoint::builder(presets::N0)
+                .transport_config(transport.clone())
+                .bind()
+                .await
+            else {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            };
+            break e;
+        };
+        let mdns = MdnsAddressLookup::builder()
+            .service_name("nectan_user")
+            .advertise(true)
+            .build(endpoint.id())
+            .unwrap();
 
-    start_registration_loop(&state);
-    announce_endpoint(&state);
-    start_mdns_discovery(&state);
+        endpoint.address_lookup().unwrap().add(mdns.clone());
+        let prot = NectanProtocol::new(endpoint.clone(), Arc::new(s.clone()));
+        let router = Router::builder(endpoint).accept(ALPN, prot).spawn();
+        s.attach_router(&router);
+
+        start_registration_loop(&s);
+        announce_endpoint(&s);
+        start_mdns_discovery(&s);
+        let _ = resolve_devices(&s, None).await;
+    });
 
     Ok(state)
 }

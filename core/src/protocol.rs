@@ -405,26 +405,37 @@ impl NectanState {
             storage: Arc::new(storage),
         }
     }
+
     pub fn device_id(&self) -> DeviceId {
         self.device_id
     }
+
     pub fn attach_router(&self, router: &Router) {
         self.router
             .set(router.clone())
             .expect("Router already attached");
     }
+
     pub fn toggle_mdns(&self) {}
-    pub fn router(&self) -> Router {
-        self.router.get().unwrap().clone()
+
+    pub fn router(&self) -> Option<Router> {
+        self.router.get().cloned()
     }
+
+    pub fn endpoint(&self) -> Option<Endpoint> {
+        self.router.get().and_then(|r| Some(r.endpoint().clone()))
+    }
+
     pub fn sender(&self) -> tokio::sync::mpsc::Sender<AppEvent> {
         self.app_event_tx.clone()
     }
+
     pub async fn respond_transfer_offer(&self, r: UiResponse) {
         if let Some(offer) = self.transfer_offer.lock().await.take() {
             let _ = offer.respond.send(r).await;
         }
     }
+
     pub async fn respond_connection_offer(&self, r: UiResponse) {
         if let Some(offer) = self.conn_offer.lock().await.take() {
             let _ = offer.respond.send(r).await;
@@ -433,14 +444,17 @@ impl NectanState {
     pub async fn emit(&self, event: AppEvent) {
         let _ = self.app_event_tx.send(event).await;
     }
+
     pub fn http(&self) -> &Client {
         &self.http_client
     }
+
     pub fn sign(&self, msg: &[u8]) -> Signature {
         self.signing_key.sign(msg)
     }
-    pub fn endpoint_id(&self) -> EndpointId {
-        self.router().endpoint().id()
+
+    pub fn endpoint_id(&self) -> Option<EndpointId> {
+        self.router().and_then(|r| Some(r.endpoint().id()))
     }
 }
 
@@ -449,21 +463,6 @@ impl std::fmt::Debug for NectanState {
         f.debug_struct("NectanState").finish()
     }
 }
-
-// async fn handle_transfer_stream(
-//     state: NectanState,
-//     transfer_id: Uuid,
-//     tx: SendStream,
-//     mut rx: RecvStream,
-// ) {
-//     // let Some(pending) = state.pending_transfers.get(transfer_id) else {
-//     //     return;
-//     // };
-//
-//     println!("Receiving item");
-//     let result = recieve_item(tx, rx).await;
-//     println!("Receiver item result {result:#?}");
-// }
 
 pub fn start_mdns_discovery(state: &NectanState) {
     let state = Arc::new(state.clone());
@@ -477,7 +476,8 @@ pub fn start_mdns_discovery(state: &NectanState) {
                 DiscoveryEvent::Discovered { endpoint_info, .. } => {
                     let ep_id = endpoint_info.endpoint_id;
 
-                    if ep_id == state.endpoint_id() {
+                    // Endpoint id is safe to unwrap because mdns is callled after the router is succesfully binded
+                    if ep_id == state.endpoint_id().unwrap() {
                         continue;
                     }
 
@@ -502,15 +502,15 @@ pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<()> 
         bail!("Already connected")
     }
 
-    let conn = state
-        .router()
-        .endpoint()
-        .connect(target, ALPN)
-        .await
-        .map_err(|e| {
-            error!("Connecting to the device failed. [{e}]");
-            anyhow!("Connection failed. {}", e)
-        })?;
+    let Some(endpoint) = state.endpoint() else {
+        warn!("Connection to device failed. Router not attached.",);
+        bail!("Router not attached")
+    };
+
+    let conn = endpoint.connect(target, ALPN).await.map_err(|e| {
+        error!("Connecting to the device failed. [{e}]");
+        anyhow!("Connection failed. {}", e)
+    })?;
 
     let (mut stream_tx, mut stream_rx) = conn.open_bi().await?;
 
@@ -537,7 +537,7 @@ pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<()> 
             ..
         } => {
             remote_device_id
-                .verify(state.router().endpoint().id().as_bytes(), &remote_signature)
+                .verify(endpoint.id().as_bytes(), &remote_signature)
                 .map_err(|_| anyhow!("Failed to verify signature."))?;
 
             let stored_remote_device: Option<Device> = state.devices.get(&remote_device_id);
@@ -627,7 +627,7 @@ pub struct EndpointAnncounceResponse {
 pub fn announce_endpoint(state: &NectanState) {
     let state = state.clone();
     tokio::spawn(async move {
-        let endpoint_id = state.endpoint_id();
+        let endpoint_id = state.endpoint_id().unwrap();
         let device_id = state.device_id();
         let signature: Signature = state.sign(endpoint_id.as_bytes());
         let payload = EndpointAnnouncePayload {
@@ -718,7 +718,7 @@ pub fn start_registration_loop(state: &NectanState) -> JoinHandle<()> {
                 Ok(response) => match response.status() {
                     StatusCode::CREATED => {
                         info!("Device succesfully registered");
-                        state.storage.set(Value::Registered(true));
+                        let _ = state.storage.set(Value::Registered(true));
                     }
                     StatusCode::OK => {
                         break;
@@ -768,7 +768,7 @@ pub async fn resolve_devices(
 
     info!("Resolving [{}] devices.", devices.len());
 
-    let endpoint_id = state.endpoint_id();
+    let endpoint_id = state.endpoint_id().unwrap();
     let device_id = state.device_id;
     let signature = state.sign(endpoint_id.as_bytes());
 
