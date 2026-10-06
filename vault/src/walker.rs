@@ -65,7 +65,7 @@ impl Walker {
         let start = Instant::now();
         info!("Walking {}", root.display());
 
-        let c = self.clone();
+        let c: Walker = self.clone();
         std::thread::spawn(move || {
             loop {
                 if c.finished() || c.should_abort() {

@@ -2,6 +2,7 @@ use nectan_core::format::BinaryBytes;
 use nectan_core::protocol::NectanState;
 use nectan_core::transfers::{PendingTransfer, TransferStatus, Transfers};
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, ToSharedString, Weak};
+use std::fmt::format;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::{cell::RefCell, sync::Arc};
@@ -31,11 +32,13 @@ fn build_row(p: &PendingTransfer) -> Transfer {
         sent / p.total_size as f32
     };
     let receiver_name = p.target_name.to_string().into();
-
     let status = match p.status() {
         TransferStatus::Downloading => crate::TransferStatus::Processing,
         TransferStatus::Finished => crate::TransferStatus::Finished,
     };
+
+    let mbps = p.speed.load(Relaxed) as f32 / 1_000_000.0;
+    let speed_text = format!("{mbps} MB/s").into();
 
     Transfer {
         id: p.id.to_shared_string(),
@@ -44,7 +47,7 @@ fn build_row(p: &PendingTransfer) -> Transfer {
         progress,
         receiver_name,
         size_text: BinaryBytes(p.total_size).to_string().into(),
-        speed_text: "60 MB/s".into(), // TODO
+        speed_text,
         status,
         title: p.name.clone().into(),
         total_files: p.total_files as i32,
@@ -106,8 +109,10 @@ impl Model for LazyFiles {
             return None;
         }
 
-        let progress = item.sent_bytes as f32 / item.size as f32;
+        let progress = item.sent_bytes as f32;
         let percent_text = format!("{:.2}%", progress * 100.0).into();
+
+        println!("Item progress {}", progress);
 
         Some(crate::TransferItem {
             name: item.name().into(),
@@ -137,7 +142,7 @@ impl TransfersModel {
     }
 
     pub fn update_all(&self) {
-        let new = self
+        let new: Vec<TransferObject> = self
             .pool
             .get_pending_transfers()
             .iter()
@@ -185,8 +190,7 @@ impl Model for TransfersModel {
     }
 }
 
-/// Called when transfer state changed.
-pub fn update_transfers(w: &Weak<NectanWindow>, _state: &NectanState) {
+pub fn update_transfers(w: &Weak<NectanWindow>) {
     let _ = w.upgrade_in_event_loop(move |_w| {
         ui_state().transfers().update_all();
     });

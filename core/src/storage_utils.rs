@@ -7,6 +7,7 @@ use std::fmt::Display;
 use std::io::Error;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
+use tracing::info;
 
 pub trait Serializer: Default {
     fn serialize<V: Serialize>(&self, v: &V) -> Option<Vec<u8>>;
@@ -49,8 +50,8 @@ impl Deserializer for PostcardSerializer {
 pub(crate) struct DataWriter<S: Serializer = JsonSerializer, D: Deserializer = JsonSerializer> {
     storage_path: PathBuf,
     write_lock: Arc<Mutex<()>>,
-    serializer: S,
-    deserializer: D,
+    pub serializer: S,
+    pub deserializer: D,
 }
 
 impl<S: Serializer, D: Deserializer> DataWriter<S, D> {
@@ -93,6 +94,9 @@ impl<S: Serializer, D: Deserializer> DataWriter<S, D> {
     pub fn wipe(&self) -> Result<(), Error> {
         std::fs::remove_file(&self.storage_path)?;
         Ok(())
+    }
+    pub fn load_raw(&self) -> Option<Vec<u8>> {
+        std::fs::read(&self.storage_path).ok()
     }
 
     pub fn load<V: DeserializeOwned>(&self) -> Option<V> {

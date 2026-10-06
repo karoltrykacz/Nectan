@@ -1,0 +1,328 @@
+{
+	"website": {
+		"slogan": "Przenieś swoje pliki.",
+		"slogan2": "",
+		"app_desc": "Darmowa, prosta, skoncentrowana na prywatności aplikacja do wysyłania plików.",
+		"other_platforms": "Inne platformy",
+		"download_generic": "Pobierz Nectan",
+		"download_fallback": "Pobierz Nectan na {}",
+		"pricing": "Cena",
+		"pricing_info": "Nectan jest darmowym do domowego użytku programem z otwartym kodem źrodłowym",
+		"pricing_commercial": "Do użytku komercyjnego wymagana jest licencja komercyjna. Skontaktuj się z nectan@nectan.co",
+		"help": "Pomoc",
+		"sponsors": "Sponsorzy",
+		"op": "Nectan jest darmowy i otwartoźródłowy",
+		"contribute": "Jeżeli podoba ci się Nectan, zachęcamy do wsparcia na GitHubie. Możesz również zostać naszym pierwszym sponsorem",
+		"privacy_policy": {
+			"title": "Polityka Prywatności",
+			"policy": "Nie przechowujemy i nie zbieramy żadnych twoich informacji.",
+			"concerns": "Jeżeli masz pytania dotyczące nasze Polityki Prywatności, skontaktuj sie z support@nectan.co"
+		},
+		"tos": "Warunki świadczenia usług",
+		"copyright": "© 2026 Nectan. Wszelkie prawa zastrzeżone",
+		"transfers": "@:tabs.transfers",
+		"faq": {
+			"secure": "Czy Nectan jest bezpieczny?",
+			"secure_ans": "Tak, absolutnie. Twoje dane są w pełni szyfrowane przy użyciu standardowych w branży protokołów.",
+			"speed": "Czy Nectan jest szybki?",
+			"speed_ans": "Tak. Nectan stara się w pełni wykorzystać przepustowość Twojego połączenia, zapewniając możliwie najszybszy transfer plików.",
+			"limit": "Czy istnieją jakieś ograniczenia?",
+			"limit_ans": "Absolutnie nie. Możesz wysyłać dziesiątki dokumentów, ogromne pliki wideo 4K, gry czy kopie zapasowe katalogów. Jeśli Twój dysk jest w stanie je przechować, Nectan może je przesłać.",
+			"platforms": "Na jakich systemach działa Nectan?",
+			"platforms_ans": "Nectan obecnie działa na Windows, Linux oraz Android.",
+			"pricing": "Czy Nectan jest darmowy?",
+			"pricing_ans": "Nectan jest całkowicie darmowy do użytku domowego. Licencję komercyjną możesz uzyskać, kontaktując się z nami pod adresem nectan@nectan.co"
+		},
+		"privacy": {
+			"title": "Komfort prywatności",
+			"info": "Nectan jest zbudowany z myślą o bezpieczeństwie i prywatności. Nie wiemy, co wysyłasz ani komu."
+		}
+	},
+	"loadingScreen": {
+		"appName": "Nectan"
+	},
+	"statusBar": {
+		"loading": "@:common.loading",
+		"localMode": "Tryb lokalny",
+		"onlineMode": "Tryb online"
+	},
+	"home": {
+		"nearbyDevices": "Urządzenia w pobliżu",
+		"searching": "Wyszukiwanie"
+	},
+	"statusModal": {
+		"title": "Bieżący tryb",
+		"internetConnection": "Połączenie internetowe",
+		"bluetoothDiscovery": "Wykrywanie Bluetooth",
+		"wifiDiscovery": "Wykrywanie Wi-Fi",
+		"connectionAlive": "Aktywne",
+		"connectionDead": "Nieaktywne",
+		"connectionLoading": "@:common.loading",
+		"notAvailable": "Niedostępne",
+		"active": "Aktywne"
+	},
+	"welcomeScreen": {
+		"title": "Witamy w Nectan",
+		"subtitle": "Wprowadź nazwę użytkownika",
+		"placeholder": "Wprowadź nazwę użytkownika",
+		"continue": "@:common.continue",
+		"errors": {
+			"tooShort": "@:username_modal.errors.tooShort",
+			"tooLong": "@:username_modal.errors.tooLong"
+		}
+	},
+	"sendFileFolderModal": {
+		"selectDevice": "Wybierz urządzenie",
+		"noOnlineDevices": "Brak urządzeń online",
+		"noneOnlineMessage": "Żadne z Twoich urządzeń nie jest online",
+		"closeButton": "@:common.close",
+		"continueButton": "@:common.continue"
+	},
+	"failedToOpenModal": {
+		"title": "Nie udało się otworzyć",
+		"message": "Nie udało się otworzyć. Plik lub katalog może nie istnieć.",
+		"closeButton": "@:common.close"
+	},
+	"fileModal": {
+		"closeButton": "@:common.close",
+		"openParentFolderButton": "Otwórz folder nadrzędny",
+		"openButton": "@:common.open"
+	},
+	"searchModal": {
+		"results": "Wyniki",
+		"placeholder": "Szukaj...",
+		"actions": {
+			"settings": "Ustawienia",
+			"transfers": "@:tabs.transfers",
+			"addRemoteDevice": "Dodaj urządzenie zdalne",
+			"showStatus": "Pokaż status",
+			"sendFolder": "@:common.sendFolder",
+			"sendFile": "@:common.sendFiles",
+			"help": "@:tabs.help"
+		}
+	},
+	"tabs": {
+		"transfers": "Transfery",
+		"storage": "Magazyn",
+		"devices": "Urządzenia",
+		"settings": "Ustawienia",
+		"home": "Strona główna",
+		"help": "Pomoc"
+	},
+	"add_remote": {
+		"title": "Dodaj urządzenie zdalne",
+		"renew": "Odśwież",
+		"checking": "Sprawdzanie kodu",
+		"checking_info": "Weryfikacja poprawności kodu.",
+		"not_found": "Nie znaleziono kodu",
+		"not_found_info": "Spróbuj ponownie i upewnij się, że kod jest prawidłowy.",
+		"connecting": "Łączenie",
+		"connecting_info": "Łączenie z urządzeniem zdalnym",
+		"waiting_for_approval": "Oczekiwanie na zatwierdzenie",
+		"waiting_for_approval_info": "Urządzenie zdalne musi zatwierdzić połączenie.",
+		"rejected": "Połączenie odrzucone",
+		"rejected_info": "Urządzenie zdalne nie zatwierdziło połączenia lub połączenie nie powiodło się.",
+		"connected": "Połączenie odrzucone",
+		"connected_info": "Połączenie nawiązane. Wyślij swoje pliki.",
+		"errors": {
+			"issue_code": "Nie udało się wygenerować kodu po 3 próbach",
+			"code_len": "Kod musi mieć 6 cyfr",
+			"self_code": "Nie możesz wprowadzić własnego kodu"
+		},
+		"offline_msg": "Aby skorzystać z tej funkcji, musisz mieć połączenie z internetem."
+	},
+	"new_connection": {
+		"title": "Potwierdź nowe połączenie z {{username}}",
+		"info": "Ta czynność nie spowoduje przesłania żadnych plików",
+		"errors": {
+			"wrongLen": "Kod musi mieć 6 cyfr.",
+			"ownCode": "Kod musi mieć 6 cyfr."
+		}
+	},
+	"connected_nearby": {
+		"title": "Znaleziono {{username}} w pobliżu",
+		"message": "Połączono z pobliskim urządzeniem. Możesz teraz zacząć wysyłać pliki.",
+		"dont_show_again": "Nie pokazuj ponownie"
+	},
+	"device": {
+		"pasteordrop": "Wklej / upuść tutaj",
+		"or": "lub",
+		"info": {
+			"ping": "Ping",
+			"completedTransfers": "Ukończone transfery",
+			"totalExchangedData": "Łączna ilość wymienionych danych",
+			"checkPing": "Sprawdź ping"
+		}
+	},
+	"settings": {
+		"tabs": {
+			"general": "Ogólne"
+		},
+		"connectedEmail": {
+			"title": "Połączony e-mail",
+			"notConnected": "E-mail niepołączony",
+			"connect": "Połącz",
+			"change": "Zmień"
+		},
+		"username": {
+			"title": "Nazwa użytkownika",
+			"change": "Zmień"
+		},
+		"autostart": {
+			"title": "Autostart",
+			"description": "Uruchamiaj Nectan po zalogowaniu"
+		},
+		"community": {
+			"title": "Społeczność",
+			"description": "Dołącz do serwera Discord Nectan",
+			"join": "Dołącz"
+		},
+		"privacyPolicy": {
+			"title": "Polityka prywatności",
+			"description": "Zobacz naszą politykę prywatności",
+			"open": "@:common.open"
+		},
+		"reset": {
+			"title": "Zresetuj Nectan",
+			"description": "Przywraca aplikację do stanu początkowego.",
+			"action": "Resetuj"
+		}
+	},
+	"username_modal": {
+		"title": "Zmień nazwę użytkownika",
+		"placeholder": "Wprowadź nazwę użytkownika",
+		"errors": {
+			"tooShort": "Nazwa użytkownika musi mieć co najmniej 3 znaki.",
+			"tooLong": "Nazwa użytkownika nie może być dłuższa niż 32 znaki",
+			"invalidChars": "Dozwolone są tylko litery, cyfry, podkreślenia, kropki, myślniki i spacje."
+		}
+	},
+	"common": {
+		"online": "Online",
+		"offline": "Offline",
+		"nearby": "W pobliżu",
+		"close": "Zamknij",
+		"open": "Otwórz",
+		"continue": "Kontynuuj",
+		"accept": "Akceptuj",
+		"reject": "Odrzuć",
+		"cancel": "Anuluj",
+		"confirm": "Potwierdź",
+		"done": "Gotowe",
+		"loading": "Ładowanie",
+		"retry": "Ponów",
+		"learn_more": "Dowiedz się więcej",
+		"sendFolder": "Wyślij folder",
+		"sendFiles": "Wyślij pliki",
+		"sendContainer": "Wyślij kontener",
+		"noDevices": "Brak urządzeń",
+		"direction_from": "Od",
+		"direction_to": "Do"
+	},
+	"transfer": {
+		"no_transfers": "Brak transferów",
+		"delete": "Usuń transfer",
+		"delete_warn": "Uwaga. Ten transfer nie został zakończony. Czy na pewno chcesz go usunąć?",
+		"delete_info": "Ta czynność nie usuwa żadnych plików.",
+		"status": {
+			"initial": "Początkowy",
+			"finished": "Zakończony",
+			"submitted": "Przesłany",
+			"rejected": "Odrzucony",
+			"sending": "Wysyłanie",
+			"receiving": "Odbieranie",
+			"paused": "Wstrzymany",
+			"preflight": "Przygotowanie",
+			"cancelled": "Anulowany",
+			"error": "Błąd",
+			"offline": "Offline"
+		}
+	},
+	"nameGenerator": {
+		"adjectives": [
+			"Czerwony",
+			"Niebieski",
+			"Zielony",
+			"Żółty",
+			"Różowy",
+			"Fioletowy",
+			"Pomarańczowy",
+			"Biały",
+			"Czarny",
+			"Złoty",
+			"Srebrny",
+			"Neonowy",
+			"Okrągły",
+			"Kwadratowy",
+			"Malutki",
+			"Ogromny",
+			"Długi",
+			"Krótki",
+			"Wysoki",
+			"Płaski",
+			"Szczęśliwy",
+			"Smutny",
+			"Zły",
+			"Spokojny",
+			"Nieśmiały",
+			"Głupiutki",
+			"Śpiący",
+			"Odważny",
+			"Dumny",
+			"Przestraszony",
+			"Miękki",
+			"Twardy",
+			"Szybki",
+			"Wolny",
+			"Ciepły",
+			"Zimny",
+			"Słodki",
+			"Świeży",
+			"Jasny",
+			"Ciemny",
+			"Czysty",
+			"Błyszczący"
+		],
+		"creatures": [
+			"Goblin",
+			"Ryba-kropla",
+			"Wombat",
+			"Kapibara",
+			"Chupacabra",
+			"Potwór",
+			"Fretka",
+			"Aksolotl",
+			"Gargulec",
+			"Panda",
+			"Gołąb",
+			"Pingwin",
+			"Manat",
+			"Narwal",
+			"Mewa",
+			"Krewetka",
+			"Ośmiornica",
+			"Pelikan",
+			"Kaczątko",
+			"Mors",
+			"Szop",
+			"Oposum",
+			"Borsuk",
+			"Sasquatch",
+			"Yeti",
+			"Hydra",
+			"Gnom",
+			"Chomik",
+			"Szynszyla",
+			"Leniwiec",
+			"Mothman",
+			"Chrząszcz",
+			"Gąsienica",
+			"Ropucha",
+			"Salamandra",
+			"Ziemniak",
+			"Nugget",
+			"Kaktus",
+			"Gremlin"
+		]
+	}
+}

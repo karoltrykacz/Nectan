@@ -17,11 +17,13 @@ export enum LookupState {
 }
 
 export global AddDeviceBridge {
-    in-out property <bool> add_device_open: false;
     in-out property <LookupState> lookup-state: LookupState.none;
     in-out property <string> our-code: "416 192";
     in-out property <int> time-left: 0;
     in-out property <bool> show-lookup-panel: false;
+
+    in-out property <bool> open: false;
+    in-out property <bool> pre-loaded: false;
 
     callback request_code();
     callback code_submitted(string);
@@ -35,7 +37,7 @@ export global AddDeviceBridge {
 }
 
 
-export component AddRemoteDeviceModal inherits GeneralModal {
+export component AddDeviceModal inherits GeneralModal {
 
     in-out property <string> typed-code: "";
     in-out property <string> code-mode: "host";
@@ -72,22 +74,19 @@ export component AddRemoteDeviceModal inherits GeneralModal {
         }
     }
 
-    // changed visible => {
-    //
-    //     if (root.visible) {
-    //         root.code-mode = "host";
-    //         root.typed-code = "";
-    //         root.input-error = "";
-    //         AddDeviceBridge.lookup-state = LookupState.none;
-    //
-    //         if (AddDeviceBridge.time-left <= 0) {
-    //             AddDeviceBridge.time-left = 90;
-    //             AddDeviceBridge.request_code();
-    //         }
-    //     }
-    // }
+    init => {
+        root.code-mode = "host";
+        root.typed-code = "";
+        root.input-error = "";
+        AddDeviceBridge.lookup-state = LookupState.none;
 
-    on-close => { AddDeviceBridge.add_device_open = false; }
+        if (AddDeviceBridge.time-left <= 0) {
+            AddDeviceBridge.time-left = 90;
+            AddDeviceBridge.request_code();
+        }
+    }
+
+    on-close => { AddDeviceBridge.open = false; }
 
     Rectangle {
         width: min(620px, parent.width * 0.8);
@@ -116,6 +115,7 @@ export component AddRemoteDeviceModal inherits GeneralModal {
         }
 
         HorizontalLayout {
+
             Rectangle {
                 width: parent.width / 2;
                 if root.code-mode == "host": Rectangle {
@@ -143,7 +143,7 @@ export component AddRemoteDeviceModal inherits GeneralModal {
                             width: 100%;
                             height: 100%;
                             text: AddDeviceBridge.our-code;
-                            font-family: "Rubik";
+                            font-family: Theme.font-heading;
                             color: #ffffff;
                             font-size: 36px;
                             font-weight: 600;
@@ -460,42 +460,29 @@ export component AddRemoteDeviceModal inherits GeneralModal {
                 }
             }
 
-            Rectangle {
-                width: parent.width / 2;
-                height: parent.height;
-                VerticalLayout {
+            VerticalLayout {
+                cross-axis-alignment: center;
+                spacing: 20px;
+                alignment: center;
 
-                    alignment: center;
-                    HorizontalLayout {
-                        alignment: center;
-
-                        Rectangle {
-                            width: 190px;
-                            height: 190px;
-                            border-radius: 16px;
-                            clip: true;
-                            Image {
-                                source: @image-url("./icons/qr-code.png");
-                                width: 200px;
-                                height: 200px;
-                            }
-                        }
+                Rectangle {
+                    width: 190px;
+                    height: 190px;
+                    border-radius: 16px;
+                    clip: true;
+                    Image {
+                        source: @image-url("./icons/qr-code.png");
+                        width: 200px;
+                        height: 200px;
                     }
+                }
 
-                    Rectangle {
-                        height: 20px;
-                    }
-
-                    HorizontalLayout {
-                        alignment: center;
-                        Text {
-                            text: @tr("Scan with your mobile device to pair");
-                            color: Theme.colors.secondary-font;
-                            font-size: 13px;
-                            font-weight: 500;
-                            horizontal-alignment: center;
-                        }
-                    }
+                Text {
+                    text: @tr("Scan with your mobile device to pair");
+                    color: Theme.colors.secondary-font;
+                    font-size: 13px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
                 }
             }
         }
@@ -552,7 +539,7 @@ export component ConnectionOfferModal inherits GeneralModal {
                 VerticalLayout {
                     alignment: start;
                     Text {
-                        text: "Accept connection";
+                        text: @tr("Accept connection");
                         font-size: 20px;
                         color: Theme.colors.primary-font;
                         font-family: Theme.font-heading;
@@ -573,7 +560,7 @@ export component ConnectionOfferModal inherits GeneralModal {
                         }
 
                         Text {
-                            text: " wants to connect to you.";
+                            text: @tr(" wants to connect to you.");
                             font-size: 13px;
                             color: Theme.colors.secondary-font;
                         }
@@ -588,14 +575,15 @@ export component ConnectionOfferModal inherits GeneralModal {
                 }
 
                 Text {
-                    text: "This action won't transfer any files.";
+                    text: @tr("This action won't transfer any files.");
                     color: Theme.colors.primary-font;
                     font-size: 13px;
                     font-weight: 500;
                 }
 
                 Text {
-                    text: "Accepting will allow \{ConnectionOfferBridge.remote-device-name} to send transfer offers to you.";
+                    text: @tr("Accepting will allow {} to send transfer offers to you.",
+		    ConnectionOfferBridge.remote-device-name);
                     color: Theme.colors.primary-font;
                     wrap: word-wrap;
                     font-size: 13px;
@@ -610,7 +598,7 @@ export component ConnectionOfferModal inherits GeneralModal {
             HorizontalLayout {
                 alignment: end;
                 PrimaryButton {
-                    text: "Reject";
+                    text: @tr("Reject");
                     alt: true;
                     clicked => {
                         ConnectionOfferBridge.open = false;
@@ -623,7 +611,7 @@ export component ConnectionOfferModal inherits GeneralModal {
                 }
 
                 PrimaryButton {
-                    text: "Accept";
+                    text: @tr("Accept");
                     clicked => {
                         ConnectionOfferBridge.open = false;
                         ConnectionOfferBridge.accept(true);

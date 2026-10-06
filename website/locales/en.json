@@ -1,0 +1,327 @@
+{
+	"website": {
+		"slogan": "Move Your Files.",
+		"slogan2": "",
+		"app_desc": "Free, minimalist, privacy - focused app for sharing files.",
+		"download_generic": "Download Nectan ",
+		"download_fallback": "Download Nectan for {}",
+		"other_platforms": "Other platforms",
+		"pricing": "Pricing",
+		"pricing_info": "Nectan is free and open-source",
+		"pricing_commecial": "A commercial license is required for business and commercial use. Contact nectan@nectan.co",
+		"help": "Help",
+		"sponsors": "Sponsors",
+		"op": "Nectan is free and open-source",
+		"contribute": "If you like Nectan consider contributing on GitHub or become our first sponsor",
+		"title": "Privacy Policy",
+		"policy": "We don't store or collect your data.",
+		"concerns": "If you have any questions or concerns about this Privacy Policy, contact us at support@nectan.co",
+		"privacy": {
+			"title": "The comfort of privacy",
+			"info": "Nectan is built to be private and secure. We don't know what you send or to who you send it to."
+		}
+	},
+	"tos": "Terms of service",
+	"copyright": "© 2026 Nectan. All rights reserved",
+	"transfers": "@:tabs.transfers",
+	"faq": {
+		"secure": "Is Nectan secure?",
+		"secure_ans": "Yes, absolutely. Your data is fully encrypted using industry-standard protocols. ",
+		"speed": "Is Nectan fast?",
+		"speed_ans": "Yes. Nectan tries to fully saturate your network connection, ensuring your files are transferred as fast as possilbe.",
+		"limit": "Are there any limitations?",
+		"limit_ans": "Absolutely not. You can send dozens of documents, massive 4K video files, games, or directory backups. If your hard drive can store it, Nectan can transfer it.",
+		"platforms": "What platform does Nectan support?",
+		"platforms_ans": "Nectan is avaliable for Windows, Linux and Android.",
+		"pricing": "Is Nectan free to use?",
+		"pricing_ans": "Nectan is free for personal usage. For commercial licensing contact nectan@nectan.co"
+	},
+	"loadingScreen": {
+		"appName": "Nectan"
+	},
+	"statusBar": {
+		"loading": "@:common.loading",
+		"localMode": "Local mode",
+		"onlineMode": "Online mode"
+	},
+	"home": {
+		"nearbyDevices": "Nearby devices",
+		"searching": "Searching"
+	},
+	"statusModal": {
+		"title": "Current mode",
+		"internetConnection": "Internet connection",
+		"bluetoothDiscovery": "Bluetooth discovery",
+		"wifiDiscovery": "Wi-Fi discovery",
+		"connectionAlive": "Alive",
+		"connectionDead": "Dead",
+		"connectionLoading": "@:common.loading",
+		"notAvailable": "Not available",
+		"active": "Active"
+	},
+	"welcomeScreen": {
+		"title": "Welcome to Nectan",
+		"subtitle": "Enter your username",
+		"placeholder": "Enter your username",
+		"continue": "@:common.continue",
+		"errors": {
+			"tooShort": "@:username_modal.errors.tooShort",
+			"tooLong": "@:username_modal.errors.tooLong"
+		}
+	},
+	"sendFileFolderModal": {
+		"selectDevice": "Select device",
+		"noOnlineDevices": "No online devices",
+		"noneOnlineMessage": "None of your devices are online",
+		"closeButton": "@:common.close",
+		"continueButton": "@:common.continue"
+	},
+	"failedToOpenModal": {
+		"title": "Failed to open",
+		"message": "Failed to open. File or directory may not exist.",
+		"closeButton": "@:common.close"
+	},
+	"fileModal": {
+		"closeButton": "@:common.close",
+		"openParentFolderButton": "Open parent folder",
+		"openButton": "@:common.open"
+	},
+	"searchModal": {
+		"results": "Results",
+		"placeholder": "Search...",
+		"actions": {
+			"settings": "Settings",
+			"transfers": "@:tabs.transfers",
+			"addRemoteDevice": "Add remote device",
+			"showStatus": "Show status",
+			"sendFolder": "@:common.sendFolder",
+			"sendFile": "@:common.sendFiles",
+			"help": "@:tabs.help"
+		}
+	},
+	"tabs": {
+		"transfers": "Transfers",
+		"devices": "Devices",
+		"settings": "Settings",
+		"storage": "Storage",
+		"home": "Home",
+		"help": "Help"
+	},
+	"add_remote": {
+		"title": "Add remote device",
+		"renew": "Renew",
+		"checking": "Checking code",
+		"checking_info": "Verifying if code is correct.",
+		"not_found": "Code not found",
+		"not_found_info": "Please try again and make sure the code is valid.",
+		"connecting": "Connecting",
+		"connecting_info": "Connecting to remote device",
+		"waiting_for_approval": "Waiting for approval",
+		"waiting_for_approval_info": "The remote device needs to approve the connection.",
+		"rejected": "Connection rejected",
+		"rejected_info": "Remote device didn't approve the connection or connection failed.",
+		"connected": "Connection rejected",
+		"connected_info": "Connection established. Send your files.",
+		"errors": {
+			"issue_code": "Failed to issue code after 3 retries",
+			"code_len": "Code must be 6 digits long",
+			"self_code": "You cannot enter your own code"
+		},
+		"offline_msg": "To use this feature, you need to have internet connection."
+	},
+	"new_connection": {
+		"title": "Confirm new connection to {{username}}",
+		"info": "This action won't transfer any files",
+		"errors": {
+			"wrongLen": "Code must be 6 digits long.",
+			"ownCode": "Code must be 6 digits long."
+		}
+	},
+	"connected_nearby": {
+		"title": "{{username}} found nearby",
+		"message": "Connected to nearby device. You may now start sending files.",
+		"dont_show_again": "Don't show again"
+	},
+	"device": {
+		"pasteordrop": "Paste / drop here",
+		"or": "or",
+		"info": {
+			"ping": "Ping",
+			"completedTransfers": "Completed transfers",
+			"totalExchangedData": "Total exchanged data",
+			"checkPing": "Check ping"
+		}
+	},
+	"settings": {
+		"tabs": {
+			"general": "General"
+		},
+		"connectedEmail": {
+			"title": "Connected email",
+			"notConnected": "Email not connected",
+			"connect": "Connect",
+			"change": "Change"
+		},
+		"username": {
+			"title": "Username",
+			"change": "Change"
+		},
+		"autostart": {
+			"title": "Autostart",
+			"description": "Start Nectan after login"
+		},
+		"community": {
+			"title": "Community",
+			"description": "Join Nectan Discord server",
+			"join": "Join"
+		},
+		"privacyPolicy": {
+			"title": "Privacy policy",
+			"description": "See our privacy policy",
+			"open": "@:common.open"
+		},
+		"reset": {
+			"title": "Reset Nectan",
+			"description": "Brings app to fresh state.",
+			"action": "Reset"
+		}
+	},
+	"username_modal": {
+		"title": "Change username",
+		"placeholder": "Enter your username",
+		"errors": {
+			"tooShort": "Username must be at least 3 characters.",
+			"tooLong": "Username must not be longer than 32 characters",
+			"invalidChars": "Only letters, numbers, underscores, dots, hyphens, and spaces allowed."
+		}
+	},
+	"common": {
+		"online": "Online",
+		"offline": "Offline",
+		"nearby": "Nearby",
+		"close": "Close",
+		"open": "Open",
+		"continue": "Continue",
+		"accept": "Accept",
+		"reject": "Reject",
+		"cancel": "Cancel",
+		"confirm": "Confirm",
+		"done": "Done",
+		"loading": "Loading",
+		"retry": "Retry",
+		"learn_more": "Learn more",
+		"sendFolder": "Send folder",
+		"sendFiles": "Send files",
+		"sendContainer": "Send container",
+		"noDevices": "No devices",
+		"direction_from": "From",
+		"direction_to": "To"
+	},
+	"transfer": {
+		"no_transfers": "No transfers",
+		"delete": "Delete transfer",
+		"delete_warn": "Warning. This transfer is not finished. Do you really want to delete it?",
+		"delete_info": "This action doesn't remove any files.",
+		"status": {
+			"initial": "Initial",
+			"finished": "Finished",
+			"submitted": "Submitted",
+			"rejected": "Rejected",
+			"sending": "Sending",
+			"receiving": "Receiving",
+			"paused": "Paused",
+			"preflight": "Preflight",
+			"cancelled": "Cancelled",
+			"error": "Error",
+			"offline": "Offline"
+		}
+	},
+	"nameGenerator": {
+		"adjectives": [
+			"Red",
+			"Blue",
+			"Green",
+			"Yellow",
+			"Pink",
+			"Purple",
+			"Orange",
+			"White",
+			"Black",
+			"Gold",
+			"Silver",
+			"Neon",
+			"Round",
+			"Square",
+			"Tiny",
+			"Huge",
+			"Long",
+			"Short",
+			"Tall",
+			"Flat",
+			"Happy",
+			"Sad",
+			"Angry",
+			"Calm",
+			"Shy",
+			"Silly",
+			"Sleepy",
+			"Brave",
+			"Proud",
+			"Scared",
+			"Soft",
+			"Hard",
+			"Fast",
+			"Slow",
+			"Warm",
+			"Cold",
+			"Sweet",
+			"Fresh",
+			"Bright",
+			"Dark",
+			"Clean",
+			"Shiny"
+		],
+		"creatures": [
+			"Goblin",
+			"Blobfish",
+			"Wombat",
+			"Capybara",
+			"Chupacabra",
+			"Monster",
+			"Ferret",
+			"Axolotl",
+			"Gargoyle",
+			"Panda",
+			"Pigeon",
+			"Penguin",
+			"Manatee",
+			"Narwhal",
+			"Seagull",
+			"Shrimp",
+			"Octopus",
+			"Pelican",
+			"Duckling",
+			"Walrus",
+			"Raccoon",
+			"Possum",
+			"Badger",
+			"Sasquatch",
+			"Yeti",
+			"Hydra",
+			"Gnome",
+			"Hamster",
+			"Chinchilla",
+			"Sloth",
+			"Mothman",
+			"Beetle",
+			"Caterpillar",
+			"Toad",
+			"Salamander",
+			"Potato",
+			"Nugget",
+			"Cactus",
+			"Gremlin",
+			"Kraken"
+		]
+	}
+}

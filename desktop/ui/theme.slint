@@ -28,6 +28,7 @@ import "./fonts/Montserrat-Regular.ttf";
 import "./fonts/Montserrat-SemiBold.ttf";
 import "./fonts/Montserrat-Thin.ttf";
 
+import "./fonts/Minecraftia.ttf";
 
 export struct ThemeColors {
     primary-col: color,
@@ -70,6 +71,7 @@ export global Theme {
         border-col: #ccc,
         hover-col: #00000022,
     };
+    out property <color> sidebar-color;
 
     out property <ThemeColors> colors: root.mode == ThemeMode.light ? root.light-theme : root.dark-theme;
 

@@ -38,7 +38,7 @@ pub async fn setup_core(
     signing_key: SigningKey,
     devices: Devices,
     storage: Storage,
-) -> Result<NectanState> {
+) -> Result<Arc<NectanState>> {
     let transport = QuicTransportConfig::builder()
         .stream_receive_window(32_000_000u32.into())
         .receive_window(128_000_000u32.into())
@@ -50,7 +50,7 @@ pub async fn setup_core(
         .keep_alive_interval(Duration::from_secs(5))
         .build();
 
-    let builder = Endpoint::builder(presets::N0);
+    let builder = Endpoint::builder(presets::N0).transport_config(transport);
     let endpoint = builder.bind().await.expect("Failed to bind endpoint");
 
     let mdns = MdnsAddressLookup::builder()
@@ -73,16 +73,17 @@ pub async fn setup_core(
     .await;
 
     let s = Arc::new(state.clone());
+
     let prot = NectanProtocol::new(endpoint.clone(), s.clone());
     let router = Router::builder(endpoint).accept(ALPN, prot).spawn();
 
-    state.attach_router(&router);
+    s.attach_router(&router);
 
-    start_mdns_discovery(&state);
-    start_registration_loop(&state);
-    announce_endpoint(&state);
+    start_mdns_discovery(&s);
+    start_registration_loop(&s);
+    announce_endpoint(&s);
 
-    tokio::spawn(resolve_devices(s, None));
+    tokio::spawn(resolve_devices(s.clone(), None));
 
-    Ok(state)
+    Ok(s)
 }

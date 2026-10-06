@@ -17,6 +17,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use tracing::info;
 
 pub struct OutcomingTransfer {
     pub walker: Mutex<Option<Walker>>,
@@ -25,11 +26,56 @@ pub struct OutcomingTransfer {
     pub match_builder: Mutex<Option<WalkBuilder>>,
 }
 
+const MAX_HISTORY: usize = 256;
+
+#[derive(Default)]
+pub struct ExplorerHistory {
+    cursor: usize,
+    history: Vec<PathBuf>,
+}
+impl ExplorerHistory {
+    fn push(&mut self, p: PathBuf) {
+        println!("Adding to history {p:?}");
+        if self.history.get(self.cursor) == Some(&p) {
+            println!("Skipped");
+            return;
+        }
+        if !self.history.is_empty() {
+            info!("Truncuated history.");
+            self.history.truncate(self.cursor + 1);
+        }
+        self.history.push(p);
+        if self.history.len() > MAX_HISTORY {
+            info!("Truncuated history.");
+            self.history.remove(0);
+        }
+        self.cursor = self.history.len();
+    }
+
+    fn back(&mut self) -> Option<PathBuf> {
+        println!("Self cursor: {}, len {}", self.cursor, self.history.len());
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            return self.history.get(self.cursor).cloned();
+        }
+        None
+    }
+
+    fn forward(&mut self) -> Option<PathBuf> {
+        println!("Self cursor: {}, len {}", self.cursor, self.history.len());
+        if self.cursor + 1 < self.history.len() {
+            self.cursor += 1;
+            return self.history.get(self.cursor).cloned();
+        }
+        None
+    }
+}
+
 pub struct UiState {
-    // paths: Arc<Mutex<Vec<PathBuf>>>,
     paths: RefCell<HashSet<PathBuf>>,
     devices_model: Rc<DevicesModel>,
     transfers_model: Rc<TransfersModel>,
+    history: RefCell<ExplorerHistory>,
     outcoming_transfer: Arc<OutcomingTransfer>,
     clipboard: RefCell<Clipboard>,
 }
@@ -49,6 +95,18 @@ impl UiState {
 
     pub fn outcoming_transfer(&self) -> Arc<OutcomingTransfer> {
         self.outcoming_transfer.clone()
+    }
+
+    pub fn add_path(&self, p: PathBuf) {
+        self.history.borrow_mut().push(p);
+    }
+
+    pub fn last_path(&self) -> Option<PathBuf> {
+        self.history.borrow_mut().back()
+    }
+
+    pub fn next_path(&self) -> Option<PathBuf> {
+        self.history.borrow_mut().forward()
     }
 
     pub fn insert_path(&self, p: PathBuf) {
@@ -83,6 +141,7 @@ pub fn init_app_state(w: &NectanWindow, transfers: Arc<Transfers>) {
     TransfersBridge::get(w).set_transfers(ModelRc::from(transfers_model.clone()));
 
     let ui = Rc::new(UiState {
+        history: RefCell::new(ExplorerHistory::default()),
         paths: RefCell::new(HashSet::new()),
         devices_model,
         transfers_model,

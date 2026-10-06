@@ -1,0 +1,528 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-10-05 16:25+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: ui/add_remote_modal.slint:108
+msgctxt "AddDeviceModal"
+msgid "Add device"
+msgstr ""
+
+#: ui/add_remote_modal.slint:225
+msgctxt "AddDeviceModal"
+msgid "Expired"
+msgstr ""
+
+#: ui/add_remote_modal.slint:254
+msgctxt "AddDeviceModal"
+msgid "Refresh"
+msgstr ""
+
+#: ui/add_remote_modal.slint:267
+msgctxt "AddDeviceModal"
+msgid "Find"
+msgstr ""
+
+#: ui/add_remote_modal.slint:297
+msgctxt "AddDeviceModal"
+msgid "Checking"
+msgstr ""
+
+#: ui/add_remote_modal.slint:305
+msgctxt "AddDeviceModal"
+msgid "Looking for code."
+msgstr ""
+
+#: ui/add_remote_modal.slint:320
+msgctxt "AddDeviceModal"
+msgid "Code not found"
+msgstr ""
+
+#: ui/add_remote_modal.slint:328
+msgctxt "AddDeviceModal"
+msgid "Make sure code is valid and not expired."
+msgstr ""
+
+#: ui/add_remote_modal.slint:336 ui/add_remote_modal.slint:412
+msgctxt "AddDeviceModal"
+msgid "Try again"
+msgstr ""
+
+#: ui/add_remote_modal.slint:350
+msgctxt "AddDeviceModal"
+msgid "Connecting"
+msgstr ""
+
+#: ui/add_remote_modal.slint:358
+msgctxt "AddDeviceModal"
+msgid "Sending connection request."
+msgstr ""
+
+#: ui/add_remote_modal.slint:373
+msgctxt "AddDeviceModal"
+msgid "Request delivered"
+msgstr ""
+
+#: ui/add_remote_modal.slint:381
+msgctxt "AddDeviceModal"
+msgid "Waiting for approval."
+msgstr ""
+
+#: ui/add_remote_modal.slint:396
+msgctxt "AddDeviceModal"
+msgid "Connection rejected"
+msgstr ""
+
+#: ui/add_remote_modal.slint:404
+msgctxt "AddDeviceModal"
+msgid "Remote device rejected connetion."
+msgstr ""
+
+#: ui/add_remote_modal.slint:426
+msgctxt "AddDeviceModal"
+msgid "Connected"
+msgstr ""
+
+#: ui/add_remote_modal.slint:434
+msgctxt "AddDeviceModal"
+msgid "You can start sending and receiving files."
+msgstr ""
+
+#: ui/add_remote_modal.slint:451
+msgctxt "AddDeviceModal"
+msgid "Enter code"
+msgstr ""
+
+#: ui/add_remote_modal.slint:452
+msgctxt "AddDeviceModal"
+msgid "Show code"
+msgstr ""
+
+#: ui/add_remote_modal.slint:481
+msgctxt "AddDeviceModal"
+msgid "Scan with your mobile device to pair"
+msgstr ""
+
+#: ui/add_remote_modal.slint:542
+msgctxt "ConnectionOfferModal"
+msgid "Accept connection"
+msgstr ""
+
+#: ui/add_remote_modal.slint:563
+msgctxt "ConnectionOfferModal"
+msgid " wants to connect to you."
+msgstr ""
+
+#: ui/add_remote_modal.slint:578
+msgctxt "ConnectionOfferModal"
+msgid "This action won't transfer any files."
+msgstr ""
+
+#: ui/add_remote_modal.slint:585
+msgctxt "ConnectionOfferModal"
+msgid "Accepting will allow {} to send transfer offers to you."
+msgstr ""
+
+#: ui/add_remote_modal.slint:601
+msgctxt "ConnectionOfferModal"
+msgid "Reject"
+msgstr ""
+
+#: ui/add_remote_modal.slint:614
+msgctxt "ConnectionOfferModal"
+msgid "Accept"
+msgstr ""
+
+#: ui/app.slint:132
+msgctxt "NectanModal"
+msgid "Source code"
+msgstr ""
+
+#: ui/app.slint:133
+msgctxt "NectanModal"
+msgid "Leave a star if you find Nectan useful."
+msgstr ""
+
+#: ui/app.slint:136
+msgctxt "NectanModal"
+msgid "Open"
+msgstr ""
+
+#: ui/devices.slint:39
+msgctxt "DeviceStatusText"
+msgid "Nearby"
+msgstr ""
+
+#: ui/devices.slint:201
+msgctxt "DeviceScreen"
+msgid "{} is offline"
+msgstr ""
+
+#: ui/devices.slint:218
+msgctxt "DeviceScreen"
+msgid "Send folder"
+msgstr ""
+
+#: ui/devices.slint:230
+msgctxt "DeviceScreen"
+msgid "Send files"
+msgstr ""
+
+#: ui/devices.slint:295
+msgctxt "DeviceOptionsModal"
+msgid "Completed transfers"
+msgstr ""
+
+#: ui/devices.slint:312
+msgctxt "DeviceOptionsModal"
+msgid "Total exchanged data"
+msgstr ""
+
+#: ui/devices.slint:331
+msgctxt "DeviceOptionsModal"
+msgid "Close"
+msgstr ""
+
+#: ui/elements.slint:101
+msgctxt "QRApp"
+msgid "Scan QR Code:"
+msgstr ""
+
+#: ui/error_modal.slint:70
+msgctxt "ErrorModal"
+msgid "Close"
+msgstr ""
+
+#: ui/search.slint:171
+msgctxt "Search"
+msgid "Search..."
+msgstr ""
+
+#: ui/search.slint:202
+msgctxt "Search"
+msgid "No results"
+msgstr ""
+
+#: ui/search.slint:234
+msgctxt "SearchBar"
+msgid "Search..."
+msgstr ""
+
+#: ui/settings.slint:204
+msgctxt "SettingsGeneralTab"
+msgid "General settings"
+msgstr ""
+
+#: ui/settings.slint:215
+msgctxt "SettingsGeneralTab"
+msgid "Username"
+msgstr ""
+
+#: ui/settings.slint:219
+msgctxt "SettingsGeneralTab"
+msgid "Change"
+msgstr ""
+
+#: ui/settings.slint:233
+msgctxt "SettingsGeneralTab"
+msgid "Community"
+msgstr ""
+
+#: ui/settings.slint:234
+msgctxt "SettingsGeneralTab"
+msgid "Join Nectan discord server."
+msgstr ""
+
+#: ui/settings.slint:237
+msgctxt "SettingsGeneralTab"
+msgid "Join"
+msgstr ""
+
+#: ui/settings.slint:251
+msgctxt "SettingsGeneralTab"
+msgid "GitHub"
+msgstr ""
+
+#: ui/settings.slint:252
+msgctxt "SettingsGeneralTab"
+msgid "Nectan is open source. If you like the software, leave a star."
+msgstr ""
+
+#: ui/settings.slint:255 ui/settings.slint:273
+msgctxt "SettingsGeneralTab"
+msgid "Open"
+msgstr ""
+
+#: ui/settings.slint:269
+msgctxt "SettingsGeneralTab"
+msgid "Privacy Policy"
+msgstr ""
+
+#: ui/settings.slint:270
+msgctxt "SettingsGeneralTab"
+msgid "See our privacy policy."
+msgstr ""
+
+#: ui/settings.slint:287
+msgctxt "SettingsGeneralTab"
+msgid "Theme"
+msgstr ""
+
+#: ui/settings.slint:288
+msgctxt "SettingsGeneralTab"
+msgid "Change theme."
+msgstr ""
+
+#: ui/settings.slint:290
+msgctxt "SettingsGeneralTab"
+msgid "Dark"
+msgstr ""
+
+#: ui/settings.slint:290
+msgctxt "SettingsGeneralTab"
+msgid "Light"
+msgstr ""
+
+#: ui/settings.slint:344
+msgctxt "SettingShortcutsTab"
+msgid "Keyboard shortcuts"
+msgstr ""
+
+#: ui/settings.slint:409
+msgctxt "ChangeUsernameModal"
+msgid "Change username"
+msgstr ""
+
+#: ui/settings.slint:419
+msgctxt "ChangeUsernameModal"
+msgid "New username will be visible to other devices after app restart."
+msgstr ""
+
+#: ui/settings.slint:433
+msgctxt "ChangeUsernameModal"
+msgid "Enter username"
+msgstr ""
+
+#: ui/settings.slint:445
+msgctxt "ChangeUsernameModal"
+msgid "Cancel"
+msgstr ""
+
+#: ui/settings.slint:457
+msgctxt "ChangeUsernameModal"
+msgid "Save"
+msgstr ""
+
+#: ui/transfers.slint:48
+msgctxt "TransfersBridge"
+msgid "Processing"
+msgstr ""
+
+#: ui/transfers.slint:49
+msgctxt "TransfersBridge"
+msgid "Finished"
+msgstr ""
+
+#: ui/transfers.slint:50
+msgctxt "TransfersBridge"
+msgid "Error"
+msgstr ""
+
+#: ui/transfers.slint:338
+msgctxt "TransferDetails"
+msgid "Sending to {}"
+msgstr ""
+
+#: ui/transfers.slint:339
+msgctxt "TransferDetails"
+msgid "Receiving from {}"
+msgstr ""
+
+#: ui/transfers.slint:414
+msgctxt "TransferDetails"
+msgid "Contents ({})"
+msgstr ""
+
+#: ui/transfers.slint:506
+msgctxt "Transfers"
+msgid "No ongoing transfers."
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:40
+msgctxt "TransferSizeEntriesInfoHeader"
+msgid " entries"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:145 ui/transfer_offer_modal.slint:204
+msgctxt "OutcomingTransferModal"
+msgid "Sending offer"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:146
+msgctxt "OutcomingTransferModal"
+msgid "Waiting for response"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:147
+msgctxt "OutcomingTransferModal"
+msgid "Transfer accepted"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:148
+msgctxt "OutcomingTransferModal"
+msgid "Transfer rejected"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:150
+msgctxt "OutcomingTransferModal"
+msgid "Error occured"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:159
+msgctxt "OutcomingTransferModal"
+msgid "Sending transfer offer, this shouldn't take long."
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:161
+msgctxt "OutcomingTransferModal"
+msgid "Waiting for the remote device to accept the transfer."
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:163
+msgctxt "OutcomingTransferModal"
+msgid "Transfer is currently processing."
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:165
+msgctxt "OutcomingTransferModal"
+msgid "Remote device declined the transfer."
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:167
+msgctxt "OutcomingTransferModal"
+msgid "Remote device is offline."
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:184
+msgctxt "OutcomingTransferModal"
+msgid "Here show transfer progress"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:194
+msgctxt "OutcomingTransferModal"
+msgid "Close"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:204
+msgctxt "OutcomingTransferModal"
+msgid "Waiting"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:214
+msgctxt "OutcomingTransferModal"
+msgid "Ok"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:241
+msgctxt "OutcomingTransferModal"
+msgid "Advanced settings"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:249
+msgctxt "OutcomingTransferModal"
+msgid "Overwrite global settings specifically for this transfer"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:266
+msgctxt "OutcomingTransferModal"
+msgid "Compression"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:267
+msgctxt "OutcomingTransferModal"
+msgid "Enable compression "
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:305
+msgctxt "OutcomingTransferModal"
+msgid "Ignore"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:306
+msgctxt "OutcomingTransferModal"
+msgid "Respect .gitignore files during scan."
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:330
+msgctxt "OutcomingTransferModal"
+msgid "Hidden files"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:331
+msgctxt "OutcomingTransferModal"
+msgid "Send hidden files"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:355
+msgctxt "OutcomingTransferModal"
+msgid "Go back"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:430
+msgctxt "OutcomingTransferModal"
+msgid "Sending to "
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:467
+msgctxt "OutcomingTransferModal"
+msgid "Contents"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:503
+msgctxt "OutcomingTransferModal"
+msgid "Advanced"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:518
+msgctxt "OutcomingTransferModal"
+msgid "Cancel"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:531
+msgctxt "OutcomingTransferModal"
+msgid "Send"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:531
+msgctxt "OutcomingTransferModal"
+msgid "Scanning"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:642
+msgctxt "IncomingTransferOfferModal"
+msgid "Incoming transfer from "
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:673
+msgctxt "IncomingTransferOfferModal"
+msgid "Contents"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:696
+msgctxt "IncomingTransferOfferModal"
+msgid "Reject"
+msgstr ""
+
+#: ui/transfer_offer_modal.slint:708
+msgctxt "IncomingTransferOfferModal"
+msgid "Accept"
+msgstr ""

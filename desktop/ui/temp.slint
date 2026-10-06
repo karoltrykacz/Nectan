@@ -1,0 +1,981 @@
+    // property <length> handle_w: 3px;
+    // property <float> min_frac: 0.08;
+    //
+    // property <float> p1: 0.3333;
+    // property <float> p2: 0.6667;
+    //
+    // property <length> avail: max(1px, row.width - 2 * handle_w);
+    // row := HorizontalLayout {
+    //     height: 20px;
+    //     spacing: 0px;
+    //
+    //     Rectangle {
+    //         width: p1 *  avail;
+    //         background: darkred;
+    //     }
+    //
+    //     Rectangle {
+    //         width: handle_w;
+    //         background: white;
+    //         TouchArea {
+    //             mouse-cursor: MouseCursor.col-resize;
+    //             moved => {
+    //                 p1 = clamp(
+    //                     p1 + (self.mouse-x - self.pressed-x) /  avail,
+    //                     min_frac,
+    //                     p2 -  min_frac);
+    //             }
+    //         }
+    //     }
+    //
+    //     Rectangle {
+    //         width: (p2 -  p1) * avail;
+    //         background: darkgreen;
+    //     }
+    //
+    //     Rectangle {
+    //         width: handle_w;
+    //         background: white;
+    //         TouchArea {
+    //             mouse-cursor: MouseCursor.col-resize;
+    //             moved => {
+    //                 p2 = clamp(
+    //                     p2 + (self.mouse-x - self.pressed-x) /  avail,
+    //                     p1 +  min_frac,
+    //                     1.0 - min_frac);
+    //             }
+    //         }
+    //     }
+    //
+    //     Rectangle {
+    //         width: (1.0 - p2) *  avail;
+    //         background: darkblue;
+    //     }
+    // }
+    //
+    // HorizontalLayout {
+    //     height: 100%;
+    //
+    //     vertical-stretch: 1;
+    //     horizontal-stretch: 1;
+    //
+    //     Rectangle {
+    //         width: p1 *  avail;
+    //         background: darkred;
+    //     }
+    //
+    //     Rectangle {
+    //         width: handle_w;
+    //         background: white;
+    //         TouchArea {
+    //             mouse-cursor: MouseCursor.col-resize;
+    //             moved => {
+    //                 p1 = clamp(
+    //                     p1 + (self.mouse-x - self.pressed-x) /  avail,
+    //                     min_frac,
+    //                     p2 -  min_frac);
+    //             }
+    //         }
+    //     }
+    //
+    //     Rectangle {
+    //         width: (p2 -  p1) * avail;
+    //         background: darkgreen;
+    //     }
+    //
+    //     Rectangle {
+    //         width: handle_w;
+    //         background: white;
+    //         TouchArea {
+    //             mouse-cursor: MouseCursor.col-resize;
+    //             moved => {
+    //                 p2 = clamp(
+    //                     p2 + (self.mouse-x - self.pressed-x) /  avail,
+    //                     p1 +  min_frac,
+    //                     1.0 - min_frac);
+    //             }
+    //         }
+    //     }
+    //
+    //     Rectangle {
+    //         width: (1.0 - p2) *  avail;
+    //         background: darkblue;
+    //     }
+    // }
+// import { Theme } from "./theme.slint";
+// import { ListView, HorizontalBox } from "std-widgets.slint";
+// import { SvgIcon, IconButton } from "elements.slint";
+//
+// export enum EntryType { folder, symlink, file }
+//
+// export struct Entry { type: EntryType, path: string, name: string, preview: image }
+//
+// export global ExplorerBridge {
+//     in-out property <[Entry]> files;
+//     in-out property <length> entry-size: 32px;
+//     in-out property <string> current;
+//     in-out property <bool> can-paste: false;
+//
+//     callback open(Entry);
+//
+//     callback forward();
+//     callback back();
+//
+//     callback copy(int, int);
+//
+//     callback cut(int, int);
+//     callback paste();
+//     callback delete-items(int, int);
+//     callback rename(int);
+//     callback new-folder();
+//     callback new-file();
+//     callback refresh();
+//     callback properties(int);
+// }
+//
+// component MenuEntry inherits Rectangle {
+//     in property <string> label;
+//     in property <string> shortcut;
+//     in property <bool> enabled: true;
+//     in property <bool> danger: false;
+//     callback clicked();
+//
+//     height: 28px;
+//     border-radius: 4px;
+//     background: (mta.has-hover && root.enabled) ? Theme.colors.fourth-col : transparent;
+//
+//     HorizontalLayout {
+//         padding-left: 10px;
+//         padding-right: 10px;
+//         spacing: 16px;
+//
+//         Text {
+//             text: root.label;
+//             font-size: 12px;
+//             vertical-alignment: center;
+//             horizontal-stretch: 1;
+//             color: root.danger ? #e5484d : Theme.colors.primary-font;
+//             opacity: root.enabled ? 1.0 : 0.4;
+//         }
+//
+//         Text {
+//             text: root.shortcut;
+//             font-size: 11px;
+//             vertical-alignment: center;
+//             color: Theme.colors.primary-font;
+//             opacity: 0.5;
+//         }
+//     }
+//
+//     mta := TouchArea {
+//         enabled: root.enabled;
+//         clicked => {
+//             root.clicked();
+//         }
+//     }
+// }
+//
+// component MenuSeparator inherits Rectangle {
+//     height: 9px;
+//     Rectangle {
+//         y: 4px;
+//         height: 1px;
+//         background: Theme.colors.primary-font;
+//         opacity: 0.15;
+//     }
+// }
+//
+// export component Vaults inherits Rectangle {
+//     clip: true;
+//     border-radius: 8px;
+//
+//     property <int> press-row: -1;
+//
+//     property <int> sel-from: -1;
+//     property <int> sel-to: -1;
+//     property <int> sel-anchor: -1;
+//     property <bool> dragging: false;
+//     property <length> row-h: 24px;
+//     property <bool> toggle-off: false;
+//
+//     property <length> edge: 40px;
+//     property <length> max-speed: 14px;
+//     property <length> dy;
+//     property <float> accel: 0;
+//
+//     property <length> menu-x: 0px;
+//     property <length> menu-y: 0px;
+//     property <length> menu-w: 210px;
+//     property <length> item-menu-h: 235px;
+//     property <length> bg-menu-h: 170px;
+//     property <bool> menu-on-item: false;
+//
+//     property <int> sel-lo: min(sel-from, sel-to);
+//     property <int> sel-hi: max(sel-from, sel-to);
+//     property <int> sel-count: sel-from < 0 ? 0 : sel-hi - sel-lo + 1;
+//
+//     function update-drag-selection() {
+//         root.cur-x = ta.mouse-x;
+//         root.cur-y = ta.mouse-y - list.viewport-y;
+//         root.sel-from = clamp(Math.floor(min(root.anchor-y, root.cur-y) / root.row-h), 0, ExplorerBridge.files.length - 1);
+//         root.sel-to = clamp(Math.floor(max(root.anchor-y, root.cur-y) / root.row-h), 0, ExplorerBridge.files.length - 1);
+//     }
+//
+//     function scroll-dy(my: length) -> length {
+//         if (my < root.edge) {
+//             return (root.edge - max(my, 0px)) / root.edge * root.max-speed;
+//         }
+//         if (my > ta.height - root.edge) {
+//             return -(min(my, ta.height) - (ta.height - root.edge)) / root.edge * root.max-speed;
+//         }
+//         return 0px;
+//     }
+//
+//     property <length> anchor-x: 0px;
+//     property <length> anchor-y: 0px;
+//     property <length> cur-x: 0px;
+//     property <length> cur-y: 0px;
+//
+//     property <int> raw-row: Math.floor((ta.mouse-y - list.viewport-y) / row-h);
+//     property <int> hover-row: ta.has-hover && raw-row >= 0 && raw-row < ExplorerBridge.files.length ? raw-row : -1;
+//     property <int> cursor: -1;
+//     property <bool> visual: false;
+//     property <bool> pending-g: false;
+//
+//     Timer {
+//         interval: 600ms;
+//         running: root.pending-g;
+//         triggered => {
+//             root.pending-g = false;
+//         }
+//     }
+//
+//     function half-page() -> int {
+//         let n: int = Math.floor(list.height / root.row-h / 2);
+//         if (n < 1) {
+//             return 1;
+//         }
+//         return n;
+//     }
+//
+//     function ensure-visible() {
+//         let top = root.cursor * root.row-h;
+//         let bottom = top + root.row-h;
+//         if (top + list.viewport-y < 0px) {
+//             list.viewport-y = -top;
+//         } else if (bottom + list.viewport-y > list.height) {
+//             list.viewport-y = list.height - bottom;
+//         }
+//     }
+//
+//     function move(delta: int, extend: bool) {
+//         if (ExplorerBridge.files.length <= 0) {
+//             return;
+//         }
+//         root.goto-row(root.cursor < 0 ? 0 : root.cursor + delta, extend);
+//     }
+//
+//     function goto-row(row: int, extend: bool) {
+//         if (ExplorerBridge.files.length <= 0) {
+//             return;
+//         }
+//         root.cursor = clamp(row, 0, ExplorerBridge.files.length - 1);
+//         if (extend || root.visual) {
+//             if (root.sel-anchor < 0) {
+//                 root.sel-anchor = root.cursor;
+//             }
+//             root.sel-from = root.sel-anchor;
+//             root.sel-to = root.cursor;
+//         } else {
+//             root.sel-anchor = root.cursor;
+//             root.sel-from = root.cursor;
+//             root.sel-to = root.cursor;
+//         }
+//         root.ensure-visible();
+//     }
+//
+//     function toggle-visual() {
+//         if (ExplorerBridge.files.length <= 0) {
+//             return;
+//         }
+//         if (root.visual) {
+//             root.visual = false;
+//         } else {
+//             if (root.cursor < 0) {
+//                 root.cursor = 0;
+//             }
+//             root.visual = true;
+//             root.sel-anchor = root.cursor;
+//             root.sel-from = root.cursor;
+//             root.sel-to = root.cursor;
+//             root.ensure-visible();
+//         }
+//     }
+//
+//     function select-all() {
+//         if (ExplorerBridge.files.length <= 0) {
+//             return;
+//         }
+//         root.sel-anchor = 0;
+//         root.sel-from = 0;
+//         root.sel-to = ExplorerBridge.files.length - 1;
+//     }
+//
+//     function close-menu() {
+//         ctx-menu.close();
+//         fs.focus();
+//     }
+//
+//     function open-context-menu(mx: length, my: length) {
+//         let row = Math.floor((my - list.viewport-y) / root.row-h);
+//         let on-item = row >= 0 && row < ExplorerBridge.files.length;
+//         root.menu-on-item = on-item;
+//
+//         if (on-item) {
+//             let inside = root.sel-from >= 0 && row >= root.sel-lo && row <= root.sel-hi;
+//             root.cursor = row;
+//             if (!inside) {
+//                 // right click outside selection -> select just that row
+//                 root.visual = false;
+//                 root.sel-anchor = row;
+//                 root.sel-from = row;
+//                 root.sel-to = row;
+//             }
+//         } else {
+//             root.visual = false;
+//             root.sel-anchor = -1;
+//             root.sel-from = -1;
+//             root.sel-to = -1;
+//         }
+//
+//         let h = on-item ? root.item-menu-h : root.bg-menu-h;
+//         root.menu-x = clamp(mx, 0px, max(ta.width - root.menu-w, 0px));
+//         root.menu-y = clamp(my, 0px, max(ta.height - h, 0px));
+//         ctx-menu.show();
+//     }
+//
+//     VerticalLayout {
+//         padding-top: 16px;
+//         padding-bottom: 0;
+//
+//         HorizontalLayout {
+//             IconButton {
+//                 width: 28px;
+//                 height: 28px;
+//                 Image {
+//                     source: @image-url("icons/chevron-left.svg");
+//                     colorize: Theme.colors.primary-font;
+//                     width: 20px;
+//                     height: 20px;
+//                 }
+//
+//                 clicked => {
+//                     ExplorerBridge.back();
+//                 }
+//             }
+//
+//             IconButton {
+//                 width: 28px;
+//                 height: 28px;
+//                 Image {
+//                     source: @image-url("icons/chevron-right.svg");
+//                     colorize: Theme.colors.primary-font;
+//                     width: 20px;
+//                     height: 20px;
+//                 }
+//
+//                 clicked => {
+//                     ExplorerBridge.forward();
+//                 }
+//             }
+//
+//             Text {
+//                 text: "Vaults";
+//                 font-size: 20px;
+//                 font-family: Theme.font-heading;
+//                 font-weight: 500;
+//                 color: Theme.colors.primary-font;
+//             }
+//         }
+//
+//         Rectangle {
+//             height: 20px;
+//         }
+//
+//         HorizontalBox {
+//
+//             Text {
+//                 text: ExplorerBridge.current;
+//                 font-size: 13px;
+//                 font-family: Theme.font-heading;
+//                 font-weight: 500;
+//                 color: Theme.colors.primary-font;
+//             }
+//         }
+//
+//         Rectangle {
+//             padding: 8px;
+//             vertical-stretch: 1;
+//             clip: true;
+//             Timer {
+//                 interval: 8ms;
+//                 running: root.dragging && ta.pressed;
+//                 triggered => {
+//                     let dy = root.scroll-dy(ta.mouse-y);
+//                     if (dy != 0px) {
+//                         root.accel = min(root.accel + 0.04, 3.0);
+//                         list.viewport-y = clamp(list.viewport-y + dy * (1 + root.accel), min(0px, list.height - list.viewport-height), 0px);
+//                         root.update-drag-selection();
+//                     } else {
+//                         root.accel = 0;
+//                     }
+//                 }
+//             }
+//
+//             list := ListView {
+//
+//                 for file[i] in ExplorerBridge.files: Rectangle {
+//                     height: row-h;
+//
+//                     // transform-scale-x: (ta.pressed && !root.dragging && i == root.press-row) ? 0.995 : 1.0;
+//                     // transform-scale-y: (ta.pressed && !root.dragging && i == root.press-row) ? 0.995 : 1.0;
+//
+//                     // animate transform-scale-x, transform-scale-y {
+//                     //     easing: ease;
+//                     //     duration: 50ms;
+//                     // }
+//
+//                     property <bool> selected: sel-from >= 0 && i >= min(sel-from, sel-to) && i <= max(root.sel-from, root.sel-to);
+//
+//                     background: selected ? Theme.colors.fourth-col
+//                         : i == hover-row ? Theme.colors.third-col
+//                         : transparent;
+//
+//                     // Rectangle {
+//                     //     x: 20px;
+//                     //     y: (parent.height - self.height) / 2;
+//                     //     width: 32px;
+//                     //     height: 32px;
+//                     //     clip: true;
+//                     //     Image {
+//                     //         width: parent.width;
+//                     //         height: parent.height;
+//                     //         source: file.preview;
+//                     //         image-fit: contain;
+//                     //     }
+//                     // }
+//
+//                     Text {
+//                         x: 20px;
+//                         height: parent.height;
+//                         font-size: 12px;
+//                         text: file.name;
+//                         vertical-alignment: center;
+//                         overflow: elide;
+//                         color: Theme.colors.primary-font;
+//                     }
+//                 }
+//             }
+//
+//             fs := FocusScope {
+//                 width: parent.width;
+//                 height: parent.height;
+//                 init => { self.focus(); }
+//
+//                 key-pressed(event) => {
+//                     if (event.text == "g") {
+//                         if (root.pending-g) {
+//                             root.pending-g = false;
+//                             root.goto-row(0, false);
+//                         } else {
+//                             root.pending-g = true;
+//                         }
+//                         return EventResult.accept;
+//                     }
+//                     root.pending-g = false;
+//                     if (event.text == "G") {
+//                         root.goto-row(ExplorerBridge.files.length - 1, false);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.modifiers.control && event.text == "d") {
+//                         root.move(root.half-page(), event.modifiers.shift);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.modifiers.control && event.text == "u") {
+//                         root.move(-root.half-page(), event.modifiers.shift);
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.modifiers.control || event.modifiers.meta) && event.text == "c" && root.sel-from >= 0) {
+//                         debug("Copy");
+//                         ExplorerBridge.copy(root.sel-lo, root.sel-hi);
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.modifiers.control || event.modifiers.meta) && event.text == "x" && root.sel-from >= 0) {
+//                         ExplorerBridge.cut(root.sel-lo, root.sel-hi);
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.modifiers.control || event.modifiers.meta) && event.text == "v") {
+//                         ExplorerBridge.paste();
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.modifiers.control || event.modifiers.meta) && event.text == "a") {
+//                         root.select-all();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.Delete && root.sel-from >= 0) {
+//                         ExplorerBridge.delete-items(root.sel-lo, root.sel-hi);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.F2 && root.sel-count == 1) {
+//                         ExplorerBridge.rename(root.sel-lo);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.F5) {
+//                         ExplorerBridge.refresh();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.DownArrow || event.text == "j") {
+//                         root.move(1, event.modifiers.shift);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.UpArrow || event.text == "k") {
+//                         root.move(-1, event.modifiers.shift);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == "J") {
+//                         root.move(1, true);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == "K") {
+//                         root.move(-1, true);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == "v") {
+//                         root.toggle-visual();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.Escape) {
+//                         root.visual = false;
+//                         root.sel-from = -1;
+//                         root.sel-to = -1;
+//                         root.sel-anchor = -1;
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.Return && root.cursor >= 0) {
+//                         ExplorerBridge.open(ExplorerBridge.files[root.cursor]);
+//                         return EventResult.accept;
+//                     }
+//                     return EventResult.reject;
+//                 }
+//             }
+//
+//             ta := TouchArea {
+//                 width: parent.width;
+//                 height: parent.height;
+//                 mouse-cursor: hover-row >= 0 ? MouseCursor.pointer : MouseCursor.default;
+//                 pointer-event(event) => {
+//                     if (event.button == PointerEventButton.right && event.kind == PointerEventKind.up) {
+//                         root.open-context-menu(self.mouse-x, self.mouse-y);
+//                     }
+//                     if (event.button == PointerEventButton.left) {
+//                         if (event.kind == PointerEventKind.down) {
+//
+//                             anchor-x = self.mouse-x;
+//                             anchor-y = self.mouse-y - list.viewport-y;
+//                             cur-x = anchor-x;
+//                             cur-y = anchor-y;
+//                             dragging = false;
+//
+//                             toggle-off = !event.modifiers.shift
+//                                 && hover-row >= 0
+//                                 && sel-from >= 0
+//                                 && hover-row >= min(sel-from, sel-to)
+//                                 && hover-row <= max(sel-from, sel-to);
+//
+//                             press-row = hover-row;
+//
+//                             if (event.modifiers.shift && sel-anchor >= 0 && hover-row >= 0) {
+//                                 sel-from = sel-anchor;
+//                                 sel-to = hover-row;
+//                             } else {
+//                                 sel-anchor = hover-row;
+//                                 sel-from = hover-row;
+//                                 sel-to = hover-row;
+//                             }
+//                         }
+//                         if (event.kind == PointerEventKind.up) {
+//                             press-row = -1;
+//                             if (toggle-off && !dragging) {
+//                                 sel-from = -1;
+//                                 sel-to = -1;
+//                                 sel-anchor = -1;
+//                             }
+//                             toggle-off = false;
+//                             dragging = false;
+//                             root.accel = 0;
+//                         }
+//                     }
+//                 }
+//
+//                 moved => {
+//                     if (self.pressed) {
+//                         root.cur-x = self.mouse-x;
+//                         root.cur-y = self.mouse-y - list.viewport-y;
+//                         if (Math.abs(root.cur-y - root.anchor-y) > 4px || Math.abs(root.cur-x - root.anchor-x) > 4px) {
+//                             root.dragging = true;
+//                         }
+//                         if (root.dragging) {
+//                             root.update-drag-selection();
+//                         }
+//                     }
+//                 }
+//
+//                 double-clicked => {
+//                     if (hover-row >= 0) {
+//                         debug("Opened ", ExplorerBridge.files[hover-row]);
+//                         ExplorerBridge.open(ExplorerBridge.files[hover-row]);
+//                     }
+//                 }
+//
+//                 scroll-event(e) => {
+//                     list.viewport-y = clamp(list.viewport-y + e.delta-y, min(0px, list.height - list.viewport-height), 0px);
+//                     EventResult.accept
+//                 }
+//             }
+//
+//             ctx-menu := PopupWindow {
+//                 x: root.menu-x;
+//                 y: root.menu-y;
+//                 width: root.menu-w;
+//                 height: root.menu-on-item ? root.item-menu-h : root.bg-menu-h;
+//                 close-policy: PopupClosePolicy.close-on-click-outside;
+//
+//                 Rectangle {
+//                     background: Theme.colors.third-col;
+//                     border-radius: 8px;
+//                     border-width: 1px;
+//                     border-color: Theme.colors.fourth-col;
+//
+//                     VerticalLayout {
+//                         padding: 6px;
+//                         spacing: 0px;
+//
+//                         if root.menu-on-item: VerticalLayout {
+//                             MenuEntry {
+//                                 label: "Open";
+//                                 shortcut: "Enter";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     if (root.cursor >= 0) {
+//                                         ExplorerBridge.open(ExplorerBridge.files[root.cursor]);
+//                                     }
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Cut";
+//                                 shortcut: "Ctrl+X";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.cut(root.sel-lo, root.sel-hi);
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "Copy";
+//                                 shortcut: "Ctrl+C";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.copy(root.sel-lo, root.sel-hi);
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "Paste";
+//                                 shortcut: "Ctrl+V";
+//                                 enabled: ExplorerBridge.can-paste;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.paste();
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Rename";
+//                                 shortcut: "F2";
+//                                 enabled: root.sel-count == 1;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.rename(root.sel-lo);
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "Delete";
+//                                 shortcut: "Del";
+//                                 danger: true;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.delete-items(root.sel-lo, root.sel-hi);
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Properties";
+//                                 shortcut: "Alt+Enter";
+//                                 enabled: root.sel-count == 1;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.properties(root.sel-lo);
+//                                 }
+//                             }
+//                         }
+//
+//                         if !root.menu-on-item: VerticalLayout {
+//                             MenuEntry {
+//                                 label: "New Folder";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.new-folder();
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "New File";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.new-file();
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Paste";
+//                                 shortcut: "Ctrl+V";
+//                                 enabled: ExplorerBridge.can-paste;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.paste();
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "Select All";
+//                                 shortcut: "Ctrl+A";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     root.select-all();
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Refresh";
+//                                 shortcut: "F5";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.refresh();
+//                                 }
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
+// fn ext_of(p: &Path) -> String {
+//     p.extension()
+//         .and_then(|e| e.to_str())
+//         .map(|e| e.to_lowercase())
+//         .unwrap_or_default()
+// }
+//
+// fn make_preview(path: &Path) -> Option<Image> {
+//     let ext = ext_of(path);
+//
+//     if ext == "svg" || ext == "svgz" {
+//         return Image::load_from_path(path).ok();
+//     }
+//
+//     let img = image::open(path).ok()?;
+//     let small = img.resize(
+//         PREVIEW_SIZE,
+//         PREVIEW_SIZE,
+//         image::imageops::FilterType::Triangle,
+//     );
+//     let rgba = small.to_rgba8();
+//
+//     let buf = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+//         rgba.as_raw(),
+//         rgba.width(),
+//         rgba.height(),
+//     );
+//     Some(Image::from_rgba8(buf))
+// }
+//
+// const DIR: &str = "/media/karol/kox/";
+// const PREVIEW_SIZE: u32 = 256;
+//
+// pub fn handle_explorer(w: &NectanWindow) {
+//     let Ok(read_dir) = std::fs::read_dir(DIR) else {
+//         eprintln!("cannot read {DIR}");
+//         return;
+//     };
+//
+//     ui_state().add_path(DIR.into());
+//
+//     let mut entries: Vec<Entry> = read_dir
+//         .filter_map(|e| e.ok())
+//         .map(|e| {
+//             let path = e.path();
+//             let ft = e.file_type().ok();
+//             let kind = if ft.map(|t| t.is_symlink()).unwrap_or(false) {
+//                 EntryType::Symlink
+//             } else if ft.map(|t| t.is_dir()).unwrap_or(false) {
+//                 EntryType::Folder
+//             } else {
+//                 EntryType::File
+//             };
+//
+//             // blocking: decode right here
+//             let preview = if matches!(kind, EntryType::File) {
+//                 make_preview(&path).unwrap_or_default()
+//             } else {
+//                 Image::default()
+//             };
+//
+//             Entry {
+//                 name: e.file_name().to_string_lossy().to_string().into(),
+//                 path: path.to_string_lossy().to_string().into(),
+//                 r#type: kind,
+//                 preview,
+//             }
+//         })
+//         .collect();
+//
+//     entries.sort_by_key(|e| {
+//         (
+//             !matches!(e.r#type, EntryType::Folder),
+//             e.name.to_lowercase(),
+//         )
+//     });
+//
+//     w.global::<ExplorerBridge>()
+//         .set_files(ModelRc::from(Rc::new(VecModel::from(entries))));
+//
+//     let weak = w.as_weak();
+//     w.global::<ExplorerBridge>().on_forward(move || {
+//         println!("Forward");
+//         let Some(p) = ui_state().next_path() else {
+//             println!("No history");
+//             return;
+//         };
+//         load_entry(&weak, &p);
+//     });
+//
+//     let weak = w.as_weak();
+//     w.global::<ExplorerBridge>().on_back(move || {
+//         println!("Back");
+//         let Some(p) = ui_state().last_path() else {
+//             println!("No history");
+//             return;
+//         };
+//         load_entry(&weak, &p);
+//     });
+//
+//     let weak = w.as_weak();
+//     w.global::<ExplorerBridge>().on_open(move |entry| {
+//         let p = entry.path.to_string();
+//         let path = Path::new(&p);
+//         load_entry(&weak, path);
+//     });
+//
+//     let weak = w.as_weak();
+//     w.global::<ExplorerBridge>().on_copy(move |from, to| {
+//         // Todo change this to model
+//         let Some(w) = weak.upgrade() else { return };
+//         let e = w.global::<ExplorerBridge>().get_files();
+//         let mut paths = Vec::new();
+//         for i in from..to {
+//             let Some(r) = e.row_data(i as usize) else {
+//                 continue;
+//             };
+//             let path = PathBuf::from(r.path.to_string());
+//             paths.push(path);
+//         }
+//         println!("Copying {:#?}", paths);
+//         copy_files(&paths);
+//     });
+// }
+// fn load_entry(weak: &Weak<NectanWindow>, path: &Path) {
+//     let Ok(read_dir) = std::fs::read_dir(path) else {
+//         eprintln!("cannot read {DIR}");
+//         return;
+//     };
+//
+//     let mut entries: Vec<Entry> = read_dir
+//         .filter_map(|e| e.ok())
+//         .map(|e| {
+//             let path = e.path();
+//             let ft = e.file_type().ok();
+//             let kind = if ft.map(|t| t.is_symlink()).unwrap_or(false) {
+//                 EntryType::Symlink
+//             } else if ft.map(|t| t.is_dir()).unwrap_or(false) {
+//                 EntryType::Folder
+//             } else {
+//                 EntryType::File
+//             };
+//
+//             let preview = if matches!(kind, EntryType::File) {
+//                 // make_preview(&path).unwrap_or_default()
+//                 Image::default()
+//             } else {
+//                 Image::default()
+//             };
+//
+//             Entry {
+//                 name: e.file_name().to_string_lossy().to_string().into(),
+//                 path: path.to_string_lossy().to_string().into(),
+//                 r#type: kind,
+//                 preview,
+//             }
+//         })
+//         .collect();
+//
+//     entries.sort_by_key(|e| {
+//         (
+//             !matches!(e.r#type, EntryType::Folder),
+//             e.name.to_lowercase(),
+//         )
+//     });
+//     let Some(w) = weak.upgrade() else { return };
+//
+//     w.global::<ExplorerBridge>()
+//         .set_files(ModelRc::from(Rc::new(VecModel::from(entries))));
+//
+//     w.global::<ExplorerBridge>()
+//         .set_current(path.to_string_lossy().to_string().into());
+//
+//     println!("Added path {path:?}");
+//     ui_state().add_path(path.into());
+// }
+// use clipboard_rs::Clipboard;
+// fn copy_files(paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//     let ctx = ClipboardContext::new()?;
+//     let uris: Vec<String> = paths
+//         .iter()
+//         .filter_map(|p| Url::from_file_path(p).ok())
+//         .map(|u| u.to_string())
+//         .collect();
+//     ctx.set_files(uris)?;
+//     Ok(())
+// }

@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { ListView } from "std-widgets.slint";
 import { SvgIcon } from "elements.slint";
+
 export struct TreeNode {
     filename: string,
     path: string,
@@ -63,14 +64,8 @@ export component TreeList {
             }
 
             touch := TouchArea {
-                clicked => {
-                    root.toggle-node(i,node.path);
-                    debug("Node toggled!");
-                }
-                double-clicked => {
-                    debug("Node double click");
-		    // OPEN PREVIEw
-                }
+                clicked => { root.toggle-node(i,node.path); }
+                double-clicked => {}
             }
         }
     }

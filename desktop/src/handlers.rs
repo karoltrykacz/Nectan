@@ -1,3 +1,4 @@
+use clipboard_rs::ClipboardContext;
 use ignore::WalkBuilder;
 use nectan_core::{
     code_lookup::{CodeLookupError, gen_code, issue_code, lookup_code},
@@ -13,10 +14,6 @@ use nectan_core::{
     transfers::{TransferOfferError, send_contents},
     walker::Walker,
 };
-use nucleo::{
-    Config, Matcher,
-    pattern::{AtomKind, CaseMatching, Normalization, Pattern},
-};
 use rfd::FileHandle;
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, invoke_from_event_loop};
 use slint::{
@@ -24,22 +21,21 @@ use slint::{
     winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent},
 };
 use std::{
-    cell::RefCell,
     fs::DirEntry,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, atomic::Ordering::Relaxed},
     time::Duration,
 };
-use tokio::sync::{mpsc::Receiver, oneshot};
-use tracing::{error, info, trace};
+use tokio::sync::mpsc::Receiver;
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::{
-    AddDeviceBridge, ConnectionOfferBridge, DeviceItem, IncomingTransferOffer,
-    IncomingTransferOfferBridge, LookupState, NectanWindow, OutcomingTransferModalBridge,
-    SearchBridge, SendModalState, SettingsBridge, TreeNode, WindowBridge, devices::update_devices,
-    state::ui_state, transfers::update_transfers,
+    AddDeviceBridge, ConnectionOfferBridge, IncomingTransferOffer, IncomingTransferOfferBridge,
+    LookupState, NectanWindow, OutcomingTransferModalBridge, SendModalState, SettingsBridge,
+    TransfersBridge, TreeNode, WindowBridge, devices::update_devices, state::ui_state,
+    transfers::update_transfers,
 };
 
 fn show_error(
@@ -96,7 +92,7 @@ pub async fn event_listener(
     while let Some(msg) = rx.recv().await {
         match msg {
             AppEvent::TransfersUpdated => {
-                update_transfers(&w, &state);
+                update_transfers(&w);
             }
             AppEvent::IncomingTransferOffer { offer } => {
                 show_transfer_offer(&w, offer);
@@ -111,6 +107,7 @@ pub async fn event_listener(
                 update_devices(&w, &state);
             }
             AppEvent::TransferOfferDelivered => {
+                info!("Delivered transfer offer.");
                 transfer_offer_delivered(&w);
             }
             AppEvent::DeviceWentOffline { .. } => {
@@ -301,7 +298,7 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                         Err(e) => {
                             ui.invoke_show_error("Error".into(), e.to_string().into());
                             bridge.invoke_reset_add_remote();
-                            bridge.set_add_device_open(false);
+                            bridge.set_open(false);
                             error!("Failed to issue code {e:?}");
                         }
                     }
@@ -452,7 +449,7 @@ pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
         bridge.set_walk_total_size("0 B".into());
         bridge.set_walk_total_entries(0);
         bridge.set_send_state(SendModalState::Initial);
-        bridge.set_sending_open(true);
+        bridge.set_open(true);
 
         let nodes: Vec<TreeNode> = paths
             .iter()
@@ -537,6 +534,7 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
                             let bridge = w.global::<OutcomingTransferModalBridge>();
                             bridge.set_send_state(crate::SendModalState::Accepted);
                         });
+                        update_transfers(&weak);
                     }
                     Err(e) => {
                         let _ = weak.upgrade_in_event_loop(move |w| {
@@ -605,7 +603,7 @@ pub fn handle_drag_and_drop_files(w: &NectanWindow) {
                     walker.stop();
                     if let Some(w) = weak.upgrade() {
                         let b = w.global::<OutcomingTransferModalBridge>();
-                        b.set_sending_open(false);
+                        b.set_open(false);
                     }
                 }
                 state.outcoming_transfer().ready.store(false, Relaxed);
@@ -747,34 +745,9 @@ pub fn handle_username_change(w: &NectanWindow, s: Arc<NectanState>) {
     });
 }
 
-pub fn setup_search(w: &NectanWindow) {
+pub fn handle_open_transfers(w: &NectanWindow) {
     let weak = w.as_weak();
-    let matcher = Rc::new(RefCell::new(Matcher::new(Config::DEFAULT)));
-
-    w.global::<SearchBridge>().on_query_changed(move |q| {
-        let Some(w) = weak.upgrade() else { return };
-        let all = ui_state().devices().items();
-
-        let results: Vec<DeviceItem> = if q.trim().is_empty() {
-            all
-        } else {
-            let pattern = Pattern::new(
-                q.as_str(),
-                CaseMatching::Ignore,
-                Normalization::Smart,
-                AtomKind::Fuzzy,
-            );
-            let mut m = matcher.borrow_mut();
-            let names: Vec<String> = all.iter().map(|d| d.name.to_string()).collect();
-            let ranked = pattern.match_list(names.iter().map(|s| s.as_str()), &mut m);
-
-            ranked
-                .into_iter()
-                .filter_map(|(name, _score)| all.iter().find(|d| d.name.as_str() == name).cloned())
-                .collect()
-        };
-
-        w.global::<SearchBridge>()
-            .set_results(ModelRc::new(VecModel::from(results)));
+    w.global::<TransfersBridge>().on_open_transfers(move || {
+        update_transfers(&weak);
     });
 }

@@ -42,11 +42,13 @@ export global TransfersBridge {
 
     callback refresh-transfers();
 
+    callback open-transfers();
+
     pure public function status-to-string(s: TransferStatus) -> string {
-        if (s == TransferStatus.processing) { return "Processing"; }
-        if (s == TransferStatus.finished) { return "Finished"; }
-        if (s == TransferStatus.error) { return "Error"; }
-        return "offline";
+        if (s == TransferStatus.processing) { return @tr("Processing"); }
+        if (s == TransferStatus.finished) { return @tr("Finished"); }
+        if (s == TransferStatus.error) { return @tr("Error"); }
+        return "Offline";
     }
 }
 
@@ -178,10 +180,10 @@ export component TransferTile inherits Rectangle {
 }
 
 component FileRow inherits Rectangle {
-    in property <string> name: "";
-    in property <string> size-text: "";
-    in property <string> percent-text: "";
-    in property <float> progress: 0.0;
+    in property <string> name;
+    in property <string> size-text;
+    in property <string> percent-text;
+    in property <float> progress;
     in property <length> row-padding-right;
     in property <length> row-padding-left;
     in property <bool> is-last;
@@ -333,8 +335,8 @@ export component TransferDetails inherits Rectangle {
                 font-size: 13px;
                 font-weight: 500;
                 text: transfer.outcoming ?
-                    "Sending to \{transfer.receiver-name}" :
-                    "Receiving from \{transfer.receiver-name}";
+                    @tr("Sending to {}",transfer.receiver-name) :
+                    @tr("Receiving from {}",transfer.receiver-name);
             }
 
             Text {
@@ -409,7 +411,7 @@ export component TransferDetails inherits Rectangle {
                         padding-left: 12px;
 
                         Text {
-                            text: "Contents (\{round(transfer.total-files)})";
+                            text: @tr("Contents ({})",round(transfer.total-files));
                             color: Theme.colors.primary-font;
                             font-size: 13px;
                             font-weight: 500;
@@ -465,6 +467,7 @@ export component TransferDetails inherits Rectangle {
 }
 
 export component Transfers inherits Rectangle {
+    init => { TransfersBridge.open-transfers(); }
 
     Timer {
         interval: 41ms;
@@ -500,7 +503,7 @@ export component Transfers inherits Rectangle {
 
         Rectangle {
             Text {
-                text: "No ongoing transfers.";
+                text: @tr("No ongoing transfers.");
                 font-family: Theme.font-heading;
                 color: Theme.colors.primary-font;
             }

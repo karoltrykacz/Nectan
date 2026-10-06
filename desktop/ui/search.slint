@@ -5,20 +5,101 @@ import { DeviceItem, DeviceRow, DevicesBridge } from "devices.slint";
 import { Theme } from "theme.slint";
 import { ListView } from "std-widgets.slint";
 
+export enum SearchItemKind { device, action } 
+
+export struct ResultItem {
+    kind: SearchItemKind,
+    id: string,
+    title: string,
+    subtitle: string,
+    tag: string,
+}
+
 export global SearchBridge {
-    in-out property <bool> visible;
-    in-out property <[DeviceItem]> results;
+    in-out property <bool> open;
+    in-out property <[ResultItem]> results;
     callback query-changed(string);
-    callback select-device(string);
+    callback action(SearchItemKind, string);
+}
+
+component ResultRow inherits Rectangle {
+    in property <string> title;
+    in property <string> id;
+    in property <string> subtitle;
+    in property <string> tag;
+    in property <SearchItemKind> kind;
+    in property <bool> selected;
+    callback clicked;
+
+    height: 52px;
+    border-radius: 8px;
+    background: selected ? Theme.colors.third-col : t.has-hover ? Theme.colors.secondary-col : transparent;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+        cross-axis-alignment: center;
+        alignment: start;
+
+        Rectangle {
+            background: Theme.colors.fourth-col;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+
+            if root.kind == SearchItemKind.device: SvgIcon {
+                source: @image-url("icons/cpu.svg");
+                size: 16px;
+            }
+            if root.id == "settings":SvgIcon {
+                source: @image-url("icons/settings.svg");
+                size: 16px;
+            }
+            if root.id == "vaults":SvgIcon {
+                source: @image-url("icons/archive.svg");
+                size: 16px;
+            }
+            if root.id == "transfers":SvgIcon {
+                source: @image-url("icons/tranfsers.svg");
+                size: 16px;
+            }
+            if root.id == "send-files":SvgIcon {
+                source: @image-url("icons/file.svg");
+                size: 16px;
+            }
+            if root.id == "send-folder":SvgIcon {
+                source: @image-url("icons/folder.svg");
+                size: 16px;
+            }
+            if root.id == "add-device":SvgIcon {
+                source: @image-url("icons/link.svg");
+                size: 16px;
+            }
+        }
+
+        Text {
+            text: root.title;
+            vertical-alignment: center;
+            font-size: 14px;
+            font-weight: 500;
+            color: Theme.colors.primary-font;
+        }
+    }
+
+    t := TouchArea {
+        clicked => { root.clicked(); }
+    }
 }
 
 export component Search inherits GeneralModal {
     property <string> query;
+    property <int> total: SearchBridge.results.length;
     property <int> selected: 0;
 
-    function pick(id: string) {
-        SearchBridge.select-device(id);
-        SearchBridge.visible = false;
+    function pick-index(i: int) {
+        SearchBridge.action(SearchBridge.results[i].kind, SearchBridge.results[i].id);
+        SearchBridge.open = false;
     }
 
     function move(delta: int) {
@@ -36,11 +117,11 @@ export component Search inherits GeneralModal {
 
     init => { SearchBridge.query-changed(""); }
 
-    on-close => { SearchBridge.visible = false; }
+    on-close => { SearchBridge.open = false; }
 
     on-enter => {
         if SearchBridge.results.length > 0 {
-            pick(SearchBridge.results[min(root.selected, SearchBridge.results.length - 1)].id);
+            pick-index(root.selected);
         }
     }
 
@@ -61,6 +142,14 @@ export component Search inherits GeneralModal {
             capture-key-pressed(e) => {
                 if e.text == Key.DownArrow { root.move(1); return accept; }
                 if e.text == Key.UpArrow { root.move(-1); return accept; }
+                if e.text == Key.Tab {
+                    if e.modifiers.shift {
+                        root.move(-1);
+                    } else {
+                        root.move(1);
+                    }
+                    return accept;
+                }
                 reject
             }
 
@@ -79,7 +168,7 @@ export component Search inherits GeneralModal {
 
                     PlainLineEdit {
                         input-text <=> root.query;
-                        placeholder-text: "Search...";
+                        placeholder-text: @tr("Search...");
                         edited(t) => {
                             root.selected = 0;
                             list.viewport-y = 0;
@@ -94,16 +183,15 @@ export component Search inherits GeneralModal {
                     padding: 8px;
 
                     list := ListView {
-                        visible: SearchBridge.results.length > 0;
-                        height: SearchBridge.results.length > 0
-                            ? min(320px, SearchBridge.results.length * 52px)
-                            : 0px;
-                        for d[i] in SearchBridge.results: DeviceRow {
-                            border-radius: 8px;
-                            name: d.name;
-                            status: d.status;
+                        height: min(320px, root.total * 52px);
+                        for r[i] in SearchBridge.results: ResultRow {
+                            title: r.title;
+                            subtitle: r.subtitle;
+                            tag: r.tag;
+                            kind: r.kind;
+                            id: r.id;
                             selected: i == root.selected;
-                            clicked => { root.pick(d.id); }
+                            clicked => { root.pick-index(i); }
                         }
                     }
 
@@ -111,7 +199,7 @@ export component Search inherits GeneralModal {
                         height: 52px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
-                        text: "No results";
+                        text: @tr("No results");
                         font-size: 13px;
                         font-family: Theme.font-body;
                         color: Theme.colors.third-font;
@@ -143,7 +231,7 @@ export component SearchBar inherits Rectangle {
 
         Text {
             vertical-alignment: center;
-            text: "Search...";
+            text: @tr("Search...");
             font-size: 13px;
             font-family: Theme.font-body;
             color: Theme.colors.third-font;
@@ -152,7 +240,7 @@ export component SearchBar inherits Rectangle {
 
     h := TouchArea {
         clicked => {
-            SearchBridge.visible = true;
+            SearchBridge.open = true;
         }
     }
 }

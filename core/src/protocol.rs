@@ -414,10 +414,6 @@ impl NectanState {
         self.router.get().cloned()
     }
 
-    pub fn endpoint(&self) -> Option<Endpoint> {
-        self.router.get().and_then(|r| Some(r.endpoint().clone()))
-    }
-
     pub fn sender(&self) -> tokio::sync::mpsc::Sender<AppEvent> {
         self.app_event_tx.clone()
     }
@@ -445,8 +441,11 @@ impl NectanState {
         self.signing_key.sign(msg)
     }
 
+    pub fn endpoint(&self) -> Option<Endpoint> {
+        self.router.get().and_then(|r| Some(r.endpoint().clone()))
+    }
     pub fn endpoint_id(&self) -> Option<EndpointId> {
-        self.router().and_then(|r| Some(r.endpoint().id()))
+        self.router.get().and_then(|r| Some(r.endpoint().id()))
     }
 }
 

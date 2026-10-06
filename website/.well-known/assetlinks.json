@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.trykacz.nectan",
+      "sha256_cert_fingerprints": [
+        "36:1E:96:61:71:0B:AA:B6:3C:B7:9C:6D:8B:AE:1D:61:70:55:E0:5C:EF:1A:7B:28:01:4B:EF:73:4E:DA:6E:B8"
+      ]
+    }
+  }
+]

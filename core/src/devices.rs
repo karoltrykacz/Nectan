@@ -6,13 +6,15 @@ use iroh::{EndpointId, endpoint::Connection};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
+    fmt::write,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
+use tracing::info;
 
 use crate::{
     devices::DeviceStatus::Offline,
-    storage_utils::{DataWriter, KvStore},
+    storage_utils::{DataWriter, Deserializer, KvStore},
 };
 
 pub type DeviceId = VerifyingKey;
@@ -165,7 +167,10 @@ impl Devices {
         base_path.push("Nectan");
 
         let writer = DataWriter::new(base_path, "nectan_devices_store")?;
-        let initial = writer.load().unwrap_or_default();
+        let mut initial: Vec<Device> = writer.load().unwrap_or_default();
+        println!("Loaded [{}] devices. {:#?}", initial.len(), initial);
+
+        let initial = initial.drain(..).map(|d| (d.id, d)).collect();
 
         Ok(Self {
             inner: Arc::new(RwLock::new(initial)),
@@ -181,15 +186,18 @@ impl Devices {
         };
         self.writer.write(&stored)
     }
+
     pub fn get(&self, target: &DeviceId) -> Option<Device> {
         self.inner.read().unwrap().get(target).cloned()
     }
     pub fn get_all(&self) -> Vec<Device> {
         self.inner.read().unwrap().values().cloned().collect()
     }
+
     pub fn get_all_ids(&self) -> Vec<DeviceId> {
         self.inner.read().unwrap().keys().cloned().collect()
     }
+
     pub fn is_nearby(&self, endpoint_id: &EndpointId) -> bool {
         self.nearby_endpoints
             .read()
@@ -197,9 +205,11 @@ impl Devices {
             .get(endpoint_id)
             .is_some()
     }
+
     pub fn remove_nearby(&self, endpoint_id: EndpointId) {
         self.nearby_endpoints.write().unwrap().remove(&endpoint_id);
     }
+
     /// Returns true if device is newly inserted
     pub fn add_nearby(&self, endpoint_id: EndpointId) -> bool {
         self.nearby_endpoints.write().unwrap().insert(endpoint_id)
@@ -225,6 +235,7 @@ impl Devices {
             .unwrap()
             .insert(target, device.to_owned());
         self.persist()?;
+        info!("Persisted {device:#?}");
         Ok(old)
     }
     pub fn get_unresolved_devices(&self) -> Vec<DeviceId> {

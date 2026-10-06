@@ -14,6 +14,7 @@ use anyhow::bail;
 use anyhow::ensure;
 use ed25519_dalek::VerifyingKey;
 use fixedbitset::FixedBitSet;
+use iroh::defaults::DEFAULT_METRICS_PORT;
 use iroh::endpoint::Connection;
 use redb::ReadableDatabase;
 use redb::ReadableTable;
@@ -260,7 +261,6 @@ enum TransferControl {
     Ack(u64),
     /// Informs peer about error
     Error(TransferItemError),
-    AckHeader,
 }
 
 impl PendingTransfer {
@@ -392,13 +392,50 @@ impl PendingTransfer {
     }
 
     /// Returns remaining items
-    fn item_finished(&self) -> u32 {
-        self.processed_items.fetch_add(1, Relaxed) + 1
+    fn item_finished(&self, id: u32) -> u32 {
+        let left = self.processed_items.fetch_add(1, Relaxed) + 1;
+        let Ok(tx) = self.db.begin_write() else {
+            return left;
+        };
+        {
+            let Ok(mut table) = tx.open_table(DUMB_ITEMS) else {
+                return left;
+            };
+            let mut item = match table.get(id) {
+                Ok(Some(guard)) => guard.value(),
+                _ => return left,
+            };
+            item.sent_bytes = item.size;
+            if table.insert(id, item).is_err() {
+                return left;
+            }
+        }
+        let _ = tx.commit();
+        left
     }
 
-    /// Returns remaining bytes
     fn ack_sent_bytes(&self, bytes: u64) -> u64 {
         self.sent_bytes.fetch_add(bytes, Relaxed) + bytes
+    }
+
+    fn ack_sent_bytes_db(&self, id: u32, bytes: u64) {
+        let Ok(tx) = self.db.begin_write() else {
+            return;
+        };
+        {
+            let Ok(mut table) = tx.open_table(DUMB_ITEMS) else {
+                return;
+            };
+            let mut item = match table.get(id) {
+                Ok(Some(guard)) => guard.value(),
+                _ => return,
+            };
+            item.sent_bytes = bytes;
+            if table.insert(id, item).is_err() {
+                return;
+            }
+        }
+        let _ = tx.commit();
     }
 
     pub fn get_item(&self, id: u32) -> Result<TransferItem, redb::Error> {
@@ -430,6 +467,26 @@ impl PendingTransfer {
         let mut queue = Vec::new();
         queue.extend(self.unsent_batch());
 
+        let s = self.clone();
+        std::thread::spawn(move || {
+            let mut last_sent = s.sent_bytes.load(Relaxed);
+            let tick = std::time::Duration::from_millis(100);
+            let mut speed = 0.0;
+            loop {
+                std::thread::sleep(tick);
+                let sent = s.sent_bytes.load(Relaxed);
+                let diff = sent - last_sent;
+                let bps = diff as f32 / tick.as_secs_f32();
+                let mbps = bps * 1_000_000.0;
+                let diff = (speed - mbps) * 0.1;
+
+                speed = speed - diff;
+                last_sent = sent;
+
+                s.speed.store((speed * 1_000_000.0) as u64, Relaxed);
+            }
+        });
+
         loop {
             let item = match queue.pop() {
                 Some(id) => {
@@ -439,8 +496,6 @@ impl PendingTransfer {
                 None => {
                     let processed = self.processed_items.load(Relaxed);
                     let drained = processed == self.total_entries;
-
-                    info!("Processed {processed}. Total {}", self.total_entries);
 
                     if drained {
                         // All transfers processed, wait until sem is free and exit
@@ -455,7 +510,6 @@ impl PendingTransfer {
                         if unsent_len == 0 {
                             tokio::time::sleep(Duration::from_secs(1)).await;
                         }
-                        info!("Extending batch. Unsent_len {unsent_len}");
                         continue;
                     }
                 }
@@ -471,7 +525,7 @@ impl PendingTransfer {
 
                 match s.send_item(item, stream).await {
                     Ok(()) => {
-                        s.item_finished();
+                        s.item_finished(item_id);
                     }
                     Err(e) => {
                         error!("Sending item failed! {e:?}");
@@ -482,11 +536,9 @@ impl PendingTransfer {
         }
     }
 
-    pub async fn process_stream(
-        self: Arc<Self>,
-        permit: OwnedSemaphorePermit,
-        mut stream: StreamPair,
-    ) -> Result<()> {
+    pub async fn process_stream(self: Arc<Self>, mut stream: StreamPair) -> Result<()> {
+        let permit = self.sem.clone().acquire_owned().await.unwrap();
+
         info!("Processing stream for {}", &self.id.to_string()[0..8]);
         ensure!(self.direction == TransferDirection::Incoming);
 
@@ -495,7 +547,7 @@ impl PendingTransfer {
         let id = header.id;
 
         let r = match self.recieve_item(header, stream, permit).await {
-            Ok(()) => self.item_finished(),
+            Ok(()) => self.item_finished(id),
             Err(e) => self.handle_item_err(id, e),
         };
 
@@ -512,7 +564,7 @@ impl PendingTransfer {
     async fn recieve_item(
         &self,
         header: TransferItemHeader,
-        mut stream: StreamPair,
+        stream: StreamPair,
         _permit: OwnedSemaphorePermit,
     ) -> Result<(), TransferItemError> {
         let file_size = header.file_size;
@@ -571,43 +623,43 @@ impl PendingTransfer {
 
         loop {
             tokio::select! {
-                    _ = self.cancelled() =>{
-                        warn!("Receiving [{}] cancelled.", item_path.display());
-                        return Err(TransferItemError::Terminated);
-                    }
-                    _ = tick.tick() => {
-                        TransferControl::Ack(total_written)
-                            .write(&mut tx)
-                            .await
-                            .map_err(|_| {
-                            error!("Failed to write the ack.");
-                            TransferItemError::StreamError
-                    })?;
-            }
-                    r = rx.read_chunk(CHUNK_SIZE) => {
-                        let chunk = r.map_err(|_| TransferItemError::StreamError)?;
-                        let Some(chunk) = chunk else{
-                            if total_written < file_size {
-                                // Stream ended prematurely
-                                out_file
-                                    .flush()
-                                    .await
-                                    .map_err(|_| TransferItemError::FileIOError)?;
-                                warn!("RxStream ended prematurely [{}]", item_path.display());
-                                return Err(TransferItemError::StreamError);
-                            }
-                            break;
-                        };
-
-                        out_file
-                            .write_all(&chunk)
-                            .await
-                            .map_err(|_| TransferItemError::FileIOError)?;
-
-                        let len = chunk.len() as u64;
-                        total_written += len;
-                    }
+                _ = self.cancelled() =>{
+                    warn!("Receiving [{}] cancelled.", item_path.display());
+                    return Err(TransferItemError::Terminated);
                 }
+                _ = tick.tick() => {
+                    TransferControl::Ack(total_written)
+                        .write(&mut tx)
+                        .await
+                        .map_err(|_| {
+                        error!("Failed to write the ack.");
+                        TransferItemError::StreamError
+                    })?;
+                }
+                r = rx.read_chunk(CHUNK_SIZE) => {
+                    let chunk = r.map_err(|_| TransferItemError::StreamError)?;
+                    let Some(chunk) = chunk else{
+                        if total_written < file_size {
+                            // Stream ended prematurely
+                            out_file
+                                .flush()
+                                .await
+                                .map_err(|_| TransferItemError::FileIOError)?;
+                            warn!("RxStream ended prematurely [{}]", item_path.display());
+                            return Err(TransferItemError::StreamError);
+                        }
+                        break;
+                    };
+
+                    out_file
+                        .write_all(&chunk)
+                        .await
+                        .map_err(|_| TransferItemError::FileIOError)?;
+
+                    let len = chunk.len() as u64;
+                    total_written += len;
+                }
+            }
         }
 
         info!("Flushing {}", item_path.display());
@@ -706,7 +758,15 @@ impl PendingTransfer {
                     return Err(TransferItemError::Terminated);
                 }
                 Some(ctrl) = ctrl_rx.recv() => {
-                    info!("Got ctrl event {ctrl:?}");
+                    match ctrl {
+                        TransferControl::Error(e) => return Err(e),
+                        TransferControl::Ack(bytes) => {
+                            let diff = bytes - item.sent_bytes;
+                            self.ack_sent_bytes(diff);
+                            self.ack_sent_bytes_db(item.id, item.sent_bytes);
+                            item.sent_bytes = bytes;
+                        }
+                    }
                 }
                 result = file.read_buf(&mut buf)=>{
                     let n = result.map_err(|_| {
@@ -716,7 +776,6 @@ impl PendingTransfer {
                     if n == 0 {
                         break;
                     }
-                    item.sent_bytes += n as u64;
 
                     let chunk = std::mem::replace(&mut buf, Vec::with_capacity(64 * 1024));
                     tx
@@ -745,7 +804,7 @@ impl PendingTransfer {
             | TransferItemError::FileNotFound
             | TransferItemError::FileIOError => {
                 let _ = self.set_item_error(id, e);
-                let _ = self.item_finished();
+                let _ = self.item_finished(id);
 
                 self.failed.fetch_add(1, Relaxed);
                 self.processed_items.fetch_add(1, Relaxed) + 1
@@ -867,6 +926,7 @@ impl Transfers {
         offer: TransferOffer<PathTree>,
     ) {
         let id = offer.transfer_id;
+
         let t = Arc::new(PendingTransfer::from_offer(
             self.event_tx.clone(),
             target,
@@ -874,12 +934,17 @@ impl Transfers {
             direction,
             offer,
         ));
+
+        self.pending_transfers()
+            .write()
+            .unwrap()
+            .insert(id, t.clone());
+
         if direction == TransferDirection::Outcoming {
             if let Some(conn) = self.devices.get_connection(target) {
-                let _ = t.clone().start_sending(conn).await;
+                let _ = t.start_sending(conn).await;
             }
         }
-        self.pending_transfers().write().unwrap().insert(id, t);
         let _ = self.event_tx.send(AppEvent::TransfersUpdated).await;
     }
 
@@ -898,7 +963,6 @@ impl Transfers {
             error!("Transfer not found");
             bail!("Transfer not found")
         };
-        let permit = t.sem.clone().acquire_owned().await.unwrap();
-        t.process_stream(permit, stream).await
+        t.process_stream(stream).await
     }
 }

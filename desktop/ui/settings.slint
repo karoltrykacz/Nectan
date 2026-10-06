@@ -32,7 +32,7 @@ export component KeyBadge {
             Text {
                 text: root.key-name;
                 color: Theme.colors.primary-col;
-                font-family: "Rubik";
+                font-family: Theme.font-heading;
 
                 font-size: 11px;
                 font-weight: 600;
@@ -180,7 +180,7 @@ component SettingsTab inherits Rectangle {
     }
 
     general := TouchArea {
-        enabled: SettingsBridge.settings_open;
+        enabled: SettingsBridge.open;
         clicked => {
             active-tab = tab-id;
         }
@@ -201,7 +201,7 @@ component SettingsGeneralTab inherits Rectangle {
         alignment: start;
 
         Text {
-            text: "General settings";
+            text: @tr("General settings");
             color: Theme.colors.primary-font;
             font-size: 20px;
             font-weight: 700;
@@ -212,11 +212,11 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "Nazwa użytkownika";
+            title: @tr("Username");
             subtitle: SettingsBridge.username;
 
             PrimaryButton {
-                text: "Zmień";
+                text: @tr("Change");
 
                 clicked => {
                     SettingsBridge.username-modal = true;
@@ -230,11 +230,11 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "Społeczność";
-            subtitle: "Dołącz do serwera Discord Nectan";
+            title: @tr("Community");
+            subtitle: @tr("Join Nectan discord server.");
 
             PrimaryButton {
-                text: "Dołącz";
+                text: @tr("Join");
 
                 clicked => {
                     SettingsBridge.join_discord();
@@ -248,11 +248,11 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "GitHub";
-            subtitle: "Nectan is open source. If you like the software, leave a star.";
+            title: @tr("GitHub");
+            subtitle: @tr("Nectan is open source. If you like the software, leave a star.");
 
             PrimaryButton {
-                text: "Open";
+                text: @tr("Open");
 
                 clicked => {
                     SettingsBridge.open_github();
@@ -266,11 +266,11 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "Polityka prywatności";
-            subtitle: "Zobacz naszą politykę prywatności";
+            title: @tr("Privacy Policy");
+            subtitle: @tr("See our privacy policy.");
 
             PrimaryButton {
-                text: "Otwórz";
+                text: @tr("Open");
 
                 clicked => {
                     SettingsBridge.open_privacy();
@@ -284,10 +284,10 @@ component SettingsGeneralTab inherits Rectangle {
         }
 
         SettingsRow {
-            title: "Theme";
-            subtitle: "Change theme of application";
+            title: @tr("Theme");
+            subtitle: @tr("Change theme.");
             PrimaryButton {
-                text: Theme.mode == ThemeMode.dark ? "Dark" : "Light";
+                text: Theme.mode == ThemeMode.dark ? @tr("Dark") : @tr("Light");
                 clicked => {
                     Theme.toggle-mode();
                 }
@@ -297,18 +297,6 @@ component SettingsGeneralTab inherits Rectangle {
         Rectangle {
             height: 1px;
             background: Theme.colors.fourth-col.with-alpha(0.5);
-        }
-
-        SettingsRow {
-            title: "Zresetuj Nectan";
-            subtitle: "Przywraca aplikację do stanu początkowego.";
-
-            PrimaryButton {
-                text: "Resetuj";
-
-                clicked => {
-                }
-            }
         }
     }
 }
@@ -345,7 +333,7 @@ component SettingShortcutsTab inherits Rectangle {
     ScrollView {
         width: 100%;
         height: 100%;
-        enabled: SettingsBridge.settings_open;
+        enabled: SettingsBridge.open;
 
         VerticalLayout {
             padding: 20px;
@@ -353,7 +341,7 @@ component SettingShortcutsTab inherits Rectangle {
             spacing: 20px;
 
             Text {
-                text: "Keyboard shortcuts";
+                text: @tr("Keyboard shortcuts");
                 color: Theme.colors.primary-font;
                 font-size: 20px;
                 font-weight: 700;
@@ -418,7 +406,7 @@ component ChangeUsernameModal inherits Rectangle {
                         spacing: 4px;
                         alignment: start;
                         Text {
-                            text: "Change username";
+                            text: @tr("Change username");
                             font-size: 20px;
                             color: Theme.colors.primary-font;
                             font-family: Theme.font-heading;
@@ -428,7 +416,7 @@ component ChangeUsernameModal inherits Rectangle {
                         VerticalLayout {
                             alignment: start;
                             Text {
-                                text: "New username will be visible to other devices after app restart.";
+                                text: @tr("New username will be visible to other devices after app restart.");
                                 font-size: 13px;
                                 color: Theme.colors.secondary-font;
                             }
@@ -442,7 +430,7 @@ component ChangeUsernameModal inherits Rectangle {
                         background: Theme.colors.third-col;
                         VerticalLayout {
                             PlainLineEdit {
-                                placeholder-text: "Enter username";
+                                placeholder-text: @tr("Enter username");
                                 input-text <=> new-username;
                                 accepted => { save(); }
                             }
@@ -454,7 +442,7 @@ component ChangeUsernameModal inherits Rectangle {
                     HorizontalLayout {
                         alignment: end;
                         PrimaryButton {
-                            text: "Cancel";
+                            text: @tr("Cancel");
                             alt: true;
                             clicked => {
                                 SettingsBridge.username-modal = false;
@@ -466,7 +454,7 @@ component ChangeUsernameModal inherits Rectangle {
                         }
 
                         PrimaryButton {
-                            text: "Save";
+                            text: @tr("Save");
                             clicked => { save(); }
                         }
                     }
@@ -478,7 +466,7 @@ component ChangeUsernameModal inherits Rectangle {
 
 export component SettingsModal inherits GeneralModal {
 
-    on-close => { SettingsBridge.settings_open = false; }
+    on-close => { SettingsBridge.open = false; }
 
     Rectangle {
         width: min(820px, parent.width - 40px);
@@ -545,7 +533,7 @@ export component SettingsModal inherits GeneralModal {
 export global SettingsBridge {
 
     in-out property <bool> username-modal: false;
-    in-out property <bool> settings_open: false;
+    in-out property <bool> open: false;
     in-out property <int> active-tab: 0;
 
     in-out property <string> username: "Siema";

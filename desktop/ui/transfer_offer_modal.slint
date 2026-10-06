@@ -37,7 +37,7 @@ component TransferSizeEntriesInfoHeader inherits Rectangle {
             }
 
             Text {
-                text: " entries";
+                text: @tr(" entries");
                 color: Theme.colors.secondary-font;
                 font-size: 13px;
                 font-weight: 500;
@@ -85,7 +85,7 @@ export component OutcomingTransferModal inherits Rectangle {
 
         on-close => {
             on-closed();
-            OutcomingTransferModalBridge.sending-open = false;
+            OutcomingTransferModalBridge.open = false;
             OutcomingTransferModalBridge.transfer-walk-cancelled();
         }
 
@@ -142,12 +142,12 @@ export component OutcomingTransferModal inherits Rectangle {
                         VerticalLayout {
                             alignment: start;
                             Text {
-                                text: send-state == SendModalState.SendingOffer ? "Sending offer"
-                                    : send-state == SendModalState.WaitingForResponse ? "Waiting for response"
-                                    : send-state == SendModalState.Accepted ? "Transfer accepted"
-                                    : send-state == SendModalState.Rejected ? "Transfer rejected"
+                                text: send-state == SendModalState.SendingOffer ? @tr("Sending offer")
+                                    : send-state == SendModalState.WaitingForResponse ? @tr("Waiting for response")
+                                    : send-state == SendModalState.Accepted ? @tr("Transfer accepted")
+                                    : send-state == SendModalState.Rejected ? @tr("Transfer rejected")
                                     : send-state == SendModalState.Offline ? "Offline"
-                                    : "Error occured";
+                                    : @tr("Error occured");
                                 font-size: 20px;
                                 color: Theme.colors.primary-font;
                                 font-family: Theme.font-heading;
@@ -156,15 +156,15 @@ export component OutcomingTransferModal inherits Rectangle {
 
                             Text {
                                 text: send-state == SendModalState.SendingOffer ?
-                                    "Sending transfer offer, this shouldn't take long."
+                                    @tr("Sending transfer offer, this shouldn't take long.")
                                     : send-state == SendModalState.WaitingForResponse ?
-                                    "Waiting for the remote device to accept the transfer."
+                                    @tr("Waiting for the remote device to accept the transfer.")
                                     : send-state == SendModalState.Accepted ?
-                                    "Transfer is currently processing."
+                                    @tr("Transfer is currently processing.")
                                     : send-state == SendModalState.Rejected ?
-                                    "Remote device declined the transfer."
+                                    @tr("Remote device declined the transfer.")
                                     : send-state == SendModalState.Offline ?
-                                    "Remote device is offline."
+                                    @tr("Remote device is offline.")
                                     : OutcomingTransferModalBridge.sending-error-msg;
                                 font-size: 13px;
                                 color: Theme.colors.secondary-font;
@@ -181,7 +181,7 @@ export component OutcomingTransferModal inherits Rectangle {
                         vertical-stretch: 1;
                         background: red;
                         Text {
-                            text: "Here show transfer progress";
+                            text: @tr("Here show transfer progress");
                         }
                     }
 
@@ -191,29 +191,29 @@ export component OutcomingTransferModal inherits Rectangle {
 
                         if send-state == SendModalState.SendingOffer ||
                             send-state == SendModalState.WaitingForResponse: PrimaryButton {
-                            text: "Close";
+                            text: @tr("Close");
                             alt: OutcomingTransferModalBridge.send-state == SendModalState.Accepted ? false : true;
                             clicked => {
-                                OutcomingTransferModalBridge.sending-open = false;
+                                OutcomingTransferModalBridge.open = false;
                                 OutcomingTransferModalBridge.transfer-walk-cancelled();
                             }
                         }
 
                         if send-state == SendModalState.SendingOffer ||
                             send-state == SendModalState.WaitingForResponse: PrimaryButton {
-                            text: send-state == SendModalState.SendingOffer ? "Sending offer" : "Waiting";
+                            text: send-state == SendModalState.SendingOffer ? @tr("Sending offer") : @tr("Waiting");
                             button-loading: true;
                             animate-width: true;
                             clicked => {
-                                OutcomingTransferModalBridge.sending-open = false;
+                                OutcomingTransferModalBridge.open = false;
                             }
                         }
                         if send-state == SendModalState.Rejected ||
                             send-state == SendModalState.Accepted ||
                             send-state == SendModalState.Error: PrimaryButton {
-                            text: "Ok";
+                            text: @tr("Ok");
                             clicked => {
-                                OutcomingTransferModalBridge.sending-open = false;
+                                OutcomingTransferModalBridge.open = false;
                             }
                         }
                     }
@@ -238,7 +238,7 @@ export component OutcomingTransferModal inherits Rectangle {
                         VerticalLayout {
 
                             Text {
-                                text: "Advanced settings";
+                                text: @tr("Advanced settings");
                                 font-size: 20px;
                                 color: Theme.colors.primary-font;
                                 font-family: Theme.font-heading;
@@ -246,7 +246,7 @@ export component OutcomingTransferModal inherits Rectangle {
                             }
 
                             Text {
-                                text: "Overwrite global settings specifically for this transfer";
+                                text: @tr("Overwrite global settings specifically for this transfer");
                                 font-size: 13px;
                                 color: Theme.colors.secondary-font;
                             }
@@ -263,8 +263,8 @@ export component OutcomingTransferModal inherits Rectangle {
                     }
 
                     SettingsRow {
-                        title: "Compression";
-                        subtitle: "Enable compression ";
+                        title: @tr("Compression");
+                        subtitle: @tr("Enable compression ");
 
                         HorizontalLayout {
                             cross-axis-alignment: center;
@@ -302,8 +302,8 @@ export component OutcomingTransferModal inherits Rectangle {
                     }
 
                     SettingsRow {
-                        title: "Ignore";
-                        subtitle: "Respect .gitignore files during scan (Strongly recommended)";
+                        title: @tr("Ignore");
+                        subtitle: @tr("Respect .gitignore files during scan.");
 
                         Switch {
                             checked <=> root.respect-gitignore;
@@ -327,8 +327,8 @@ export component OutcomingTransferModal inherits Rectangle {
                     }
 
                     SettingsRow {
-                        title: "Hidden files";
-                        subtitle: "Send hidden files";
+                        title: @tr("Hidden files");
+                        subtitle: @tr("Send hidden files");
                         Switch {
                             checked <=> root.send-hidden-files;
                             toggled => {
@@ -352,7 +352,7 @@ export component OutcomingTransferModal inherits Rectangle {
                         alignment: end;
 
                         PrimaryButton {
-                            text: "Go back";
+                            text: @tr("Go back");
                             clicked => {
                                 send-state = SendModalState.Initial;
                             }
@@ -427,7 +427,7 @@ export component OutcomingTransferModal inherits Rectangle {
                             alignment: start;
 
                             Text {
-                                text: "Sending to ";
+                                text: @tr("Sending to ");
                                 color: Theme.colors.third-font;
                                 font-size: 12px;
                                 font-weight: 500;
@@ -464,7 +464,7 @@ export component OutcomingTransferModal inherits Rectangle {
 
                         Text {
                             x: 12px;
-                            text: "Contents";
+                            text: @tr("Contents");
                             color: Theme.colors.primary-font;
                             font-size: 13px;
                             font-weight: 500;
@@ -500,7 +500,7 @@ export component OutcomingTransferModal inherits Rectangle {
                             y: 6px;
                             Text {
                                 font-size: 13px;
-                                text: "Advanced";
+                                text: @tr("Advanced");
                                 color: advanced-button.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
                                 font-family: Theme.font-heading;
                                 font-weight: 600;
@@ -515,10 +515,10 @@ export component OutcomingTransferModal inherits Rectangle {
                     Rectangle { }
 
                     PrimaryButton {
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         alt: true;
                         clicked => {
-                            OutcomingTransferModalBridge.sending-open = false;
+                            OutcomingTransferModalBridge.open = false;
                             OutcomingTransferModalBridge.transfer-walk-cancelled();
                         }
                     }
@@ -528,7 +528,7 @@ export component OutcomingTransferModal inherits Rectangle {
                     }
 
                     PrimaryButton {
-                        text: OutcomingTransferModalBridge.walk-finished ? "Send" : "Scanning";
+                        text: OutcomingTransferModalBridge.walk-finished ? @tr("Send") : @tr("Scanning");
                         button-loading: !OutcomingTransferModalBridge.walk-finished;
                         animate-width: true;
                         clicked => {
@@ -548,11 +548,11 @@ export struct TransferSettings { transfer-name: string, compression: bool }
 
 export global OutcomingTransferModalBridge {
 
-    in-out property <bool> sending-open;
+    in-out property <bool> open;
 
     in-out property <SendModalState> send-state: SendModalState.Initial;
     in-out property <string> sending-error-msg;
-    in-out property <string> sending-destination-name: "Zbyszek";
+    in-out property <string> sending-destination-name;
     in-out property <string> sending-destination-id;
     in-out property <string> transfer-name;
     in-out property <string> walk-total-size;
@@ -639,7 +639,7 @@ export component IncomingTransferOfferModal inherits Rectangle {
                             HorizontalLayout {
                                 alignment: start;
                                 Text {
-                                    text: "Incoming transfer from ";
+                                    text: @tr("Incoming transfer from ");
                                     font-size: 13px;
                                     color: Theme.colors.secondary-font;
                                 }
@@ -670,7 +670,7 @@ export component IncomingTransferOfferModal inherits Rectangle {
 
                             Text {
                                 x: 12px;
-                                text: "Contents";
+                                text: @tr("Contents");
                                 color: Theme.colors.primary-font;
                                 font-size: 13px;
                                 font-weight: 500;
@@ -693,7 +693,7 @@ export component IncomingTransferOfferModal inherits Rectangle {
                     HorizontalLayout {
                         alignment: end;
                         PrimaryButton {
-                            text: "Reject";
+                            text: @tr("Reject");
                             alt: true;
                             clicked => {
                                 IncomingTransferOfferBridge.reject();
@@ -705,7 +705,7 @@ export component IncomingTransferOfferModal inherits Rectangle {
                         }
 
                         PrimaryButton {
-                            text: "Accept";
+                            text: @tr("Accept");
                             clicked => {
                                 IncomingTransferOfferBridge.accept();
                             }

@@ -9,7 +9,7 @@ import { ListView, VerticalBox } from "std-widgets.slint";
 import { SettingsBridge, SettingsModal, SettingsRow } from "settings.slint";
 import { TransfersBridge, Transfers, TransferItem } from "transfers.slint";
 import {
-    AddRemoteDeviceModal,
+    AddDeviceModal,
     AddDeviceBridge,
     ConnectionOfferBridge,
     ConnectionOfferModal,
@@ -21,7 +21,6 @@ import {
     DeviceStatus,
     DeviceScreen,
 } from "devices.slint";
-import { TreeNode, TreeList } from "path_tree.slint";
 import {
     IncomingTransferOfferModal,
     IncomingTransferOfferBridge,
@@ -43,7 +42,11 @@ export {
     IncomingTransferOfferBridge,
     OutcomingTransferModalBridge,
 }
-export enum Window { transfers, device, add_remote }
+export enum Window {
+    device,
+    vaults,
+    transfers,
+}
 
 export global NotificationsBridge {
     in-out property <bool> notifications-visible: false;
@@ -54,7 +57,7 @@ export global WindowBridge {
     callback reorder-requested(int, int);
     callback close-requested(int);
 
-    in-out property <bool> nectan-modal-visible: false;
+    in-out property <bool> nectan-modal-open: false;
 
     in-out property <bool> topbar-hover: false;
 
@@ -74,80 +77,10 @@ export global WindowBridge {
     callback close-window();
 }
 
-component ToolTip inherits Rectangle {
-    in property <string> text;
-    z: 4;
-    height: 24px;
-    width: self.min-width + 20px;
-    border-radius: 4px;
-    background: Theme.colors.primary-col;
-    border-color: Theme.colors.fourth-col;
-    border-width: 1px;
-    opacity: 0;
-    Text {
-        text: text;
-        font-size: 12px;
-        font-family: Theme.font-heading;
-        color: Theme.colors.primary-font;
-    }
-}
-
-
-component ActionButton inherits Rectangle {
-    height: 42px;
-    in property <length> icon-size: 16px;
-    in property <image> icon;
-    in property <string> text;
-    in property <color> icon-color: Theme.colors.fourth-col;
-    in property <color> text-color: Theme.colors.third-font;
-
-    callback clicked();
-
-    transform-scale: touch.pressed ? 0.97 : 1.0;
-    animate transform-scale { duration: 100ms; }
-
-    border-radius: 12px;
-    background: Theme.colors.third-col;
-
-    states [
-        hovered when touch.has-hover: {
-            background: Theme.colors.fourth-col;
-            tip.opacity: 1;
-            in {
-                animate tip.opacity {
-                    delay: 500ms;
-                    duration: 80ms;
-                }
-            }
-            out {
-                animate tip.opacity { duration: 80ms; }
-            }
-        }
-    ]
-
-    if icon != @image-url(""): SvgIcon {
-        source: icon;
-        fg: Theme.colors.third-font;
-        size: icon-size;
-    }
-
-    touch := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    tip := ToolTip {
-        x: root.width - 8px;
-        text: text;
-    }
-}
-
-
 
 component NectanModal inherits GeneralModal {
 
-    on-close => { WindowBridge.nectan-modal-visible = false; }
+    on-close => { WindowBridge.nectan-modal-open = false; }
 
     Rectangle {
         width: min(620px, parent.width * 0.8);
@@ -196,11 +129,11 @@ component NectanModal inherits GeneralModal {
 
             SettingsRow {
                 width: 420px;
-                title: "Source code";
-                subtitle: "Leave a star if you find Nectan useful.";
+                title: @tr("Source code");
+                subtitle: @tr("Leave a star if you find Nectan useful.");
 
                 PrimaryButton {
-                    text: "Open";
+                    text: @tr("Open");
                     image: @image-url("icons/github.svg");
                     clicked => {
                         SettingsBridge.username-modal = true;
@@ -212,6 +145,7 @@ component NectanModal inherits GeneralModal {
 }
 
 component SidebarDevice inherits Rectangle {
+    clip: true;
 
     in property <DeviceItem> device;
     in property <bool> selected: false;
@@ -250,6 +184,7 @@ component SidebarDevice inherits Rectangle {
 
             Text {
                 vertical-alignment: center;
+                height: root.height;
                 text: device.name;
                 color: Theme.colors.primary-font;
                 font-size: 13px;
@@ -273,7 +208,7 @@ export global Api {
 }
 
 component TopBarShower inherits Rectangle {
-    x: WindowBridge.sidebar-hover ? WindowBridge.sidebar-width : 0;
+    x: WindowBridge.sidebar-hover ? WindowBridge.sidebar-width + 20px : 0;
     z: 3;
     y: 0;
     width: 100%;
@@ -295,7 +230,7 @@ component TopBarShower inherits Rectangle {
             if self.mouse-y > 20px {
                 WindowBridge.topbar-hover = false;
             }
-            if self.mouse-y < 15px {
+            if self.mouse-y < 20px {
                 WindowBridge.topbar-hover = true;
             }
         }
@@ -306,15 +241,11 @@ component MainWindowTouchArea inherits TouchArea {
     width: 100%;
     height: 100%;
     pointer-event(event) => {
-        debug(self.mouse-y);
-        if self.mouse-y < 300px {
-            WindowBridge.topbar-hover = true;
-        } else {
+        if self.mouse-y > 40px {
             WindowBridge.topbar-hover = false;
         }
     }
     scroll-event(event) => {
-        debug(self.mouse-y);
         if event.delta-x > 10px {
             WindowBridge.sidebar-visible = true;
         }
@@ -342,10 +273,10 @@ component SidebarShower inherits Rectangle {
 }
 
 component Sidebar inherits Rectangle {
+    background: Theme.colors.primary-col;
     x: WindowBridge.sidebar-visible ? 0 : (WindowBridge.sidebar-hover ? 0 : -WindowBridge.sidebar-width);
     width: WindowBridge.sidebar-width;
     z: 2;
-    background: Theme.colors.primary-col.with-alpha(1.0);
     border-radius: 8px;
     border-width: 1px;
     border-color: WindowBridge.sidebar-visible ? transparent : Theme.colors.border-col;
@@ -389,7 +320,7 @@ component Sidebar inherits Rectangle {
                 }
 
                 clicked => {
-                    WindowBridge.nectan-modal-visible = true;
+                    WindowBridge.nectan-modal-open = true;
                 }
             }
 
@@ -441,23 +372,27 @@ component Sidebar inherits Rectangle {
 
                 IconButton {
                     border-radius: 12px;
-                    height: 42px;
+                    height: 36px;
                     inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
                     transform-y: 0;
+                    inner-border: AddDeviceBridge.open ? Theme.colors.fourth-col : transparent;
+
                     SvgIcon {
                         source: @image-url("icons/link.svg");
                         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
                         size: 16px;
                     }
 
-                    clicked => { AddDeviceBridge.add_device_open = true; }
+                    clicked => { AddDeviceBridge.open = true; }
                 }
 
                 IconButton {
                     border-radius: 12px;
-                    height: 42px;
+                    height: 36px;
                     inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
                     transform-y: 0;
+                    inner-border: WindowBridge.current-window == Window.transfers ? Theme.colors.fourth-col : transparent;
+
                     SvgIcon {
                         source: @image-url("icons/tranfsers.svg");
                         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
@@ -469,18 +404,51 @@ component Sidebar inherits Rectangle {
 
                 IconButton {
                     border-radius: 12px;
-                    height: 42px;
+                    height: 36px;
                     inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
                     transform-y: 0;
+                    inner-border: WindowBridge.current-window == Window.vaults ? Theme.colors.fourth-col : transparent;
+
                     SvgIcon {
                         source: @image-url("icons/archive.svg");
                         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
                         size: 15px;
                     }
 
-                    clicked => { WindowBridge.current-window = Window.transfers; }
+                    clicked => { WindowBridge.current-window = Window.vaults; }
                 }
             }
+
+            // Row {
+            //
+            //     IconButton {
+            //         border-radius: 12px;
+            //         height: 36px;
+            //         inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+            //         transform-y: 0;
+            //         SvgIcon {
+            //             source: @image-url("icons/search.svg");
+            //             fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+            //             size: 16px;
+            //         }
+            //
+            //         clicked => { AddDeviceBridge.open = true; }
+            //     }
+            //
+            //     IconButton {
+            //         border-radius: 12px;
+            //         height: 36px;
+            //         inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+            //         transform-y: 0;
+            //         SvgIcon {
+            //             source: @image-url("icons/hard-drive.svg");
+            //             fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+            //             size: 16px;
+            //         }
+            //
+            //         clicked => { AddDeviceBridge.open = true; }
+            //     }
+            // }
         }
 
         Rectangle {
@@ -510,21 +478,7 @@ component Sidebar inherits Rectangle {
                 }
 
                 clicked => {
-                    SettingsBridge.settings-open = true;
-                }
-            }
-
-            IconButton {
-                width: 28px;
-                height: 28px;
-                SvgIcon {
-                    source: @image-url("icons/plus.svg");
-                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                    size: 16px;
-                }
-
-                clicked => {
-                    AddDeviceBridge.add_device_open = true;
+                    SettingsBridge.open = true;
                 }
             }
         }
@@ -543,8 +497,8 @@ component Topbar inherits Rectangle {
     opacity: WindowBridge.topbar-hover ? 1.0 : 0.0;
 
     animate opacity {
-        delay: 50ms;
-        duration: 128ms;
+        delay: 200ms;
+        duration: 200ms;
         easing: ease;
     }
 
@@ -628,7 +582,6 @@ export component NectanWindow inherits Window {
     callback pasted();
 
     show-error(title, message) => {
-        debug("Showing error ", title);
         root.error_open = true;
         root.error_message = message;
         root.error_title = title;
@@ -652,7 +605,7 @@ export component NectanWindow inherits Window {
             }
             if (event.modifiers.shift) {
                 if (event.text == "A") {
-                    AddDeviceBridge.add_device_open = true;
+                    AddDeviceBridge.open = true;
                 }
             }
             if (event.modifiers.control || event.modifiers.meta) {
@@ -664,11 +617,11 @@ export component NectanWindow inherits Window {
                 if (event.text == Key.V) {
                     pasted();
                 }
-                if (event.text == Key.F) {
-                    SearchBridge.visible = true;
+                if (event.text == Key.K) {
+                    SearchBridge.open = true;
                 }
                 if (event.text == Key.I) {
-                    SettingsBridge.settings_open = true;
+                    SettingsBridge.open = true;
                 }
                 if (event.text == Key.T) {
                     WindowBridge.current-window = Window.transfers;
@@ -678,13 +631,12 @@ export component NectanWindow inherits Window {
             return reject;
         }
 
-        // MainWindowTouchArea { }
+        MainWindowTouchArea { }
 
         Rectangle {
             width: 100%;
             height: 100%;
             background: Theme.colors.primary-col;
-            // background: @linear-gradient(-30deg, #3f87a6 0%, #833AB4 50%, #f69d3c 100%);
 
             border-width: root.maximized ? 0 : 1px;
             border-radius: root.maximized ? 0 : 12px;
@@ -741,27 +693,29 @@ export component NectanWindow inherits Window {
         //         background: red;
         //     }
         // }
+
 	property <bool> any-modal-open:
-    	SettingsBridge.settings_open
-            || WindowBridge.nectan-modal-visible
-            || AddDeviceBridge.add_device_open
-            || SearchBridge.visible
-            || OutcomingTransferModalBridge.sending-open;
+    	SettingsBridge.open
+            || WindowBridge.nectan-modal-open
+            || AddDeviceBridge.open
+            || SearchBridge.open
+            || OutcomingTransferModalBridge.open;
+
         changed any-modal-open => {
             if !any-modal-open {
                 focus-scope.focus();
             }
         }
 
-        if SettingsBridge.settings_open: SettingsModal { }
+        if SettingsBridge.open: SettingsModal { }
 
-        if WindowBridge.nectan-modal-visible: NectanModal { }
+        if WindowBridge.nectan-modal-open: NectanModal { }
 
-        if AddDeviceBridge.add_device_open:  AddRemoteDeviceModal { }
+        if AddDeviceBridge.open:  AddDeviceModal { }
 
-        if SearchBridge.visible: Search { }
+        if SearchBridge.open: Search { }
 
-        if OutcomingTransferModalBridge.sending-open: OutcomingTransferModal { }
+        if OutcomingTransferModalBridge.open: OutcomingTransferModal { }
 
         if error_open: ErrorModal {
             title <=> error_title;
@@ -789,5 +743,22 @@ export component NectanWindow inherits Window {
 //             title: "Hide";
 //             activated => { hide-window(); }
 //         }
+//     }
+// }
+// component ToolTip inherits Rectangle {
+//     in property <string> text;
+//     z: 4;
+//     height: 24px;
+//     width: self.min-width + 20px;
+//     border-radius: 4px;
+//     background: Theme.colors.primary-col;
+//     border-color: Theme.colors.fourth-col;
+//     border-width: 1px;
+//     opacity: 0;
+//     Text {
+//         text: text;
+//         font-size: 12px;
+//         font-family: Theme.font-heading;
+//         color: Theme.colors.primary-font;
 //     }
 // }

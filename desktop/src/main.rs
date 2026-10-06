@@ -10,13 +10,19 @@ use slint::DataTransfer;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use slint::winit_030::{CustomApplicationHandler, EventResult, winit};
+use winit::event::WindowEvent;
+use winit::event_loop::ActiveEventLoop;
+use winit::window::{CustomCursor, WindowId};
+
 use crate::devices::update_devices;
 use crate::handlers::{
     event_listener, handle_add_device, handle_cancel_walker, handle_connection_offer,
-    handle_drag_and_drop_files, handle_incoming_transfer_offer, handle_outcoming_transfer,
-    handle_paste, handle_scan_files, handle_scan_folders, handle_send, handle_username_change,
-    handle_window_controls, setup_search,
+    handle_drag_and_drop_files, handle_incoming_transfer_offer, handle_open_transfers,
+    handle_outcoming_transfer, handle_paste, handle_scan_files, handle_scan_folders, handle_send,
+    handle_username_change, handle_window_controls,
 };
+use search::setup_search;
 
 use crate::state::init_app_state;
 use crate::transfers::{
@@ -32,6 +38,7 @@ use std::sync::Arc;
 
 mod devices;
 mod handlers;
+mod search;
 mod state;
 mod transfers;
 
@@ -49,6 +56,13 @@ impl Into<storage::Theme> for ThemeMode {
 #[tokio::main]
 async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
+    // w.show();
+
+    println!("{}", env!("CARGO_MANIFEST_DIR"));
+    println!("{}", env!("CARGO_PKG_NAME"));
+
+    slint::init_translations!(concat!(env!("CARGO_MANIFEST_DIR"), "/locales/"));
+    // slint::select_bundled_translation("pl").unwrap();
 
     let api = w.global::<Api>();
     api.on_make_data(|| {
@@ -71,6 +85,7 @@ async fn main() -> Result<(), slint::PlatformError> {
     let data_dir = dirs::data_dir()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let devices = Devices::new(Some(data_dir)).expect("Failed to create devices pool.");
+
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
     let data_dir = dirs::data_dir()
@@ -84,7 +99,6 @@ async fn main() -> Result<(), slint::PlatformError> {
     let state = setup_core(tx, device_id, userinfo, key, devices, storage)
         .await
         .unwrap();
-    let state = Arc::new(state);
 
     handle_username_change(&w, state.clone());
 
@@ -127,6 +141,7 @@ async fn main() -> Result<(), slint::PlatformError> {
             let _ = open::that("https://nectan.co/privacy");
         });
     }
+
     handle_settings(&w);
     init_app_state(&w, state.transfers.clone());
     setup_search(&w);
@@ -159,5 +174,7 @@ async fn main() -> Result<(), slint::PlatformError> {
     handle_refresh_transfers_list(&w);
 
     set_transfers(&w.as_weak(), &state);
+    handle_open_transfers(&w);
+
     w.run()
 }

@@ -98,7 +98,7 @@ export component QRApp inherits Rectangle {
 
     VerticalBox {
         Text {
-            text: "Scan QR Code:";
+            text: @tr("Scan QR Code:");
         }
 
         Image {
@@ -381,6 +381,7 @@ export component IconButton inherits Rectangle {
     in property <bool> enabled: true;
     out property <bool> hovered: area.has-hover;
     out property <bool> pressed: area.pressed;
+    in property <color> inner-border;
     border-radius: 4px;
 
     callback clicked <=> area.clicked;
@@ -392,14 +393,17 @@ export component IconButton inherits Rectangle {
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         // background: root.inner-bg != red ? root.inner-bg : (area.pressed ? Theme.colors.hover-col : (area.has-hover ? Theme.colors.hover-col : transparent));
 	background: inner-bg != red ? inner-bg : area.has-hover ? Theme.colors.fourth-col : transparent;
+        border-color: inner-border;
+        border-width: 1.5px;
 
         animate width, height, y {
-            duration: 80ms;
-            easing: ease-out;
+            duration: 50ms;
+            easing: ease;
         }
 
         transform-scale-x: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
         transform-scale-y: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
+
         y: root.transform ? area.pressed ? root.transform-y : 0 : 0;
 
         content := Rectangle {
@@ -468,10 +472,9 @@ export component StyledInput inherits Rectangle {
     callback take-snapshot();
 }
 
-    export component SelectionOverlay inherits Rectangle {
+export component SelectionOverlay inherits Rectangle {
     width: 100%;
     height: 100%;
-    z: 1;
     in-out property <bool> dragging: false;
     in-out property <length> start-x: 0px;
     in-out property <length> start-y: 0px;
