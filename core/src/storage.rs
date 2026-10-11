@@ -1,18 +1,8 @@
-use std::{
-    collections::HashMap,
-    hash::Hash,
-    path::PathBuf,
-    sync::{Arc, RwLock},
-};
-
-use crate::{
-    devices::Username,
-    storage_utils::{DataWriter, KvStore},
-};
-use anyhow::{Result, anyhow};
-use base64::engine::Config;
+use crate::{devices::Username, storage_utils::DataWriter};
+use anyhow::Result;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, hash::Hash, path::PathBuf, sync::RwLock};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Key {

@@ -13,7 +13,10 @@ export component PlainLineEdit inherits Rectangle {
     width: 100%;
     height: 100%;
 
-    init => { text-input.focus(); }
+    init => {
+        text-input.focus();
+        text-input.select-all();
+    }
 
     text-input := TextInput {
         text <=> input-text;
@@ -53,6 +56,7 @@ export component GeneralModal inherits Rectangle {
     forward-focus: focus-scope;
 
     focus-scope := FocusScope {
+
         focus-on-click: true;
 
         init => { self.focus(); }
@@ -78,7 +82,7 @@ export component GeneralModal inherits Rectangle {
             width: 100%;
             height: 100%;
             border-radius: 12px;
-            background: #00000077;
+            background: #00000088;
         }
 
         TouchArea {
@@ -372,7 +376,6 @@ export component SvgIcon inherits Image {
 }
 
 export component IconButton inherits Rectangle {
-    in property <string> text;
     in property <color> fg: Theme.colors.third-font;
     in property <bool> round: true;
     in property <bool> transform: true;
@@ -551,5 +554,25 @@ export component SelectionOverlay inherits Rectangle {
         clicked => {
             root.clicked();
         }
+    }
+}
+
+export component ToolTip inherits Rectangle {
+    in property <string> text;
+    z: 4;
+    height: 24px;
+    width: self.min-width + 20px;
+    border-radius: 4px;
+    background: #202020;
+    border-color: #333;
+    border-width: 1px;
+    opacity: 0;
+    animate opacity {
+        duration: 200ms;
+        delay: 300ms;
+    }
+    Text {
+        text: text;
+        font-size: 12px;
     }
 }

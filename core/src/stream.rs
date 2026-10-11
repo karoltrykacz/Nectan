@@ -1,16 +1,11 @@
 use anyhow::Result;
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::Bytes;
 use iroh::endpoint::{self, ReadExactError, VarInt};
-use serde::de::DeserializeOwned;
 use std::{
     future::Future,
-    io::{self, Cursor},
+    io::{self},
     ops::{Deref, DerefMut},
-    os::unix::fs::MetadataExt,
 };
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
-
-use crate::messages::NetMessage;
 
 pub type DefaultReader = iroh::endpoint::RecvStream;
 pub type DefaultWriter = iroh::endpoint::SendStream;
@@ -54,11 +49,11 @@ impl<R: RecvStream, W: SendStream> StreamPair<R, W> {
     }
 
     pub async fn read<M: crate::messages::StreamableMessage>(&mut self) -> Result<M> {
-        Ok(M::read_async(&mut self.reader).await?)
+        M::read_async(&mut self.reader).await
     }
 
     pub async fn write<M: crate::messages::StreamableMessage>(&mut self, msg: &M) -> Result<()> {
-        Ok(msg.write(&mut self.writer).await?)
+        msg.write(&mut self.writer).await
     }
 }
 

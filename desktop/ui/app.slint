@@ -28,6 +28,7 @@ import {
     OutcomingTransferModalBridge,
 } from "transfer_offer_modal.slint";
 import { SearchBridge, Search, SearchBar } from "search.slint";
+import { Chat } from "chat.slint";
 
 export {
     Theme,
@@ -155,8 +156,11 @@ component SidebarDevice inherits Rectangle {
 
     background: drag.dragging ? Theme.colors.fourth-font : selected ? Theme.colors.fourth-col : area.has-hover ? Theme.colors.third-col : transparent;
 
-    transform-scale: area.pressed ? 0.99 : 1.0;
-    animate transform-scale { duration: 100ms; }
+    transform-scale: area.pressed ? 0.98 : 1.0;
+    animate transform-scale {
+        duration: 25ms;
+        easing: ease;
+    }
 
     callback clicked;
     drag := DragArea {
@@ -186,6 +190,7 @@ component SidebarDevice inherits Rectangle {
                 vertical-alignment: center;
                 height: root.height;
                 text: device.name;
+                overflow: elide;
                 color: Theme.colors.primary-font;
                 font-size: 13px;
                 font-weight: 600;
@@ -402,21 +407,21 @@ component Sidebar inherits Rectangle {
                     clicked => { WindowBridge.current-window = Window.transfers; }
                 }
 
-                IconButton {
-                    border-radius: 12px;
-                    height: 36px;
-                    inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-                    transform-y: 0;
-                    inner-border: WindowBridge.current-window == Window.vaults ? Theme.colors.fourth-col : transparent;
-
-                    SvgIcon {
-                        source: @image-url("icons/archive.svg");
-                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                        size: 15px;
-                    }
-
-                    clicked => { WindowBridge.current-window = Window.vaults; }
-                }
+                // IconButton {
+                //     border-radius: 12px;
+                //     height: 36px;
+                //     inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+                //     transform-y: 0;
+                //     inner-border: WindowBridge.current-window == Window.vaults ? Theme.colors.fourth-col : transparent;
+                //
+                //     SvgIcon {
+                //         source: @image-url("icons/archive.svg");
+                //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                //         size: 15px;
+                //     }
+                //
+                //     clicked => { WindowBridge.current-window = Window.vaults; }
+                // }
             }
 
             // Row {
@@ -455,12 +460,16 @@ component Sidebar inherits Rectangle {
             height: 8px;
         }
 
-        for d[i] in DevicesBridge.devices: SidebarDevice {
-            device: d;
-            selected: true;
-            clicked => {
-                DevicesBridge.device-details-open-idx = i;
-                WindowBridge.current-window = Window.device;
+        VerticalLayout {
+            spacing: 8px;
+
+            for d[i] in DevicesBridge.devices: SidebarDevice {
+                device: d;
+                selected: true;
+                clicked => {
+                    DevicesBridge.device-details-open-idx = i;
+                    WindowBridge.current-window = Window.device;
+                }
             }
         }
 
@@ -618,7 +627,7 @@ export component NectanWindow inherits Window {
                     pasted();
                 }
                 if (event.text == Key.K) {
-                    SearchBridge.open = true;
+                    SearchBridge.open = !SearchBridge.open;
                 }
                 if (event.text == Key.I) {
                     SettingsBridge.open = true;
@@ -642,7 +651,6 @@ export component NectanWindow inherits Window {
             border-radius: root.maximized ? 0 : 12px;
 
             border-color: Theme.colors.fourth-col;
-            padding: 20px;
             clip: true;
 
             TopBarShower { }
@@ -713,9 +721,9 @@ export component NectanWindow inherits Window {
 
         if AddDeviceBridge.open:  AddDeviceModal { }
 
-        if SearchBridge.open: Search { }
-
         if OutcomingTransferModalBridge.open: OutcomingTransferModal { }
+
+        if IncomingTransferOfferBridge.open: IncomingTransferOfferModal { }
 
         if error_open: ErrorModal {
             title <=> error_title;
@@ -743,22 +751,5 @@ export component NectanWindow inherits Window {
 //             title: "Hide";
 //             activated => { hide-window(); }
 //         }
-//     }
-// }
-// component ToolTip inherits Rectangle {
-//     in property <string> text;
-//     z: 4;
-//     height: 24px;
-//     width: self.min-width + 20px;
-//     border-radius: 4px;
-//     background: Theme.colors.primary-col;
-//     border-color: Theme.colors.fourth-col;
-//     border-width: 1px;
-//     opacity: 0;
-//     Text {
-//         text: text;
-//         font-size: 12px;
-//         font-family: Theme.font-heading;
-//         color: Theme.colors.primary-font;
 //     }
 // }

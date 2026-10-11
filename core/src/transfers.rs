@@ -14,7 +14,6 @@ use anyhow::bail;
 use anyhow::ensure;
 use ed25519_dalek::VerifyingKey;
 use fixedbitset::FixedBitSet;
-use iroh::defaults::DEFAULT_METRICS_PORT;
 use iroh::endpoint::Connection;
 use redb::ReadableDatabase;
 use redb::ReadableTable;
@@ -34,23 +33,16 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::Relaxed;
 use std::time::Duration;
-use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
-use tokio::spawn;
-use tokio::stream;
-use tokio::sync::Notify;
 use tokio::sync::OwnedSemaphorePermit;
-use tokio::sync::RwLock;
 use tokio::sync::Semaphore;
-use tokio::sync::SemaphorePermit;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tokio_util::sync::WaitForCancellationFuture;
 use tracing::error;
 use tracing::info;
-use tracing::instrument::WithSubscriber;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -104,7 +96,7 @@ impl Value for TransferItem {
 pub enum TransferItemError {
     FileIOError,
     FileAlreadyExisted,
-    FileOpenPermissionDenied,
+    PermissionDenied,
     FileNotFound,
     StreamError,
     OpenFail,
@@ -168,7 +160,9 @@ pub async fn send_contents(
 
     // Write compressed offer
     let c_offer = offer.clone().compress().unwrap();
-    let msg = NetMessage::TransferOfferMsg { offer: c_offer };
+    let msg = NetMessage::TransferOfferMsg {
+        offer: Box::new(c_offer),
+    };
     if msg.write(&mut tx).await.is_err() {
         return Err(TransferOfferError::ConnectionFailed);
     }
@@ -192,10 +186,11 @@ pub async fn send_contents(
     };
     info!("Transfer accepted.");
 
+    let root_path = offer.tree.common_parent();
     // Transfer accepted, start processing
     state
         .transfers
-        .add_transfer(target, device.username, Outcoming, offer)
+        .add_transfer(target, device.username, Outcoming, root_path, offer)
         .await;
 
     Ok(())
@@ -206,6 +201,7 @@ pub enum TransferDirection {
     Outcoming,
     Incoming,
 }
+
 impl TransferDirection {
     pub fn is_incoming(self) -> bool {
         matches!(self, Self::Incoming)
@@ -218,12 +214,15 @@ const DUMB_ITEMS: TableDefinition<u32, TransferItem> = TableDefinition::new("ite
 pub enum TransferStatus {
     Downloading,
     Finished,
+    /// Explicit state so user will know what happened
+    CancelledByRemote,
 }
 
 impl TransferStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Downloading => "Downloading",
+            Self::CancelledByRemote => "Cancelled",
             Self::Finished => "Finished",
         }
     }
@@ -235,13 +234,13 @@ pub struct PendingTransfer {
     target: DeviceId,
     pub direction: TransferDirection,
     items_queue: Mutex<FixedBitSet>,
-    pub failed: AtomicU32,
     pub name: String,
     pub total_files: u32,
     /// Contains folders symlinks etc
     pub total_entries: u32,
-    /// Counter for sent or unrecoverably failed items
+    /// Counter for sent (unrecoverably failed items count as sent)
     pub processed_items: AtomicU32,
+    pub failed: AtomicU32,
     pub total_size: u64,
     pub sent_bytes: AtomicU64,
     pub speed: AtomicU64,
@@ -250,9 +249,8 @@ pub struct PendingTransfer {
     /// When receiving, target directory
     pub root_path: PathBuf,
     cancel_token: CancellationToken,
-    event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     sem: Arc<Semaphore>,
-    status: Mutex<TransferStatus>,
+    status: Mutex<TransferStatus>, // Can be coerced to simple atomic bool
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -264,7 +262,7 @@ enum TransferControl {
 }
 
 impl PendingTransfer {
-    pub fn default(total_items: u32, event_tx: tokio::sync::mpsc::Sender<AppEvent>) -> Self {
+    pub fn test(total_items: u32) -> Self {
         let id = Uuid::new_v4();
         let db = redb::Database::create(std::env::temp_dir().join(id.to_string())).unwrap();
         let txn = db.begin_write().unwrap();
@@ -297,7 +295,6 @@ impl PendingTransfer {
             total_size: 1231233312,
             sent_bytes: AtomicU64::new(123432),
             speed: AtomicU64::new(100000000),
-            event_tx,
             id,
             target: VerifyingKey::default(),
             direction: TransferDirection::Incoming,
@@ -312,22 +309,23 @@ impl PendingTransfer {
     }
 
     pub fn from_offer(
-        event_tx: tokio::sync::mpsc::Sender<AppEvent>,
         target: DeviceId,
         target_name: Username,
+        root_path: PathBuf,
         direction: TransferDirection,
         offer: TransferOffer<PathTree>,
     ) -> Self {
         info!("New transfer from offer.");
 
         let id = offer.transfer_id;
-        let root_path = offer.tree.common_parent();
+        println!("Transfer root_path {root_path:?}");
 
         let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
         let dir = match direction {
             TransferDirection::Outcoming => "out",
             TransferDirection::Incoming => "in",
         };
+        // Fuck that db reviving - transfers are temporary - for automatc synchronization use vaults.
         let db_dir = db_dir.join(format!("Nectan/t-{id}-{}", dir));
         let db = redb::Database::create(db_dir).expect("Failed to create database");
 
@@ -367,7 +365,6 @@ impl PendingTransfer {
             total_size: offer.total_size,
             root_path,
             cancel_token: CancellationToken::new(),
-            event_tx,
             target,
             target_name,
             sem: Arc::new(Semaphore::new(4)),
@@ -383,12 +380,18 @@ impl PendingTransfer {
         *self.status.lock().unwrap()
     }
 
-    pub fn cancelled(&self) -> WaitForCancellationFuture<'_> {
+    fn cancelled(&self) -> WaitForCancellationFuture<'_> {
         self.cancel_token.cancelled()
     }
 
-    pub fn cancel(&self) {
+    fn is_cancelled(&self) -> bool {
+        self.cancel_token.is_cancelled()
+    }
+
+    fn cancel(&self) {
         self.cancel_token.cancel()
+        // Two things need to happen here - the stream forwarder must know that the transfer is cancelled
+        // Also if the transfer if incoming - stop the motherfucker
     }
 
     /// Returns remaining items
@@ -456,6 +459,31 @@ impl PendingTransfer {
         batch
     }
 
+    fn start_speed_updater(s: Arc<Self>) {
+        std::thread::spawn(move || {
+            let mut last_sent = s.sent_bytes.load(Relaxed);
+            let tick = std::time::Duration::from_millis(100);
+            let mut speed = 0.0;
+            loop {
+                if s.is_cancelled() {
+                    return;
+                }
+                std::thread::sleep(tick);
+                let sent = s.sent_bytes.load(Relaxed);
+                let diff = sent - last_sent;
+                let bps = diff as f32 / tick.as_secs_f32();
+                let mbps = bps * 1_000_000.0;
+                let diff = (speed - mbps) * 0.1;
+
+                speed -= diff;
+                last_sent = sent;
+
+                s.speed.store((speed * 1_000_000.0) as u64, Relaxed);
+            }
+        });
+    }
+
+    /// Todo - make this know about the cancel token!
     async fn start_sending(self: Arc<Self>, conn: Connection) -> Result<()> {
         info!(
             "Starting sending [{}] [{} ITEMS]",
@@ -467,27 +495,12 @@ impl PendingTransfer {
         let mut queue = Vec::new();
         queue.extend(self.unsent_batch());
 
-        let s = self.clone();
-        std::thread::spawn(move || {
-            let mut last_sent = s.sent_bytes.load(Relaxed);
-            let tick = std::time::Duration::from_millis(100);
-            let mut speed = 0.0;
-            loop {
-                std::thread::sleep(tick);
-                let sent = s.sent_bytes.load(Relaxed);
-                let diff = sent - last_sent;
-                let bps = diff as f32 / tick.as_secs_f32();
-                let mbps = bps * 1_000_000.0;
-                let diff = (speed - mbps) * 0.1;
-
-                speed = speed - diff;
-                last_sent = sent;
-
-                s.speed.store((speed * 1_000_000.0) as u64, Relaxed);
-            }
-        });
+        PendingTransfer::start_speed_updater(self.clone());
 
         loop {
+            if self.is_cancelled() {
+                return Ok(());
+            }
             let item = match queue.pop() {
                 Some(id) => {
                     // TODO graceful err, file not found???
@@ -498,7 +511,7 @@ impl PendingTransfer {
                     let drained = processed == self.total_entries;
 
                     if drained {
-                        // All transfers processed, wait until sem is free and exit
+                        // All transfers processed, wait until all finished
                         info!("All transfers drained. Waiting for last items to finish.");
                         let _ = self.sem.acquire_many(4).await;
                         self.set_status(TransferStatus::Finished);
@@ -506,7 +519,9 @@ impl PendingTransfer {
                     } else {
                         let unsent = self.unsent_batch();
                         let unsent_len = unsent.len();
+
                         queue.extend(unsent);
+
                         if unsent_len == 0 {
                             tokio::time::sleep(Duration::from_secs(1)).await;
                         }
@@ -516,9 +531,16 @@ impl PendingTransfer {
             };
 
             let stream = StreamPair::open(&conn).await?;
-            let permit = self.sem.clone().acquire_owned().await.unwrap();
-            let s = self.clone();
+            let permit = tokio::select! {
+                permit = self.sem.clone().acquire_owned() =>{
+                    permit.unwrap()
+                }
+                _ = self.cancelled() =>{
+                    return Ok(())
+                }
+            };
 
+            let s = self.clone();
             tokio::spawn(async move {
                 let item_id = item.id;
                 let _permit = permit;
@@ -537,10 +559,21 @@ impl PendingTransfer {
     }
 
     pub async fn process_stream(self: Arc<Self>, mut stream: StreamPair) -> Result<()> {
-        let permit = self.sem.clone().acquire_owned().await.unwrap();
+        let permit = tokio::select! {
+            permit = self.sem.clone().acquire_owned() =>{
+                permit.unwrap()
+            }
+            _ = self.cancelled() => {
+                return Ok(())
+            }
+        };
 
         info!("Processing stream for {}", &self.id.to_string()[0..8]);
-        ensure!(self.direction == TransferDirection::Incoming);
+
+        ensure!(
+            self.direction == TransferDirection::Incoming,
+            "Transfer must be incoming."
+        );
 
         let header: TransferItemHeader = stream.read().await?;
         info!("Read header {:#?}", header);
@@ -570,11 +603,17 @@ impl PendingTransfer {
         let file_size = header.file_size;
         let item_path = header.path;
 
+        // Guard from malicious paths
+        if item_path.is_absolute() {
+            return Err(TransferItemError::PermissionDenied);
+        }
+
         let item_path: PathBuf = item_path
             .components()
             .filter(|c| matches!(c, Component::Normal(_)))
             .collect();
-        let output_dir = Path::new("/home/karol/Documents/NectanTests").join(&item_path);
+
+        let output_dir = Path::new(&self.root_path).join(&item_path);
 
         if !header.is_file {
             // Just create the folder
@@ -695,7 +734,7 @@ impl PendingTransfer {
             Err(e) => match e.kind() {
                 ErrorKind::PermissionDenied => {
                     error!("Failed to open {path:?}");
-                    return Err(TransferItemError::FileOpenPermissionDenied);
+                    return Err(TransferItemError::PermissionDenied);
                 }
                 ErrorKind::NotFound => {
                     error!("File not found {path:?}");
@@ -717,13 +756,20 @@ impl PendingTransfer {
                 TransferItemError::StreamError
             })?;
 
+        let relative_path = match path.strip_prefix(&self.root_path) {
+            Ok(path) => path.to_path_buf(),
+            Err(e) => {
+                error!("Failed to strip path prefix. {e:?}");
+                return Err(TransferItemError::FileIOError);
+            }
+        };
         stream
             .write(&TransferItemHeader {
                 id: item.id,
                 file_size: item.size,
                 sent_bytes: item.sent_bytes,
                 is_file: item.is_file,
-                path: path.clone(),
+                path: relative_path,
             })
             .await
             .map_err(|_| {
@@ -798,7 +844,7 @@ impl PendingTransfer {
     fn handle_item_err(&self, id: u32, e: TransferItemError) -> u32 {
         match e {
             // Unrecoverable errors
-            TransferItemError::FileOpenPermissionDenied
+            TransferItemError::PermissionDenied
             | TransferItemError::OpenFail
             | TransferItemError::FileAlreadyExisted
             | TransferItemError::FileNotFound
@@ -854,8 +900,6 @@ impl PendingTransfer {
         Ok(())
     }
 }
-
-const TRANSFERS: TableDefinition<u128, &[u8]> = TableDefinition::new("transfers");
 
 pub struct PendingTransfers {
     pub inner: std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>>,
@@ -921,16 +965,17 @@ impl Transfers {
     pub async fn add_transfer(
         &self,
         target: DeviceId,
-        target_username: Username,
+        target_name: Username,
         direction: TransferDirection,
+        root_path: PathBuf,
         offer: TransferOffer<PathTree>,
     ) {
         let id = offer.transfer_id;
 
         let t = Arc::new(PendingTransfer::from_offer(
-            self.event_tx.clone(),
             target,
-            target_username,
+            target_name,
+            root_path,
             direction,
             offer,
         ));
@@ -940,29 +985,67 @@ impl Transfers {
             .unwrap()
             .insert(id, t.clone());
 
-        if direction == TransferDirection::Outcoming {
-            if let Some(conn) = self.devices.get_connection(target) {
-                let _ = t.start_sending(conn).await;
-            }
+        if direction == TransferDirection::Outcoming
+            && let Some(conn) = self.devices.get_connection(target)
+        {
+            let _ = t.start_sending(conn).await;
         }
         let _ = self.event_tx.send(AppEvent::TransfersUpdated).await;
     }
 
-    pub async fn forward_incoming_stream(
-        &self,
-        transfer_id: Uuid,
-        stream: StreamPair,
-    ) -> Result<()> {
-        let Some(t) = self
-            .pending_transfers()
-            .read()
-            .unwrap()
-            .get(&transfer_id)
-            .cloned()
-        else {
+    pub async fn forward_incoming_stream(&self, id: Uuid, stream: StreamPair) -> Result<()> {
+        let Some(t) = self.get(id) else {
             error!("Transfer not found");
             bail!("Transfer not found")
         };
         t.process_stream(stream).await
+    }
+
+    fn get(&self, id: Uuid) -> Option<Arc<PendingTransfer>> {
+        self.pending_transfers().read().unwrap().get(&id).cloned()
+    }
+
+    /// Called when remote device cancelled the transfer
+    pub fn transfer_cancelled(&self, id: Uuid) -> Result<()> {
+        let Some(t) = self.get(id) else {
+            error!("Transfer not found");
+            bail!("Transfer not found")
+        };
+
+        t.cancel();
+        t.set_status(TransferStatus::CancelledByRemote);
+
+        let _ = self.event_tx.blocking_send(AppEvent::TransfersUpdated);
+
+        Ok(())
+    }
+
+    pub fn delete_transfer(&self, id: Uuid) -> Result<()> {
+        let mut lock = self.pending_transfers().write().unwrap();
+        let Some(t) = lock.remove(&id) else {
+            bail!("Transfer not found")
+        };
+
+        t.cancel();
+        info!("Deleted transfer.");
+
+        // Send info to remote device
+        // Error while notifying remote device is harmless because
+        // transfers are not supposed to survive hard connection change
+        // (connection changes like change wifi to mobile will still work)
+        // Outgoing Transfer will automatically kill itself if the connection failed
+        // Vaults should be used for robust and recoverable transfers
+
+        if let Some(conn) = self.devices.get_connection(t.target) {
+            tokio::spawn(async move {
+                let mut stream = StreamPair::open(&conn).await?;
+                let msg = NetMessage::TransferCancelled { transfer_id: t.id };
+                stream.write(&msg).await
+            });
+        };
+
+        let _ = self.event_tx.blocking_send(AppEvent::TransfersUpdated);
+
+        Ok(())
     }
 }

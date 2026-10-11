@@ -650,7 +650,7 @@ impl fmt::Display for HumanCount {
         for (idx, c) in num.chars().enumerate() {
             let pos = len - idx - 1;
             f.write_char(c)?;
-            if pos > 0 && pos % 3 == 0 {
+            if pos > 0 && pos.is_multiple_of(3) {
                 f.write_char(',')?;
             }
         }

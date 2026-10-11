@@ -96,7 +96,7 @@ impl SearchProvider for ActionProvider {
             .iter()
             .filter_map(|a| self.fuzzy.score(&pattern, a.1).map(|s| (s, a)))
             .collect();
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.sort_by_key(|a| std::cmp::Reverse(a.0));
 
         scored
             .into_iter()
@@ -169,7 +169,7 @@ impl SearchProvider for DeviceProvider {
             .into_iter()
             .filter_map(|d| self.fuzzy.score(&pattern, d.name.as_str()).map(|s| (s, d)))
             .collect();
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.sort_by_key(|a| std::cmp::Reverse(a.0));
 
         scored
             .into_iter()

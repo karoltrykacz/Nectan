@@ -1,4 +1,4 @@
-use std::path::{self, Component, PathBuf};
+use std::path::PathBuf;
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::SigningKey;

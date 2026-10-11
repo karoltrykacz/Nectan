@@ -2,19 +2,6 @@
 
 slint::include_modules!();
 
-use anyhow::Result;
-use nectan_core::common::get_signing_key;
-use nectan_core::storage;
-use nectan_core::storage::{Storage, Value};
-use slint::DataTransfer;
-use std::path::PathBuf;
-use std::rc::Rc;
-
-use slint::winit_030::{CustomApplicationHandler, EventResult, winit};
-use winit::event::WindowEvent;
-use winit::event_loop::ActiveEventLoop;
-use winit::window::{CustomCursor, WindowId};
-
 use crate::devices::update_devices;
 use crate::handlers::{
     event_listener, handle_add_device, handle_cancel_walker, handle_connection_offer,
@@ -22,7 +9,15 @@ use crate::handlers::{
     handle_outcoming_transfer, handle_paste, handle_scan_files, handle_scan_folders, handle_send,
     handle_username_change, handle_window_controls,
 };
+use anyhow::Result;
+use nectan_core::common::get_signing_key;
+use nectan_core::storage;
+use nectan_core::storage::{Storage, Value};
 use search::setup_search;
+use slint::DataTransfer;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::time::Duration;
 
 use crate::state::init_app_state;
 use crate::transfers::{
@@ -44,9 +39,18 @@ mod transfers;
 
 struct DragPayload {}
 
-impl Into<storage::Theme> for ThemeMode {
-    fn into(self) -> storage::Theme {
-        match self {
+// impl Into<storage::Theme> for ThemeMode {
+//     fn into(self) -> storage::Theme {
+//         match self {
+//             ThemeMode::Dark => storage::Theme::Dark,
+//             ThemeMode::Light => storage::Theme::Light,
+//         }
+//     }
+// }
+//
+impl From<ThemeMode> for storage::Theme {
+    fn from(mode: ThemeMode) -> storage::Theme {
+        match mode {
             ThemeMode::Dark => storage::Theme::Dark,
             ThemeMode::Light => storage::Theme::Light,
         }
@@ -56,7 +60,6 @@ impl Into<storage::Theme> for ThemeMode {
 #[tokio::main]
 async fn main() -> Result<(), slint::PlatformError> {
     let w = NectanWindow::new()?;
-    // w.show();
 
     println!("{}", env!("CARGO_MANIFEST_DIR"));
     println!("{}", env!("CARGO_PKG_NAME"));
@@ -89,7 +92,7 @@ async fn main() -> Result<(), slint::PlatformError> {
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
     let data_dir = dirs::data_dir()
-        .unwrap_or_else(|| std::env::temp_dir())
+        .unwrap_or_else(std::env::temp_dir)
         .join("Nectan");
     let storage = Storage::new(data_dir);
 
@@ -176,5 +179,6 @@ async fn main() -> Result<(), slint::PlatformError> {
     set_transfers(&w.as_weak(), &state);
     handle_open_transfers(&w);
 
-    w.run()
+    w.run();
+    Ok(())
 }

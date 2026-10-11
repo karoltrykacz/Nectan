@@ -268,6 +268,11 @@ impl CompressedPathTree {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn decompress(&self) -> anyhow::Result<PathTree> {
         let x = zstd::decode_all(self.0.as_slice())?;
         Ok(postcard::from_bytes(&x)?)
@@ -464,8 +469,7 @@ mod tests {
         // Invalid utf8
         let bad = OsString::from_vec(vec![0x66, 0x6f, 0xff, 0x6f]);
         let bad_path = PathBuf::from("/a").join(&bad);
-
-        let t = PathTree::build(&[bad_path.clone()]);
+        let t = PathTree::build(std::slice::from_ref(&bad_path));
 
         assert!(bad_path.to_str().is_none());
 

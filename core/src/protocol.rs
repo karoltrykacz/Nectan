@@ -1,15 +1,11 @@
 use anyhow::anyhow;
 use anyhow::{Result, bail};
-use base64::{Engine, engine::general_purpose::STANDARD};
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use futures::StreamExt;
 pub use iroh::EndpointId;
-use iroh::address_lookup::AddressLookup;
-use iroh::endpoint::Path;
 use iroh::{
     Endpoint, EndpointAddr,
-    endpoint::{Connection, RecvStream, SendStream, presets},
-    endpoint_info::UserData,
+    endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler, Router},
 };
 use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
@@ -29,7 +25,6 @@ use uuid::Uuid;
 
 use crate::messages::{ConnectionOffer, StreamableMessage};
 use crate::storage::{Key, Storage, Value};
-use crate::storage_utils::KvStore;
 use crate::transfers::TransferDirection;
 use crate::{
     devices::{Device, DeviceId, DeviceStatus::Online, Devices, UserInfo, Username},
@@ -46,6 +41,7 @@ pub const ALPN: &[u8] = b"nectan/0";
 
 #[derive(Clone, Debug)]
 pub struct NectanProtocol {
+    #[allow(dead_code)]
     version: u64,
     endpoint: Endpoint,
     state: Arc<NectanState>,
@@ -148,7 +144,7 @@ impl ProtocolHandler for NectanProtocol {
             };
 
             match r {
-                UiResponse::Accept => {
+                UiResponse::AcceptConnection => {
                     trace!("Connection accepted.");
                 }
                 UiResponse::Reject { reason } => {
@@ -158,6 +154,7 @@ impl ProtocolHandler for NectanProtocol {
                         .await;
                     return Err(e!(AcceptError::NotAllowed));
                 }
+                _ => panic!("This response is not allowed."),
             }
         }
 
@@ -226,7 +223,7 @@ async fn handle_stream(
 
     match msg {
         NetMessage::TransferOfferMsg { offer } => {
-            handle_transfer_offer(state, stream, sender, sender_name, offer).await?;
+            handle_transfer_offer(state, stream, sender, sender_name, *offer).await?;
         }
         NetMessage::TransferStream { transfer_id } => {
             state
@@ -234,7 +231,10 @@ async fn handle_stream(
                 .forward_incoming_stream(transfer_id, stream)
                 .await?;
         }
-        _ => {
+        NetMessage::TransferCancelled { transfer_id } => {
+            state.transfers.transfer_cancelled(transfer_id)?;
+        }
+        NetMessage::Accepted | NetMessage::Rejected { .. } | NetMessage::Hello { .. } => {
             error!("Stream handler received forbidden message. {msg:#?}");
             bail!("Stream handler received forbidden message. {msg:#?}")
         }
@@ -337,13 +337,14 @@ async fn handle_transfer_offer(
     stream.write(&NetMessage::from(r.clone())).await?;
     info!("Wrote response");
 
-    if let UiResponse::Accept = r {
+    if let UiResponse::AcceptOffer { destination } = r {
         state
             .transfers
             .add_transfer(
                 sender,
                 sender_name,
                 TransferDirection::Incoming,
+                destination,
                 offer.inner,
             )
             .await;
@@ -359,7 +360,7 @@ pub struct NectanState {
     /// Only one connection offer allowed at a time
     conn_offer: Arc<Mutex<Option<ConnectionOffer>>>,
     /// Only one transfer offer allowed at a time
-    transfer_offer: Arc<Mutex<Option<TransferOfferRequest>>>,
+    pub transfer_offer: Arc<Mutex<Option<TransferOfferRequest>>>,
     pub devices: Devices,
     mdns: MdnsAddressLookup,
     router: OnceCell<Router>,
@@ -442,10 +443,10 @@ impl NectanState {
     }
 
     pub fn endpoint(&self) -> Option<Endpoint> {
-        self.router.get().and_then(|r| Some(r.endpoint().clone()))
+        self.router.get().map(|r| r.endpoint().clone())
     }
     pub fn endpoint_id(&self) -> Option<EndpointId> {
-        self.router.get().and_then(|r| Some(r.endpoint().id()))
+        self.router.get().map(|r| r.endpoint().id())
     }
 }
 
@@ -474,7 +475,7 @@ pub fn start_mdns_discovery(state: &NectanState) {
 
                     if state.devices.add_nearby(ep_id) {
                         info!("Found device [MDNS].");
-                        let _ = state.app_event_tx.send(AppEvent::FoundNearby);
+                        state.emit(AppEvent::FoundNearby).await;
                         tokio::spawn(connect(state.clone(), endpoint_info.endpoint_id));
                     }
                 }

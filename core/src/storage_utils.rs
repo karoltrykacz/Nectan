@@ -1,13 +1,11 @@
-use core::fmt;
+#![allow(dead_code)]
 use core::fmt::Debug;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::io::Error;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
-use tracing::info;
 
 pub trait Serializer: Default {
     fn serialize<V: Serialize>(&self, v: &V) -> Option<Vec<u8>>;
@@ -58,6 +56,7 @@ impl<S: Serializer, D: Deserializer> DataWriter<S, D> {
     pub fn storage_path(&self) -> PathBuf {
         self.storage_path.clone()
     }
+
     pub fn new(mut storage_path: PathBuf, store_name: &str) -> Result<Self, Error> {
         std::fs::create_dir_all(&storage_path)?;
         storage_path.push(format!("{store_name}.json"));
@@ -91,12 +90,10 @@ impl<S: Serializer, D: Deserializer> DataWriter<S, D> {
         }
         Ok(len)
     }
+
     pub fn wipe(&self) -> Result<(), Error> {
         std::fs::remove_file(&self.storage_path)?;
         Ok(())
-    }
-    pub fn load_raw(&self) -> Option<Vec<u8>> {
-        std::fs::read(&self.storage_path).ok()
     }
 
     pub fn load<V: DeserializeOwned>(&self) -> Option<V> {
@@ -190,6 +187,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use serde::Deserialize;
+
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -543,24 +542,4 @@ mod tests {
 
         cleanup(&dir);
     }
-}
-
-#[derive(Serialize, Deserialize)]
-struct Siema {
-    username: String,
-    age: u64,
-}
-
-impl Display for Siema {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "Username {}", self.username)
-    }
-}
-
-fn main() {
-    let s = Siema {
-        username: String::from("Karol"),
-        age: 19,
-    };
-    println!("Siema - {s}");
 }

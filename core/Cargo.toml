@@ -5,10 +5,6 @@ edition = "2024"
 authors.workspace = true
 repository.workspace = true
 
-[[bin]]
-name="nectan-playground"
-path="src/nectan.rs"
-
 [dependencies]
 anyhow = "1.0.104"
 futures = "0.3.34"
@@ -21,7 +17,6 @@ serde = "1.0.229"
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["macros"] }
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = { version = "1.26.0", features = ["serde", "v4"] }
 zstd = "0.14.0"
 dirs = "7.0.0"

@@ -1,10 +1,10 @@
 use anyhow::{Result, bail};
-use ed25519_dalek::{Signature, Signer};
+use ed25519_dalek::Signature;
 use iroh::EndpointId;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::{debug, error, info, warn};
+use std::time::Duration;
+use tracing::{error, info, warn};
 
 use crate::protocol::DISCOVERY_URL;
 use crate::{devices::DeviceId, protocol::NectanState};
@@ -45,8 +45,10 @@ pub async fn lookup_code(code: String, state: &NectanState) -> Result<EndpointId
                     .await
                     .map_err(|_| CodeLookupError::ConnectionFailed)?;
 
-                let body = postcard::from_bytes::<CodeLookupResponse>(&body)
-                    .map_err(|e| CodeLookupError::NectanService)?;
+                let body = postcard::from_bytes::<CodeLookupResponse>(&body).map_err(|e| {
+                    error!("Failed to lookup code. {e:?}");
+                    CodeLookupError::NectanService
+                })?;
 
                 Ok(body.device_id)
             }

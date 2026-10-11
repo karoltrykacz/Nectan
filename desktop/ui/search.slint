@@ -108,10 +108,10 @@ export component Search inherits GeneralModal {
         root.selected = Math.mod(root.selected + delta + n, n);
 
         let row-top = root.selected * 52px;
-        if (row-top < -list.viewport-y) {
-            list.viewport-y = -row-top;
-        } else if (row-top + 52px > -list.viewport-y + list.height) {
-            list.viewport-y = -(row-top + 52px - list.height);
+        if (row-top < -list.content-y) {
+            list.content-y = -row-top;
+        } else if (row-top + 52px > -list.content-y + list.height) {
+            list.content-y = -(row-top + 52px - list.height);
         }
     }
 
@@ -124,17 +124,16 @@ export component Search inherits GeneralModal {
             pick-index(root.selected);
         }
     }
-
     Rectangle {
-        width: min(820px, parent.width * 0.8);
         height: layout.preferred-height;
+        width: min(820px, parent.width * 0.8);
         y: parent.height / 3;
         x: (parent.width - self.width) / 2;
-
         background: Theme.colors.primary-col;
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.colors.hover-col;
+        clip: true;
 
         TouchArea { }
 
@@ -171,7 +170,7 @@ export component Search inherits GeneralModal {
                         placeholder-text: @tr("Search...");
                         edited(t) => {
                             root.selected = 0;
-                            list.viewport-y = 0;
+                            list.content-y = 0;
                             SearchBridge.query-changed(t);
                         }
                         accepted => { root.on-enter(); }

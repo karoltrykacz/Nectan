@@ -253,8 +253,8 @@ export component OutcomingTransferModal inherits Rectangle {
                         }
 
                         TransferSizeEntriesInfoHeader {
-                            total-entries: 123;
-                            total-size: "12 GB";
+                            total-entries: OutcomingTransferModalBridge.walk-total-entries;
+                            total-size: OutcomingTransferModalBridge.walk-total-size;
                         }
                     }
 
@@ -283,6 +283,7 @@ export component OutcomingTransferModal inherits Rectangle {
                             Switch {
                                 checked <=> root.compression;
                                 toggled => {
+                                    OutcomingTransferModalBridge.rescan-dir();
                                 }
                             }
                         }
@@ -308,8 +309,8 @@ export component OutcomingTransferModal inherits Rectangle {
                         Switch {
                             checked <=> root.respect-gitignore;
                             toggled => {
-				// REQUEST REWALK
-				}
+                                OutcomingTransferModalBridge.rescan-dir();
+                            }
                         }
                     }
 
@@ -332,8 +333,8 @@ export component OutcomingTransferModal inherits Rectangle {
                         Switch {
                             checked <=> root.send-hidden-files;
                             toggled => {
-				// TODO REQUEST REWALK
-			}
+                                OutcomingTransferModalBridge.rescan-dir();
+                            }
                         }
                     }
 
@@ -568,6 +569,8 @@ export global OutcomingTransferModalBridge {
     callback transfer-name-edited(string);
     callback transfer-walk-cancelled();
 
+    callback rescan-dir();
+
     // Destination id, transfer name, compression enabled
     callback send(string, string, bool);
 }
@@ -581,9 +584,12 @@ export struct IncomingTransferOffer {
 }
 
 export global IncomingTransferOfferBridge {
-    in-out property <bool> is-open: false;
+    in-out property <bool> open: false;
     in-out property <IncomingTransferOffer> offer;
     in-out property <[TreeNode]> nodes;
+
+    in-out property <string> target-path;
+    callback change-destination();
 
     // Index, path 
     callback toggle-node(int, string);
@@ -593,122 +599,163 @@ export global IncomingTransferOfferBridge {
 }
 
 
-export component IncomingTransferOfferModal inherits Rectangle {
-    GeneralModal {
+export component IncomingTransferOfferModal inherits GeneralModal {
 
-        on-close => {
-            IncomingTransferOfferBridge.is-open = false;
-            IncomingTransferOfferBridge.reject();
+    on-close => {
+        IncomingTransferOfferBridge.open = false;
+        IncomingTransferOfferBridge.reject();
+    }
+    on-enter => {
+        IncomingTransferOfferBridge.accept();
+    }
+
+    Rectangle {
+        width: min(820px, parent.width - 40px);
+        height: min(560px, parent.height - 40px);
+        clip: true;
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        drop-shadow-color: #00000088;
+        drop-shadow-blur: 50px;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {}
         }
-        on-enter => {
-            IncomingTransferOfferBridge.accept();
-        }
 
-        Rectangle {
-            width: min(820px, parent.width - 40px);
-            height: min(560px, parent.height - 40px);
-            clip: true;
-            background: Theme.colors.primary-col;
-            border-radius: 12px;
-            border-width: 1px;
-            border-color: Theme.colors.border-col;
-
-            TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => {}
-            }
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 16px;
+            padding-bottom: 16px;
 
             VerticalLayout {
-                padding: 20px;
+                spacing: 12px;
 
-                VerticalLayout {
-                    spacing: 12px;
+                HorizontalLayout {
+                    VerticalLayout {
+                        alignment: start;
+                        Text {
+                            text: IncomingTransferOfferBridge.offer.transfer-name;
+                            font-size: 20px;
+                            color: Theme.colors.primary-font;
+                            font-family: Theme.font-heading;
+                            font-weight: 600;
+                        }
 
-                    HorizontalLayout {
-                        VerticalLayout {
+                        HorizontalLayout {
                             alignment: start;
                             Text {
-                                text: IncomingTransferOfferBridge.offer.transfer-name;
-                                font-size: 20px;
-                                color: Theme.colors.primary-font;
-                                font-family: Theme.font-heading;
-                                font-weight: 600;
+                                text: @tr("Incoming transfer from ");
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
                             }
 
-                            HorizontalLayout {
-                                alignment: start;
-                                Text {
-                                    text: @tr("Incoming transfer from ");
-                                    font-size: 13px;
-                                    color: Theme.colors.secondary-font;
-                                }
+                            Text {
+                                text: IncomingTransferOfferBridge.offer.from;
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
+                                font-weight: 600;
+                            }
+                        }
+                    }
 
-                                Text {
-                                    text: IncomingTransferOfferBridge.offer.from;
-                                    font-size: 13px;
-                                    color: Theme.colors.secondary-font;
-                                    font-weight: 600;
-                                }
+                    TransferSizeEntriesInfoHeader {
+                        total-entries: IncomingTransferOfferBridge.offer.total-entries;
+                        total-size: IncomingTransferOfferBridge.offer.total-size;
+                    }
+                }
+
+                Rectangle {
+                    border-radius: 12px;
+                    background: Theme.colors.third-col;
+
+                    VerticalLayout {
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        Text {
+                            x: 12px;
+                            text: @tr("Contents");
+                            color: Theme.colors.primary-font;
+                            font-size: 13px;
+                            font-weight: 500;
+                            font-family: Theme.font-heading;
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        TreeList {
+                            nodes: IncomingTransferOfferBridge.nodes;
+                            toggle-node(id, path) => {
+                                IncomingTransferOfferBridge.toggle-node(id, path)
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    width: parent.width;
+                    cross-axis-alignment: center;
+
+                    Rectangle {
+                        height: 28px;
+
+                        HorizontalLayout {
+                            padding-left: 4px;
+                            cross-axis-alignment: center;
+                            alignment: start;
+
+                            SvgIcon {
+                                source: @image-url("icons/download.svg");
+                                size: 16px;
+                                fg: ta.has-hover ? Theme.colors.primary-font : Theme.colors.third-font;
+                            }
+
+                            Rectangle {
+                                width: 12px;
+                            }
+
+                            Text {
+                                color: ta.has-hover ? Theme.colors.primary-font : Theme.colors.third-font;
+                                font-size: 13px;
+                                overflow: elide;
+                                text: @tr("Saving to {}/{}", 
+				IncomingTransferOfferBridge.target-path, IncomingTransferOfferBridge.offer.transfer-name);
                             }
                         }
 
-                        TransferSizeEntriesInfoHeader {
-                            total-entries: IncomingTransferOfferBridge.offer.total-entries;
-                            total-size: IncomingTransferOfferBridge.offer.total-size;
+                        ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                IncomingTransferOfferBridge.change-destination();
+                            }
+                        }
+                    }
+
+                    Rectangle { }
+
+                    PrimaryButton {
+                        text: @tr("Reject");
+                        alt: true;
+                        clicked => {
+                            IncomingTransferOfferBridge.reject();
                         }
                     }
 
                     Rectangle {
-                        border-radius: 12px;
-                        background: Theme.colors.third-col;
-
-                        VerticalLayout {
-                            Rectangle {
-                                height: 8px;
-                            }
-
-                            Text {
-                                x: 12px;
-                                text: @tr("Contents");
-                                color: Theme.colors.primary-font;
-                                font-size: 13px;
-                                font-weight: 500;
-                                font-family: Theme.font-heading;
-                            }
-
-                            Rectangle {
-                                height: 8px;
-                            }
-
-                            TreeList {
-                                nodes: IncomingTransferOfferBridge.nodes;
-                                toggle-node(id, path) => {
-                                    IncomingTransferOfferBridge.toggle-node(id, path)
-                                }
-                            }
-                        }
+                        width: 12px;
                     }
 
-                    HorizontalLayout {
-                        alignment: end;
-                        PrimaryButton {
-                            text: @tr("Reject");
-                            alt: true;
-                            clicked => {
-                                IncomingTransferOfferBridge.reject();
-                            }
-                        }
-
-                        Rectangle {
-                            width: 12px;
-                        }
-
-                        PrimaryButton {
-                            text: @tr("Accept");
-                            clicked => {
-                                IncomingTransferOfferBridge.accept();
-                            }
+                    PrimaryButton {
+                        text: @tr("Accept");
+                        clicked => {
+                            IncomingTransferOfferBridge.accept();
                         }
                     }
                 }

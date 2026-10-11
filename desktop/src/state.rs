@@ -1,21 +1,19 @@
 use crate::{
     DevicesBridge, NectanWindow, TransfersBridge, devices::DevicesModel, transfers::TransfersModel,
 };
-use arboard::{Clipboard, Get};
-use ignore::{IncrementalMatch, WalkBuilder};
+use arboard::Clipboard;
+use ignore::WalkBuilder;
 use nectan_core::{transfers::Transfers, walker::Walker};
 use slint::{Global, ModelRc};
 use std::{
-    cell::{Cell, OnceCell, RefCell, RefMut},
-    cmp::Ordering,
+    cell::{OnceCell, RefCell, RefMut},
     collections::HashSet,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{
         Arc, Mutex, MutexGuard,
-        atomic::{AtomicBool, AtomicU64, Ordering::Relaxed},
+        atomic::{AtomicBool, AtomicU64},
     },
-    time::{Duration, Instant},
 };
 use tracing::info;
 
@@ -49,7 +47,7 @@ impl ExplorerHistory {
             info!("Truncuated history.");
             self.history.remove(0);
         }
-        self.cursor = self.history.len();
+        self.cursor = self.history.len() - 1;
     }
 
     fn back(&mut self) -> Option<PathBuf> {
@@ -78,9 +76,19 @@ pub struct UiState {
     history: RefCell<ExplorerHistory>,
     outcoming_transfer: Arc<OutcomingTransfer>,
     clipboard: RefCell<Clipboard>,
+    save_destination: RefCell<PathBuf>,
 }
 
 impl UiState {
+    pub fn save_to(&self) -> PathBuf {
+        self.save_destination.borrow().clone()
+    }
+
+    pub fn set_save_to<P: AsRef<Path>>(&self, path: P) {
+        let path = path.as_ref().to_path_buf();
+        *self.save_destination.borrow_mut() = path;
+    }
+
     pub fn devices(&self) -> Rc<DevicesModel> {
         self.devices_model.clone()
     }
@@ -122,7 +130,7 @@ impl UiState {
 }
 
 thread_local! {
-    static UI: OnceCell<Rc<UiState>> = OnceCell::new();
+    static UI: OnceCell<Rc<UiState>> = const { OnceCell::new() };
 }
 
 pub fn ui_state() -> Rc<UiState> {
@@ -140,6 +148,11 @@ pub fn init_app_state(w: &NectanWindow, transfers: Arc<Transfers>) {
     DevicesBridge::get(w).set_devices(ModelRc::from(devices_model.clone()));
     TransfersBridge::get(w).set_transfers(ModelRc::from(transfers_model.clone()));
 
+    let save_destination = dirs::download_dir()
+        .or_else(dirs::home_dir)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
     let ui = Rc::new(UiState {
         history: RefCell::new(ExplorerHistory::default()),
         paths: RefCell::new(HashSet::new()),
@@ -148,6 +161,7 @@ pub fn init_app_state(w: &NectanWindow, transfers: Arc<Transfers>) {
         clipboard: RefCell::new(
             Clipboard::new().expect("Failed to initialize clipboard instance."),
         ),
+        save_destination: RefCell::new(save_destination),
         outcoming_transfer: Arc::new(OutcomingTransfer {
             ready: AtomicBool::default(),
             total: AtomicU64::default(),

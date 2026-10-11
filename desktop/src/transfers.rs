@@ -2,65 +2,15 @@ use nectan_core::format::BinaryBytes;
 use nectan_core::protocol::NectanState;
 use nectan_core::transfers::{PendingTransfer, TransferStatus, Transfers};
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, ToSharedString, Weak};
-use std::fmt::format;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::{cell::RefCell, sync::Arc};
+use uuid::Uuid;
 
 use crate::Transfer;
+use crate::handlers::show_error;
 use crate::state::ui_state;
 use crate::{NectanWindow, TransfersBridge};
-
-/// One transfer: backend handle + cached UI row.
-pub struct TransferObject {
-    pending: Arc<PendingTransfer>,
-    ui: Transfer,
-}
-
-impl TransferObject {
-    fn new(pending: Arc<PendingTransfer>) -> Self {
-        let ui = build_row(&pending);
-        Self { pending, ui }
-    }
-}
-
-fn build_row(p: &PendingTransfer) -> Transfer {
-    let sent = p.sent_bytes.load(Relaxed) as f32;
-    let progress = if p.total_size == 0 {
-        0.0
-    } else {
-        sent / p.total_size as f32
-    };
-    let receiver_name = p.target_name.to_string().into();
-    let status = match p.status() {
-        TransferStatus::Downloading => crate::TransferStatus::Processing,
-        TransferStatus::Finished => crate::TransferStatus::Finished,
-    };
-
-    let mbps = p.speed.load(Relaxed) as f32 / 1_000_000.0;
-    let speed_text = format!("{mbps} MB/s").into();
-
-    Transfer {
-        id: p.id.to_shared_string(),
-        outcoming: !p.direction.is_incoming(),
-        percent_text: format!("{:.2}%", progress * 100.0).into(),
-        progress,
-        receiver_name,
-        size_text: BinaryBytes(p.total_size).to_string().into(),
-        speed_text,
-        status,
-        title: p.name.clone().into(),
-        total_files: p.total_files as i32,
-    }
-}
-
-pub struct TransfersModel {
-    pool: Arc<Transfers>,
-    transfers: RefCell<Vec<TransferObject>>,
-    notify: ModelNotify,
-    /// Single files list: only one transfer's contents visible at a time.
-    files: Rc<LazyFiles>,
-}
 
 /// Lazy loader for the contents of ONE selected transfer.
 pub struct LazyFiles {
@@ -127,6 +77,59 @@ impl Model for LazyFiles {
     }
 }
 
+/// One transfer: backend handle + cached UI row.
+pub struct TransferObject {
+    pending: Arc<PendingTransfer>,
+    ui: Transfer,
+}
+
+impl TransferObject {
+    fn new(pending: Arc<PendingTransfer>) -> Self {
+        let ui = build_row(&pending);
+        Self { pending, ui }
+    }
+}
+
+fn build_row(p: &PendingTransfer) -> Transfer {
+    let sent = p.sent_bytes.load(Relaxed) as f32;
+    let progress = if p.total_size == 0 {
+        0.0
+    } else {
+        sent / p.total_size as f32
+    };
+
+    let receiver_name = p.target_name.to_string().into();
+    let status = match p.status() {
+        TransferStatus::Downloading => crate::TransferStatus::Processing,
+        TransferStatus::Finished => crate::TransferStatus::Finished,
+        TransferStatus::CancelledByRemote => crate::TransferStatus::Cancelled,
+    };
+
+    let mbps = p.speed.load(Relaxed) as f32 / 1_000_000.0;
+    let speed_text = format!("{mbps} MB/s").into();
+
+    Transfer {
+        id: p.id.to_shared_string(),
+        outcoming: !p.direction.is_incoming(),
+        percent_text: format!("{:.2}%", progress * 100.0).into(),
+        progress,
+        receiver_name,
+        size_text: BinaryBytes(p.total_size).to_string().into(),
+        speed_text,
+        status,
+        title: p.name.clone().into(),
+        total_files: p.total_files as i32,
+    }
+}
+
+pub struct TransfersModel {
+    pool: Arc<Transfers>,
+    transfers: RefCell<Vec<TransferObject>>,
+    notify: ModelNotify,
+    /// Single files list: only one transfer's contents visible at a time.
+    files: Rc<LazyFiles>,
+}
+
 impl TransfersModel {
     pub fn new(t: Arc<Transfers>) -> Self {
         Self {
@@ -164,13 +167,23 @@ impl TransfersModel {
     }
 
     pub fn select_files(&self, id: &str) {
+        let id = Uuid::parse_str(id).unwrap();
         let src = self
             .transfers
             .borrow()
             .iter()
-            .find(|t| t.pending.id.to_string() == id)
+            .find(|t| t.pending.id == id)
             .map(|t| t.pending.clone());
         self.files.set_source(src);
+    }
+
+    pub fn remove(&self, id: Uuid) {
+        let mut r = self.transfers.borrow_mut();
+        if let Some(pos) = r.iter().position(|t| t.pending.id == id) {
+            r.swap_remove(pos);
+            self.notify.row_changed(pos);
+            self.notify.row_changed(r.len() - 1);
+        }
     }
 }
 
@@ -239,23 +252,16 @@ pub fn init_models(w: &NectanWindow) {
 }
 
 pub fn handle_transfer_controls(w: &NectanWindow, state: Arc<NectanState>) {
-    let bridge = w.global::<TransfersBridge>();
+    let b = w.global::<TransfersBridge>();
 
     let s = state.clone();
-    bridge.on_delete_transfer(move |_id| {
-        let _s = s.clone();
-        // tokio::spawn(async move {
-        //     let _ = _s.transfers_pool.delete_transfer(transfer_id).await;
-        // });
-    });
+    let weak = w.as_weak();
+    b.on_delete_transfer(move |id| {
+        let id = Uuid::parse_str(&id).unwrap();
+        ui_state().transfers().remove(id);
 
-    bridge.on_pause_resume_transfer(move |_id| {
-        let _s = state.clone();
-        // tokio::spawn(async move {
-        //     let _ = _s
-        //         .transfers_pool
-        //         .pause_resume_transfer(transfer_id, true)
-        //         .await;
-        // });
+        if let Err(e) = s.transfers.delete_transfer(id) {
+            show_error(&weak, "Failed to delete", e.to_string());
+        }
     });
 }

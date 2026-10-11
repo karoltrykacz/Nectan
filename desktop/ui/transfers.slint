@@ -13,7 +13,7 @@ export struct TransferItem {
     percent-text: string,
     progress: float,
 }
-export enum TransferStatus { processing, finished, error, offline }
+export enum TransferStatus { processing, finished, cancelled }
 
 
 export struct Transfer {
@@ -37,7 +37,6 @@ export global TransfersBridge {
     callback selected-lazyfiles-source(string);
 
     callback delete-transfer(string);
-    callback pause-resume-transfer(string);
     callback refresh-range(int, int);
 
     callback refresh-transfers();
@@ -47,7 +46,7 @@ export global TransfersBridge {
     pure public function status-to-string(s: TransferStatus) -> string {
         if (s == TransferStatus.processing) { return @tr("Processing"); }
         if (s == TransferStatus.finished) { return @tr("Finished"); }
-        if (s == TransferStatus.error) { return @tr("Error"); }
+        if (s == TransferStatus.cancelled) { return @tr("Cancelled"); }
         return "Offline";
     }
 }
@@ -105,21 +104,6 @@ export component TransferTile inherits Rectangle {
                 font-weight: 600;
                 font-size: 13px;
                 vertical-alignment: center;
-            }
-
-            IconButton {
-                width: 13px;
-                height: 13px;
-                inner-bg: transparent;
-                SvgIcon {
-                    source: @image-url("icons/play.svg");
-                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                    size: 13px;
-                }
-
-                clicked => {
-                    TransfersBridge.pause-resume-transfer(root.self.id);
-                }
             }
 
             IconButton {
@@ -442,7 +426,7 @@ export component TransferDetails inherits Rectangle {
                         interval: 1s;
                         running: transfer.status == TransferStatus.processing;
                         triggered() => {
-                            TransfersBridge.refresh-range(items.viewport-x / -36px, items.height / 36px);
+                            TransfersBridge.refresh-range(items.content-x / -36px, items.height / 36px);
                         }
                     }
 

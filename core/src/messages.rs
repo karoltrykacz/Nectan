@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::Signature;
@@ -10,8 +12,8 @@ use crate::{
     protocol::{TransferOffer, TransferOfferRequest},
 };
 
-/// Set of messages sent over the network
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum NetMessage {
     Hello {
         id: DeviceId,
@@ -19,7 +21,7 @@ pub enum NetMessage {
         signature: Signature,
     },
     TransferOfferMsg {
-        offer: TransferOffer<CompressedPathTree>,
+        offer: Box<TransferOffer<CompressedPathTree>>,
     },
     Accepted,
     Rejected {
@@ -29,11 +31,14 @@ pub enum NetMessage {
     TransferStream {
         transfer_id: Uuid,
     },
+    TransferCancelled {
+        transfer_id: Uuid,
+    },
 }
 
 pub trait StreamableMessage: Sized {
-    async fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> Result<Self>;
-    async fn write<T: crate::stream::SendStream>(&self, tx: &mut T) -> Result<()>;
+    fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> impl Future<Output = Result<Self>>;
+    fn write<T: crate::stream::SendStream>(&self, tx: &mut T) -> impl Future<Output = Result<()>>;
 }
 
 impl<M: Serialize + serde::de::DeserializeOwned> StreamableMessage for M {
@@ -87,15 +92,12 @@ impl std::fmt::Debug for AppEvent {
             Self::FoundNearby => f.debug_struct("FoundNearby").finish(),
             Self::Connected { device_id } => f
                 .debug_struct("Connected")
-                .field("device_id", &STANDARD.encode(&device_id))
+                .field("device_id", &STANDARD.encode(device_id))
                 .finish(),
             Self::ConnectionOffer { offer } => {
                 f.debug_struct("NewConnectionRequest")
                     .field("username", &offer.username.to_string())
-                    .field(
-                        "remote_device_id",
-                        &STANDARD.encode(&offer.remote_device_id),
-                    )
+                    .field("remote_device_id", &STANDARD.encode(offer.remote_device_id))
                     .field("nearby", &offer.nearby)
                     .field("respond", &"Sender { .. }") // Optional placeholder
                     .finish()
@@ -110,14 +112,16 @@ impl std::fmt::Debug for AppEvent {
 
 #[derive(Clone, Debug)]
 pub enum UiResponse {
-    Accept,
+    AcceptConnection,
+    AcceptOffer { destination: PathBuf },
     Reject { reason: Option<String> },
 }
 
 impl From<UiResponse> for NetMessage {
     fn from(resp: UiResponse) -> Self {
         match resp {
-            UiResponse::Accept => NetMessage::Accepted,
+            UiResponse::AcceptConnection => NetMessage::Accepted,
+            UiResponse::AcceptOffer { .. } => NetMessage::Accepted,
             UiResponse::Reject { reason } => NetMessage::Rejected { reason },
         }
     }

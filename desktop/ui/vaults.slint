@@ -1,0 +1,832 @@
+// import { Theme } from "./theme.slint";
+// import { ListView, HorizontalBox } from "std-widgets.slint";
+// import {
+//     SvgIcon,
+//     IconButton,
+//     GeneralModal,
+//     PrimaryButton,
+//     PlainLineEdit,
+// } from "elements.slint";
+// import { TextPreviewBridge } from "text_preview.slint";
+//
+// export enum EntryType { folder, symlink, file }
+//
+// export struct Entry { type: EntryType, path: string, name: string, preview: image }
+//
+// export global ExplorerBridge {
+//     in-out property <[Entry]> files;
+//     in-out property <length> entry-size: 32px;
+//     in-out property <string> current;
+//     in-out property <bool> can-paste: false;
+//
+//     callback open(Entry);
+//
+//     callback forward();
+//     callback back();
+//
+//     callback copy(int, int);
+//
+//     callback cut(int, int);
+//     callback paste();
+//     callback delete-items(int, int);
+//     callback rename(int);
+//     callback new-folder();
+//     callback new-file();
+//     callback refresh();
+//     callback properties(int);
+// }
+//
+// component RenameModal inherits GeneralModal {
+//     in-out property <string> input;
+//
+//     callback save(string);
+//     callback close();
+//
+//     on-close => { close(); }
+//     on-enter => { save(input); }
+//
+//     Rectangle {
+//
+//         width: min(520px, parent.width - 80px);
+//         height: min(256px, parent.height - 80px);
+//
+//         animate width, height {
+//             duration: 200ms;
+//             easing: cubic-bezier(0.34, 1, 0.64, 1);
+//         }
+//
+//         drop-shadow-color: #00000099;
+//         drop-shadow-blur: 28px;
+//         background: Theme.colors.primary-col;
+//         border-radius: 12px;
+//         border-width: 1px;
+//         border-color: Theme.colors.border-col;
+//         clip: true;
+//
+//         TouchArea {
+//             width: 100%;
+//             height: 100%;
+//             clicked => {}
+//         }
+//
+//         VerticalLayout {
+//             padding: 20px;
+//             padding-top: 14px;
+//
+//             VerticalLayout {
+//                 spacing: 12px;
+//
+//                 VerticalLayout {
+//                     spacing: 4px;
+//                     alignment: start;
+//                     Text {
+//                         text: @tr("Rename");
+//                         font-size: 20px;
+//                         color: Theme.colors.primary-font;
+//                         font-family: Theme.font-heading;
+//                         font-weight: 600;
+//                     }
+//                 }
+//
+//                 Rectangle { }
+//
+//                 Rectangle {
+//                     border-radius: 8px;
+//                     background: Theme.colors.third-col;
+//                     VerticalLayout {
+//                         PlainLineEdit {
+//                             input-text <=> input;
+//                             accepted => { save(input); }
+//                         }
+//                     }
+//                 }
+//
+//                 Rectangle { }
+//
+//                 HorizontalLayout {
+//                     alignment: end;
+//                     PrimaryButton {
+//                         text: @tr("Cancel");
+//                         alt: true;
+//                         clicked => {
+//                             close();
+//                         }
+//                     }
+//
+//                     Rectangle {
+//                         width: 12px;
+//                     }
+//
+//                     PrimaryButton {
+//                         text: @tr("Save");
+//                         clicked => { save(input); }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
+//
+// component MenuEntry inherits Rectangle {
+//     in property <string> label;
+//     in property <string> shortcut;
+//     in property <bool> enabled: true;
+//     in property <bool> danger: false;
+//     callback clicked();
+//
+//     height: 28px;
+//     border-radius: 4px;
+//     background: (mta.has-hover && root.enabled) ? Theme.colors.fourth-col : transparent;
+//
+//     HorizontalLayout {
+//         padding-left: 10px;
+//         padding-right: 10px;
+//         spacing: 16px;
+//
+//         Text {
+//             text: root.label;
+//             font-size: 12px;
+//             vertical-alignment: center;
+//             horizontal-stretch: 1;
+//             color: root.danger ? #e5484d : Theme.colors.primary-font;
+//             opacity: root.enabled ? 1.0 : 0.4;
+//         }
+//
+//         Text {
+//             text: root.shortcut;
+//             font-size: 11px;
+//             vertical-alignment: center;
+//             color: Theme.colors.primary-font;
+//             opacity: 0.5;
+//         }
+//     }
+//
+//     mta := TouchArea {
+//         enabled: root.enabled;
+//         clicked => {
+//             root.clicked();
+//         }
+//     }
+// }
+//
+// component MenuSeparator inherits Rectangle {
+//     height: 9px;
+//     Rectangle {
+//         y: 4px;
+//         height: 1px;
+//         background: Theme.colors.primary-font;
+//         opacity: 0.15;
+//     }
+// }
+//
+// export component Vaults inherits Rectangle {
+//
+//     init => { fs.focus(); }
+//
+//     property <int> rename: -1;
+//
+//     clip: true;
+//     border-radius: 8px;
+//
+//     property <int> press-row: -1;
+//
+//     property <int> sel-from: -1;
+//     property <int> sel-to: -1;
+//     property <int> sel-anchor: -1;
+//     property <bool> dragging: false;
+//     property <length> row-h: 40px;
+//     property <bool> toggle-off: false;
+//
+//     property <length> edge: 40px;
+//     property <length> max-speed: 14px;
+//     property <length> dy;
+//     property <float> accel: 0;
+//
+//     property <length> menu-x: 0px;
+//     property <length> menu-y: 0px;
+//     property <length> menu-w: 210px;
+//     property <length> item-menu-h: 235px;
+//     property <length> bg-menu-h: 170px;
+//     property <bool> menu-on-item: false;
+//
+//     property <int> sel-lo: min(sel-from, sel-to);
+//     property <int> sel-hi: max(sel-from, sel-to);
+//     property <int> sel-count: sel-from < 0 ? 0 : sel-hi - sel-lo + 1;
+//
+//     function update-drag-selection() {
+//         root.cur-x = ta.mouse-x;
+//         root.cur-y = ta.mouse-y - list.content-y;
+//         root.sel-from = clamp(Math.floor(min(root.anchor-y, root.cur-y) / root.row-h), 0, ExplorerBridge.files.length - 1);
+//         root.sel-to = clamp(Math.floor(max(root.anchor-y, root.cur-y) / root.row-h), 0, ExplorerBridge.files.length - 1);
+//     }
+//
+//     function scroll-dy(my: length) -> length {
+//         if (my < root.edge) {
+//             return (root.edge - max(my, 0px)) / root.edge * root.max-speed;
+//         }
+//         if (my > ta.height - root.edge) {
+//             return -(min(my, ta.height) - (ta.height - root.edge)) / root.edge * root.max-speed;
+//         }
+//         return 0px;
+//     }
+//
+//     property <length> anchor-x: 0px;
+//     property <length> anchor-y: 0px;
+//     property <length> cur-x: 0px;
+//     property <length> cur-y: 0px;
+//
+//     property <int> raw-row: Math.floor((ta.mouse-y - list.content-y) / row-h);
+//     property <int> hover-row: ta.has-hover && raw-row >= 0 && raw-row < ExplorerBridge.files.length ? raw-row : -1;
+//     property <int> cursor: -1;
+//     property <bool> visual: false;
+//     property <bool> pending-g: false;
+//
+//     Timer {
+//         interval: 600ms;
+//         running: root.pending-g;
+//         triggered => {
+//             root.pending-g = false;
+//         }
+//     }
+//
+//     function half-page() -> int {
+//         let n: int = Math.floor(list.height / root.row-h / 2);
+//         if (n < 1) {
+//             return 1;
+//         }
+//         return n;
+//     }
+//
+//     function ensure-visible() {
+//         let top = root.cursor * root.row-h;
+//         let bottom = top + root.row-h;
+//         if (top + list.content-y < 0px) {
+//             list.content-y = -top;
+//         } else if (bottom + list.content-y > list.height) {
+//             list.content-y = list.height - bottom;
+//         }
+//     }
+//
+//     function move(delta: int, extend: bool) {
+//         if (ExplorerBridge.files.length <= 0) {
+//             return;
+//         }
+//         root.goto-row(root.cursor < 0 ? 0 : root.cursor + delta, extend);
+//     }
+//
+//     function goto-row(row: int, extend: bool) {
+//         if (ExplorerBridge.files.length <= 0) {
+//             return;
+//         }
+//         root.cursor = clamp(row, 0, ExplorerBridge.files.length - 1);
+//         if (extend || root.visual) {
+//             if (root.sel-anchor < 0) {
+//                 root.sel-anchor = root.cursor;
+//             }
+//             root.sel-from = root.sel-anchor;
+//             root.sel-to = root.cursor;
+//         } else {
+//             root.sel-anchor = root.cursor;
+//             root.sel-from = root.cursor;
+//             root.sel-to = root.cursor;
+//         }
+//         root.ensure-visible();
+//     }
+//
+//     function toggle-visual() {
+//         if (ExplorerBridge.files.length <= 0) {
+//             return;
+//         }
+//         if (root.visual) {
+//             root.visual = false;
+//         } else {
+//             if (root.cursor < 0) {
+//                 root.cursor = 0;
+//             }
+//             root.visual = true;
+//             root.sel-anchor = root.cursor;
+//             root.sel-from = root.cursor;
+//             root.sel-to = root.cursor;
+//             root.ensure-visible();
+//         }
+//     }
+//
+//     function select-all() {
+//         if (ExplorerBridge.files.length <= 0) {
+//             return;
+//         }
+//         root.sel-anchor = 0;
+//         root.sel-from = 0;
+//         root.sel-to = ExplorerBridge.files.length - 1;
+//     }
+//
+//     function close-menu() {
+//         ctx-menu.close();
+//         fs.focus();
+//     }
+//
+//     function open-context-menu(mx: length, my: length) {
+//         let row = Math.floor((my - list.content-y) / root.row-h);
+//         let on-item = row >= 0 && row < ExplorerBridge.files.length;
+//         root.menu-on-item = on-item;
+//
+//         if (on-item) {
+//             let inside = root.sel-from >= 0 && row >= root.sel-lo && row <= root.sel-hi;
+//             root.cursor = row;
+//             if (!inside) {
+//                 // right click outside selection -> select just that row
+//                 root.visual = false;
+//                 root.sel-anchor = row;
+//                 root.sel-from = row;
+//                 root.sel-to = row;
+//             }
+//         } else {
+//             root.visual = false;
+//             root.sel-anchor = -1;
+//             root.sel-from = -1;
+//             root.sel-to = -1;
+//         }
+//
+//         let h = on-item ? root.item-menu-h : root.bg-menu-h;
+//         root.menu-x = clamp(mx, 0px, max(ta.width - root.menu-w, 0px));
+//         root.menu-y = clamp(my, 0px, max(ta.height - h, 0px));
+//         ctx-menu.show();
+//     }
+//
+//     property <string> current-path: ExplorerBridge.current;
+//     changed current-path => {
+//         root.reset-view();
+//     }
+//
+//     function reset-view() {
+//         root.visual = false;
+//         root.pending-g = false;
+//         root.accel = 0;
+//         list.content-y = 0px;
+//         root.cursor = ExplorerBridge.files.length > 0 ? 0 : -1;
+//         root.sel-anchor = root.cursor;
+//         root.sel-from = root.cursor;
+//         root.sel-to = root.cursor;
+//     }
+//
+//     VerticalLayout {
+//         padding-top: 16px;
+//         padding-bottom: 0;
+//
+//         HorizontalLayout {
+//             padding-left: 16px;
+//             spacing: 4px;
+//             IconButton {
+//                 width: 28px;
+//                 height: 28px;
+//                 Image {
+//                     source: @image-url("icons/chevron-left.svg");
+//                     colorize: Theme.colors.primary-font;
+//                     width: 20px;
+//                     height: 20px;
+//                 }
+//
+//                 clicked => {
+//                     ExplorerBridge.back();
+//                 }
+//             }
+//
+//             IconButton {
+//                 width: 28px;
+//                 height: 28px;
+//                 Image {
+//                     source: @image-url("icons/chevron-right.svg");
+//                     colorize: Theme.colors.primary-font;
+//                     width: 20px;
+//                     height: 20px;
+//                 }
+//
+//                 clicked => {
+//                     ExplorerBridge.forward();
+//                 }
+//             }
+//
+//             Text {
+//                 text: "Vaults";
+//                 font-size: 20px;
+//                 font-family: Theme.font-heading;
+//                 font-weight: 500;
+//                 color: Theme.colors.primary-font;
+//             }
+//         }
+//
+//         Rectangle {
+//             height: 20px;
+//         }
+//
+//         HorizontalBox {
+//             Text {
+//                 text: ExplorerBridge.current;
+//                 font-size: 13px;
+//                 font-family: Theme.font-heading;
+//                 font-weight: 500;
+//                 color: Theme.colors.primary-font;
+//             }
+//         }
+//
+//         Rectangle {
+//             vertical-stretch: 1;
+//             clip: true;
+//             Timer {
+//                 interval: 8ms;
+//                 running: root.dragging && ta.pressed;
+//                 triggered => {
+//                     let dy = root.scroll-dy(ta.mouse-y);
+//                     if (dy != 0px) {
+//                         root.accel = min(root.accel + 0.04, 3.0);
+//                         list.content-y = clamp(list.content-y + dy * (1 + root.accel), 
+// 			min(0px, list.height - list.content-height), 0px);
+//                         root.update-drag-selection();
+//                     } else {
+//                         root.accel = 0;
+//                     }
+//                 }
+//             }
+//
+//             list := ListView {
+//
+//                 for file[i] in ExplorerBridge.files: Rectangle {
+//
+//                     property <bool> selected: sel-from >= 0 && i >= min(sel-from, sel-to) && i <= max(root.sel-from, root.sel-to);
+//
+//                     height: row-h;
+//                     background: selected ? Theme.colors.fourth-col
+//                         : i == hover-row ? Theme.colors.third-col
+//                         : i.mod(2) == 0 ? Theme.colors.third-col : transparent;
+//                     border-width: 1px;
+//
+//                     if (file.type == EntryType.folder): SvgIcon {
+//                         width: 40px;
+//                         x: 20px;
+//                         size: 16px;
+//                         source: @image-url("icons/folder-nofill.svg");
+//                     }
+//                     if (file.type == EntryType.file): SvgIcon {
+//                         width: 40px;
+//                         x: 20px;
+//                         size: 16px;
+//                         source: @image-url("icons/file-nofill.svg");
+//                     }
+//
+//                     Text {
+//                         x: 60px;
+//                         height: parent.height;
+//                         font-size: 12px;
+//                         text: file.name;
+//                         vertical-alignment: center;
+//                         overflow: elide;
+//                         color: Theme.colors.primary-font;
+//                     }
+//                 }
+//             }
+//
+//             fs := FocusScope {
+//                 width: parent.width;
+//                 height: parent.height;
+//                 init => { self.focus(); }
+//
+//                 key-pressed(event) => {
+//                     debug(event);
+//                     if (event.text == "g") {
+//                         if (root.pending-g) {
+//                             root.pending-g = false;
+//                             root.goto-row(0, false);
+//                         } else {
+//                             root.pending-g = true;
+//                         }
+//                         return EventResult.accept;
+//                     }
+//                     root.pending-g = false;
+//                     if (event.text == "G") {
+//                         root.goto-row(ExplorerBridge.files.length - 1, false);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.modifiers.control && event.text == "d") {
+//                         root.move(root.half-page(), event.modifiers.shift);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.modifiers.control && event.text == "u") {
+//                         root.move(-root.half-page(), event.modifiers.shift);
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.modifiers.control || event.modifiers.meta) && event.text == "c" && root.sel-from >= 0) {
+//                         debug("Copy");
+//                         ExplorerBridge.copy(root.sel-lo, root.sel-hi);
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.modifiers.control || event.modifiers.meta) && event.text == "x" && root.sel-from >= 0) {
+//                         ExplorerBridge.cut(root.sel-lo, root.sel-hi);
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.modifiers.control || event.modifiers.meta) && event.text == "v") {
+//                         ExplorerBridge.paste();
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.modifiers.control || event.modifiers.meta) && event.text == "a") {
+//                         root.select-all();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.Delete && root.sel-from >= 0) {
+//                         ExplorerBridge.delete-items(root.sel-lo, root.sel-hi);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.F2) {
+//                         debug("F2");
+//                     }
+//                     if (event.text == Key.F2 && root.sel-count == 1) {
+//                         root.rename = root.sel-lo;
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.F5) {
+//                         ExplorerBridge.refresh();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.DownArrow || event.text == "j") {
+//                         root.move(1, event.modifiers.shift);
+//                         return EventResult.accept;
+//                     }
+//                     if ((event.text == Key.UpArrow || event.text == "k") && !event.modifiers.control) {
+//                         root.move(-1, event.modifiers.shift);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == "J") {
+//                         root.move(1, true);
+//                         return EventResult.accept;
+//                     }
+//                     if (event.modifiers.alt && event.text == Key.RightArrow) {
+//                         ExplorerBridge.forward();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.modifiers.alt && event.text == Key.LeftArrow) {
+//                         ExplorerBridge.back();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == "h") {
+//                         ExplorerBridge.back();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == "l") {
+//                         if (root.cursor >= 0) {
+//                             ExplorerBridge.open(ExplorerBridge.files[root.cursor]);
+//                         }
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == "v") {
+//                         root.toggle-visual();
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.Escape) {
+//                         root.visual = false;
+//                         root.sel-from = -1;
+//                         root.sel-to = -1;
+//                         root.sel-anchor = -1;
+//                         return EventResult.accept;
+//                     }
+//                     if (event.text == Key.Return && root.cursor >= 0 && root.cursor < ExplorerBridge.files.length) {
+//                         ExplorerBridge.open(ExplorerBridge.files[root.cursor]);
+//                         return EventResult.accept;
+//                     }
+//                     return EventResult.reject;
+//                 }
+//             }
+//
+//             ta := TouchArea {
+//                 width: parent.width;
+//                 height: parent.height;
+//                 mouse-cursor: hover-row >= 0 ? MouseCursor.pointer : MouseCursor.default;
+//                 pointer-event(event) => {
+//                     if (event.button == PointerEventButton.right && event.kind == PointerEventKind.up) {
+//                         root.open-context-menu(self.mouse-x, self.mouse-y);
+//                     }
+//                     if (event.button == PointerEventButton.left) {
+//                         if (event.kind == PointerEventKind.down) {
+//
+//                             anchor-x = self.mouse-x;
+//                             anchor-y = self.mouse-y - list.content-y;
+//                             cur-x = anchor-x;
+//                             cur-y = anchor-y;
+//                             dragging = false;
+//
+//                             toggle-off = !event.modifiers.shift
+//                                 && hover-row >= 0
+//                                 && sel-from >= 0
+//                                 && hover-row >= min(sel-from, sel-to)
+//                                 && hover-row <= max(sel-from, sel-to);
+//
+//                             press-row = hover-row;
+//
+//                             if (event.modifiers.shift && sel-anchor >= 0 && hover-row >= 0) {
+//                                 sel-from = sel-anchor;
+//                                 sel-to = hover-row;
+//                             } else {
+//                                 sel-anchor = hover-row;
+//                                 sel-from = hover-row;
+//                                 sel-to = hover-row;
+//                             }
+//                         }
+//                         if (event.kind == PointerEventKind.up) {
+//                             press-row = -1;
+//                             if (toggle-off && !dragging) {
+//                                 sel-from = -1;
+//                                 sel-to = -1;
+//                                 sel-anchor = -1;
+//                             }
+//                             toggle-off = false;
+//                             dragging = false;
+//                             root.accel = 0;
+//                         }
+//                     }
+//                 }
+//
+//                 moved => {
+//                     if (self.pressed) {
+//                         root.cur-x = self.mouse-x;
+//                         root.cur-y = self.mouse-y - list.content-y;
+//                         if (Math.abs(root.cur-y - root.anchor-y) > 4px || Math.abs(root.cur-x - root.anchor-x) > 4px) {
+//                             root.dragging = true;
+//                         }
+//                         if (root.dragging) {
+//                             root.update-drag-selection();
+//                         }
+//                     }
+//                 }
+//
+//                 double-clicked => {
+//                     if (hover-row >= 0) {
+//                         debug("Opened ", ExplorerBridge.files[hover-row]);
+//                         ExplorerBridge.open(ExplorerBridge.files[hover-row]);
+//                     }
+//                 }
+//
+//                 scroll-event(e) => {
+//                     list.content-y = clamp(list.content-y + e.delta-y, min(0px, list.height - list.content-height), 0px);
+//                     EventResult.accept
+//                 }
+//             }
+//
+//             ctx-menu := PopupWindow {
+//                 x: root.menu-x;
+//                 y: root.menu-y;
+//                 width: root.menu-w;
+//                 height: root.menu-on-item ? root.item-menu-h : root.bg-menu-h;
+//                 close-policy: PopupClosePolicy.close-on-click-outside;
+//
+//                 Rectangle {
+//                     background: Theme.colors.third-col;
+//                     border-radius: 8px;
+//                     border-width: 1px;
+//                     border-color: Theme.colors.fourth-col;
+//
+//                     VerticalLayout {
+//                         padding: 6px;
+//                         spacing: 0px;
+//
+//                         if root.menu-on-item: VerticalLayout {
+//                             MenuEntry {
+//                                 label: "Open";
+//                                 shortcut: "Enter";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     if (root.cursor >= 0) {
+//                                         ExplorerBridge.open(ExplorerBridge.files[root.cursor]);
+//                                     }
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Cut";
+//                                 shortcut: "Ctrl+X";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.cut(root.sel-lo, root.sel-hi);
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "Copy";
+//                                 shortcut: "Ctrl+C";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.copy(root.sel-lo, root.sel-hi);
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "Paste";
+//                                 shortcut: "Ctrl+V";
+//                                 enabled: ExplorerBridge.can-paste;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.paste();
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Rename";
+//                                 shortcut: "F2";
+//                                 enabled: root.sel-count == 1;
+//                                 clicked => {
+//                                     root.rename = root.sel-lo;
+//                                     root.close-menu();
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "Delete";
+//                                 shortcut: "Del";
+//                                 danger: true;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.delete-items(root.sel-lo, root.sel-hi);
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Properties";
+//                                 shortcut: "Alt+Enter";
+//                                 enabled: root.sel-count == 1;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.properties(root.sel-lo);
+//                                 }
+//                             }
+//                         }
+//
+//                         if !root.menu-on-item: VerticalLayout {
+//                             MenuEntry {
+//                                 label: "New Folder";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.new-folder();
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "New File";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.new-file();
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Paste";
+//                                 shortcut: "Ctrl+V";
+//                                 enabled: ExplorerBridge.can-paste;
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.paste();
+//                                 }
+//                             }
+//
+//                             MenuEntry {
+//                                 label: "Select All";
+//                                 shortcut: "Ctrl+A";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     root.select-all();
+//                                 }
+//                             }
+//
+//                             MenuSeparator { }
+//
+//                             MenuEntry {
+//                                 label: "Refresh";
+//                                 shortcut: "F5";
+//                                 clicked => {
+//                                     root.close-menu();
+//                                     ExplorerBridge.refresh();
+//                                 }
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//
+//     if root.rename != -1: RenameModal {
+//         input: ExplorerBridge.files[rename].name;
+//         save(new-name) => {
+//             debug("Renaming", new-name);
+//             root.rename = -1;
+//         }
+//         close => {
+//             fs.focus();
+//             root.rename = -1;
+//         }
+//     }
+// }

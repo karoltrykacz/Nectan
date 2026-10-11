@@ -1,14 +1,10 @@
-use crate::{
-    MB,
-    walker::{self, Walker},
-};
-use core::hash;
+use crate::{MB, walker::Walker};
 use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    time::{Instant, UNIX_EPOCH},
+    time::Instant,
 };
 
 pub struct Vault {

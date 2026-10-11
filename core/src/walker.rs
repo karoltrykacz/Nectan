@@ -4,11 +4,14 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{
+            AtomicBool, AtomicU64,
+            Ordering::{self, SeqCst},
+        },
         mpsc::{Sender, channel},
     },
     thread::JoinHandle,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tracing::trace;
 
@@ -35,15 +38,11 @@ pub struct Walker(Arc<WalkControllerInner>);
 
 impl Walker {
     pub fn finished(&self) -> bool {
-        self.finished.load(Ordering::Relaxed)
-    }
-
-    pub fn stop(&self) {
-        self.stop_token.store(true, Ordering::Relaxed)
+        self.finished.load(Ordering::SeqCst)
     }
 
     pub fn should_abort(&self) -> bool {
-        self.stop_token.load(Ordering::Relaxed)
+        self.stop_token.load(Ordering::SeqCst)
     }
 
     pub fn take_tree(&self) -> Option<PathTree> {
@@ -74,6 +73,42 @@ impl Walker {
             tree: Mutex::new(None),
             paths,
         }))
+    }
+
+    pub fn rescan(&self) {
+        self.finished.store(false, SeqCst);
+
+        if self.finished.load(SeqCst) {
+            // Walker still not finished
+            // Stop it and wait until it rearms itself so we can start
+            self.stop();
+
+            loop {
+                if self.should_abort() {
+                    std::thread::sleep(Duration::from_micros(1));
+                    println!("Waiting for walker to go to sleep.");
+                    continue;
+                } else {
+                    println!("Walker rearmed.");
+                    break;
+                }
+            }
+        }
+
+        // Just in case
+        self.rearm();
+        self.walk();
+    }
+
+    pub fn stop(&self) {
+        self.stop_token.store(true, SeqCst)
+    }
+
+    fn rearm(&self) {
+        self.total_entries.store(0, SeqCst);
+        self.total_size.store(0, SeqCst);
+        self.finished.store(false, SeqCst);
+        self.stop_token.store(false, SeqCst);
     }
 
     pub fn walk(&self) -> JoinHandle<()> {
@@ -114,12 +149,14 @@ impl Walker {
                             c.total_size.fetch_add(size, Ordering::Relaxed);
                         }
                         if c.should_abort() {
+                            c.rearm();
                             return ignore::WalkState::Quit;
                         }
                         ignore::WalkState::Continue
                     })
                 });
                 if c.should_abort() {
+                    c.rearm();
                     return;
                 }
                 drop(tx);
@@ -138,7 +175,11 @@ impl Walker {
                 compress_time
             );
 
-            c.finished.store(true, Ordering::Release);
+            if c.should_abort() {
+                c.rearm();
+                return;
+            }
+            c.finished.store(true, SeqCst);
         })
     }
 }

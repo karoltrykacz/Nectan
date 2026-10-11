@@ -1,3 +1,4 @@
+use crate::{devices::DeviceStatus::Offline, storage_utils::DataWriter};
 use anyhow::{Result, anyhow, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use core::fmt;
@@ -6,30 +7,19 @@ use iroh::{EndpointId, endpoint::Connection};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    fmt::write,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
 use tracing::info;
 
-use crate::{
-    devices::DeviceStatus::Offline,
-    storage_utils::{DataWriter, Deserializer, KvStore},
-};
-
 pub type DeviceId = VerifyingKey;
 
-#[derive(Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 pub enum DeviceStatus {
+    #[default]
     Offline,
     Online,
     Nearby,
-}
-
-impl Default for DeviceStatus {
-    fn default() -> Self {
-        DeviceStatus::Offline
-    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -55,9 +45,7 @@ impl Username {
         }
         Ok(Self { inner: username })
     }
-    pub fn to_string(&self) -> String {
-        self.inner.clone()
-    }
+
     pub fn as_string(self) -> String {
         self.inner
     }
@@ -260,12 +248,14 @@ impl Devices {
     }
     pub fn remove_conn(&self, target: &DeviceId, conn_id: usize) -> bool {
         let mut lock = self.inner.write().unwrap();
-        let Some(device) = lock.get_mut(&target) else {
+        let Some(device) = lock.get_mut(target) else {
             return false;
         };
+
         let Some(conn) = &device.connection else {
             return false;
         };
+
         if conn.stable_id() == conn_id {
             device.connection = None;
             device.status = Offline;

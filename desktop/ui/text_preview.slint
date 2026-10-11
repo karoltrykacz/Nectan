@@ -1,0 +1,214 @@
+import {
+    GeneralModal,
+    Spinner,
+    IconButton,
+    SvgIcon,
+    ToolTip,
+    PrimaryButton,
+} from "elements.slint";
+import { Theme } from "theme.slint";
+import { VerticalBox, TextEdit, ListView } from "std-widgets.slint";
+import { ConnectionOfferBridge } from "add_remote_modal.slint";
+
+export global TextPreviewBridge {
+    in-out property <bool> open: true;
+    in-out property <bool> loading: false;
+    in-out property <string> doc-name: "Document.txt";
+    in-out property <string> doc-size: "123 KB";
+    in-out property <string> doc-modified: "12 May 2026";
+    in-out property <[string]> doc-text: ["Document.txt"];
+
+    in-out property <length> font-size: 14px;
+
+    callback open-with();
+
+    public function smaller() {
+        font-size = (font-size - 1px).max(8px);
+        debug(font-size);
+    }
+    public function bigger() {
+        font-size += 1px;
+    }
+}
+
+export component TextPreview inherits GeneralModal {
+
+    on-close => { TextPreviewBridge.open = false; }
+
+    Rectangle {
+        width: min(820px, parent.width - 40px);
+        height: min(560px,parent.height - 40px);
+        clip: true;
+
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.fourth-col.with-alpha(0.5);
+        TouchArea { }
+
+        fs := FocusScope {
+
+            KeyBinding {
+                keys: @keys(LeftArrow);
+                activated => { TextPreviewBridge.smaller(); }
+            }
+
+            if TextPreviewBridge.loading: VerticalLayout {
+                spacing: 12px;
+                alignment: center;
+                cross-axis-alignment: center;
+
+                Text {
+                    text: @tr("Loading {} document.txt", TextPreviewBridge.doc-name);
+                    font-family: Theme.font-heading;
+                    color: Theme.colors.primary-font;
+                    font-size: 16px;
+                    font-weight: 500;
+                    overflow: elide;
+                    horizontal-alignment: start;
+                    vertical-alignment: center;
+                }
+
+                Spinner { }
+            }
+
+            if !TextPreviewBridge.loading: VerticalLayout {
+                padding: 20px;
+                padding-top: 14px;
+
+                HorizontalLayout {
+                    height: 20px;
+                    z: 1;
+
+                    VerticalLayout {
+
+                        Text {
+                            text: TextPreviewBridge.doc-name;
+                            font-family: Theme.font-heading;
+                            color: Theme.colors.primary-font;
+                            font-size: 16px;
+                            font-weight: 500;
+                            overflow: elide;
+                            horizontal-alignment: start;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: "\{TextPreviewBridge.doc-modified} | \{TextPreviewBridge.doc-size}";
+                            font-size: 13px;
+                            color: Theme.colors.third-font;
+                            font-family: Theme.font-heading;
+                            font-weight: 400;
+                        }
+                    }
+
+                    Rectangle { }
+
+                    PrimaryButton {
+                        text: "Open with";
+                        alt: true;
+                        clicked => {
+                            TextPreviewBridge.open-with();
+                        }
+                    }
+
+                    Rectangle {
+                        width: 12px;
+                    }
+
+                    print-btn := IconButton {
+                        height: 28px;
+                        width: 28px;
+                        border-radius: 8px;
+                        background: Theme.colors.third-col;
+
+                        SvgIcon {
+                            size: 15px;
+                            fg: Theme.colors.primary-font;
+                            source: @image-url("icons/printer.svg");
+                            ToolTip {
+                                y: 32px;
+                                text: @tr("Print");
+                                opacity: print-btn.hovered ? 1.0 : 0.0;
+                            }
+                        }
+
+                        clicked => {}
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                    }
+
+                    smaller-btn := IconButton {
+                        height: 28px;
+                        width: 28px;
+                        border-radius: 8px;
+                        background: Theme.colors.third-col;
+
+                        SvgIcon {
+                            size: 16px;
+                            fg: Theme.colors.primary-font;
+                            source: @image-url("icons/zoom-out.svg");
+                            ToolTip {
+                                y: 32px;
+                                text: @tr("Smaller");
+                                opacity: smaller-btn.hovered ? 1.0 : 0.0;
+                            }
+                        }
+
+                        clicked => { TextPreviewBridge.smaller(); }
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                    }
+
+                    bigger-btn := IconButton {
+                        height: 28px;
+                        width: 28px;
+                        border-radius: 8px;
+                        background: Theme.colors.third-col;
+
+                        SvgIcon {
+                            size: 16px;
+                            fg: Theme.colors.primary-font;
+                            source: @image-url("icons/zoom-in.svg");
+                            ToolTip {
+                                y: 32px;
+                                text: @tr("Bigger");
+                                opacity: bigger-btn.hovered ? 1.0 : 0.0;
+                            }
+                        }
+
+                        clicked => { TextPreviewBridge.bigger(); }
+                    }
+                }
+
+                Rectangle {
+                    height: 24px;
+                }
+
+                Rectangle {
+                    background: Theme.colors.secondary-col;
+                    z: 0;
+                    border-radius: 8px;
+                    HorizontalLayout {
+                        padding-top: 4px;
+                        padding: 8px;
+
+                        ListView {
+                            horizontal-scrollbar-policy: as-needed;
+                            vertical-scrollbar-policy: as-needed;
+                            for line in TextPreviewBridge.doc-text: Text {
+                                text: line;
+                                font-size: TextPreviewBridge.font-size;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -9,6 +9,7 @@ import {
 import { SettingsBridge } from "settings.slint";
 import { OutcomingTransferModalBridge } from "transfer_offer_modal.slint";
 import { SettingsBridge } from "settings.slint";
+import { Chat } from "chat.slint";
 
 export enum DeviceStatus {
     online,
@@ -42,6 +43,52 @@ export component DeviceStatusText inherits Text {
     font-size: 12px;
     font-family: Theme.font-heading;
     font-weight: 500;
+}
+
+// component Chat inherits VerticalLayout {
+//     alignment: center;
+//     spacing: 8px;
+//
+//     PrimaryButton {
+//         width: 142px;
+//         text: @tr("Send folder");
+//         image: @image-url("icons/folder-nofill.svg");
+//         animate-width: false;
+//         clicked => {
+//             OutcomingTransferModalBridge.select-folders();
+//         }
+//     }
+//
+//     PrimaryButton {
+//         width: 142px;
+//         text: @tr("Send files");
+//         image: @image-url("icons/file-nofill.svg");
+//         animate-width: false;
+//         clicked => {
+//             OutcomingTransferModalBridge.select-files();
+//         }
+//     }
+// }
+
+component Offline inherits VerticalLayout {
+    in property <string> name;
+    vertical-stretch: 1;
+    alignment: center;
+    cross-axis-alignment: center;
+    padding-bottom: 64px;
+    spacing: 20px;
+
+    Text {
+        text: @tr("{} is offline",name);
+        font-family: Theme.font-body;
+        font-size: 16px;
+    }
+
+    SvgIcon {
+        source: @image-url("icons/wifi-off.svg");
+        fg: Theme.colors.third-font;
+        size: 28px;
+    }
 }
 
 export component DeviceRow inherits Rectangle {
@@ -187,56 +234,11 @@ export component DeviceScreen inherits Rectangle {
                 }
             }
 
-            HorizontalLayout {
+            if device.status != DeviceStatus.offline: Chat { }
+
+            if device.status == DeviceStatus.offline: HorizontalLayout {
                 alignment: center;
-
-                if device.status == DeviceStatus.offline: VerticalLayout {
-                    vertical-stretch: 1;
-                    alignment: center;
-                    cross-axis-alignment: center;
-                    padding-bottom: 64px;
-                    spacing: 20px;
-
-                    Text {
-                        text: @tr("{} is offline",device.name);
-                        font-family: Theme.font-body;
-                        font-size: 16px;
-                    }
-
-                    SvgIcon {
-                        source: @image-url("icons/wifi-off.svg");
-                        fg: Theme.colors.third-font;
-                        size: 28px;
-                    }
-                }
-                if device.status != DeviceStatus.offline: VerticalLayout {
-                    alignment: center;
-                    spacing: 8px;
-
-                    PrimaryButton {
-                        width: 142px;
-                        text: @tr("Send folder");
-                        button-enabled: device.status != DeviceStatus.offline;
-                        image: @image-url("icons/folder-nofill.svg");
-                        animate-width: false;
-                        clicked => {
-                            select-device();
-                            OutcomingTransferModalBridge.select-folders();
-                        }
-                    }
-
-                    PrimaryButton {
-                        width: 142px;
-                        text: @tr("Send files");
-                        button-enabled: device.status != DeviceStatus.offline;
-                        image: @image-url("icons/file-nofill.svg");
-                        animate-width: false;
-                        clicked => {
-                            select-device();
-                            OutcomingTransferModalBridge.select-files();
-                        }
-                    }
-                }
+                Offline { }
             }
         }
     }

@@ -4,7 +4,7 @@ use nectan_core::{
     code_lookup::{CodeLookupError, gen_code, issue_code, lookup_code},
     common::{common_parent, gen_transfer_name},
     devices::{Username, device_id_from_base64},
-    format::{DecimalBytes, RoundedDecimalBytes},
+    format::{BinaryBytes, DecimalBytes, RoundedDecimalBytes},
     messages::{
         AppEvent::{self},
         ConnectionOffer, UiResponse,
@@ -15,14 +15,17 @@ use nectan_core::{
     walker::Walker,
 };
 use rfd::FileHandle;
-use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, invoke_from_event_loop};
+use slint::{
+    ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
+    Weak, invoke_from_event_loop,
+};
 use slint::{
     ToSharedString,
     winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent},
 };
 use std::{
     fs::DirEntry,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{Arc, atomic::Ordering::Relaxed},
     time::Duration,
@@ -37,8 +40,9 @@ use crate::{
     TransfersBridge, TreeNode, WindowBridge, devices::update_devices, state::ui_state,
     transfers::update_transfers,
 };
+pub const MB: f32 = 1024.0 * 1024.0;
 
-fn show_error(
+pub fn show_error(
     weak: &slint::Weak<NectanWindow>,
     title: impl Into<slint::SharedString>,
     msg: impl Into<slint::SharedString>,
@@ -100,7 +104,7 @@ pub async fn event_listener(
             AppEvent::ConnectionOffer { offer } => {
                 show_connection_offer(&w, offer);
             }
-            AppEvent::FoundNearby { .. } => {
+            AppEvent::FoundNearby => {
                 update_devices(&w, &state);
             }
             AppEvent::Connected { .. } => {
@@ -125,13 +129,36 @@ fn transfer_offer_delivered(w: &Weak<NectanWindow>) {
 
 pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>) {
     let b = w.global::<IncomingTransferOfferBridge>();
+
+    let save_to = ui_state().save_to();
+    b.set_target_path(save_to.to_string_lossy().to_string().into());
+
+    let weak = w.as_weak();
+    b.on_change_destination(move || {
+        let weak = weak.clone();
+        let fut = async move {
+            let weak = weak.clone();
+            let Some(h) = rfd::AsyncFileDialog::new().pick_folder().await else {
+                return;
+            };
+
+            let path = h.path().to_path_buf();
+            let Some(w) = weak.upgrade() else { return };
+
+            ui_state().set_save_to(&path);
+            w.global::<IncomingTransferOfferBridge>()
+                .set_target_path(path.to_string_lossy().to_string().into());
+        };
+        let _ = slint::spawn_local(fut);
+    });
+
     let weak = w.as_weak();
     let s = state.clone();
     b.on_accept(move || {
         info!("Accepted");
         if let Some(w) = weak.upgrade() {
             let b = w.global::<IncomingTransferOfferBridge>();
-            b.set_is_open(false);
+            b.set_open(false);
             let s = s.clone();
             tokio::spawn(async move {
                 s.respond_transfer_offer(UiResponse::Reject {
@@ -148,7 +175,7 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
         info!("Rejected");
         if let Some(w) = weak.upgrade() {
             let b = w.global::<IncomingTransferOfferBridge>();
-            b.set_is_open(false);
+            b.set_open(false);
 
             let s = s.clone();
             tokio::spawn(async move {
@@ -160,72 +187,96 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
         }
     });
 
-    // let weak = w.as_weak();
-    // b.on_toggle_node(move |id, path| {
-    //     let Some(w) = weak.upgrade() else { return };
-    //
-    //     let bridge = w.global::<IncomingTransferOfferBridge>();
-    //     let nodes = bridge.get_nodes();
-    //     let mut nodes: Vec<TreeNode> = nodes.iter().map(|node| node.clone()).collect();
-    //     if nodes[id as usize].is_file {
-    //         return;
-    //     }
-    //     let parent_depth = nodes[id as usize].depth;
-    //
-    //     if nodes[id as usize].expanded {
-    //         nodes[id as usize].expanded = false;
-    //         // Close the nodes
-    //         let mut end = id as usize + 1;
-    //         while end < nodes.len() && nodes[end].depth > parent_depth {
-    //             end += 1;
-    //         }
-    //         nodes.drain(id as usize + 1..end);
-    //
-    //         let model = VecModel::from(nodes);
-    //         bridge.set_nodes(ModelRc::from(Rc::new(model)));
-    //         return;
-    //     }
-    //
-    //     nodes[id as usize].expanded = true;
-    //
-    //     let offer = ui_state().transfer_offer();
-    //     let weak = w.as_weak();
-    //
-    //     // Read from the tree the sender sent us
-    //     tokio::spawn(async move {
-    //         let path = Path::new(&path);
-    //         let lock = offer.read().await;
-    //         let info = lock.as_ref().unwrap();
-    //
-    //         let children: Vec<TreeNode> = info
-    //             .info
-    //             .tree
-    //             .children_of(path)
-    //             .iter()
-    //             .map(|(p, is_file)| TreeNode {
-    //                 depth,
-    //                 expanded: false,
-    //                 is_file: *is_file,
-    //                 filename: p.file_name().unwrap().to_string_lossy().to_string().into(),
-    //                 path: p.to_string_lossy().to_string().into(),
-    //             })
-    //             .collect();
-    //         nodes.splice((id + 1) as usize..(id + 1) as usize, children);
-    //
-    //         let _ = weak.upgrade_in_event_loop(move |w| {
-    //             let bridge = w.global::<IncomingTransferOfferBridge>();
-    //             let model = VecModel::from(nodes);
-    //             bridge.set_nodes(ModelRc::from(Rc::new(model)));
-    //         });
-    //     });
-    // });
+    let weak = w.as_weak();
+    let s = state.clone();
+    b.on_toggle_node(move |id, path| {
+        let Some(w) = weak.upgrade() else { return };
+
+        let bridge = w.global::<IncomingTransferOfferBridge>();
+        let nodes = bridge.get_nodes();
+        let mut nodes: Vec<TreeNode> = nodes.iter().collect();
+        if nodes[id as usize].is_file {
+            return;
+        }
+        let parent_depth = nodes[id as usize].depth;
+
+        if nodes[id as usize].expanded {
+            nodes[id as usize].expanded = false;
+            // Close the nodes
+            let mut end = id as usize + 1;
+            while end < nodes.len() && nodes[end].depth > parent_depth {
+                end += 1;
+            }
+            nodes.drain(id as usize + 1..end);
+
+            let model = VecModel::from(nodes);
+            bridge.set_nodes(ModelRc::from(Rc::new(model)));
+            return;
+        }
+
+        nodes[id as usize].expanded = true;
+        let depth = parent_depth + 1;
+        let weak = w.as_weak();
+        let s = s.clone();
+
+        tokio::spawn(async move {
+            let path = Path::new(&path);
+            let children = {
+                let offer = s.transfer_offer.lock().await;
+
+                let Some(offer) = &*offer else {
+                    return;
+                };
+
+                let children: Vec<TreeNode> = offer
+                    .inner
+                    .tree
+                    .children_of(path)
+                    .iter()
+                    .map(|(p, is_file, _size)| TreeNode {
+                        depth,
+                        expanded: false,
+                        is_file: *is_file,
+                        filename: p.file_name().unwrap().to_string_lossy().to_string().into(),
+                        path: p.to_string_lossy().to_string().into(),
+                    })
+                    .collect();
+                children
+            };
+
+            nodes.splice((id + 1) as usize..(id + 1) as usize, children);
+
+            let _ = weak.upgrade_in_event_loop(move |w| {
+                let bridge = w.global::<IncomingTransferOfferBridge>();
+                let model = VecModel::from(nodes);
+                bridge.set_nodes(ModelRc::from(Rc::new(model)));
+            });
+        });
+    });
 }
 
 pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOfferRequest) {
     // TODO show the contents
     let _ = w.upgrade_in_event_loop(move |w| {
         let b = w.global::<IncomingTransferOfferBridge>();
-        let nodes = Vec::new();
+        let nodes: Vec<TreeNode> = offer
+            .inner
+            .tree
+            .get_depth_0()
+            .iter()
+            .map(|(path, is_file, _size)| TreeNode {
+                depth: 0,
+                path: path.to_string_lossy().to_string().into(),
+                expanded: false,
+                filename: path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+                    .into(),
+                is_file: *is_file,
+            })
+            .collect();
 
         let offer = IncomingTransferOffer {
             from: offer.sender_name.into(),
@@ -236,7 +287,7 @@ pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOfferRequest) 
         };
         b.set_nodes(ModelRc::new(VecModel::from(nodes)));
         b.set_offer(offer);
-        b.set_is_open(true);
+        b.set_open(true);
     });
 }
 
@@ -255,7 +306,9 @@ pub fn handle_connection_offer(w: &NectanWindow, state: Arc<NectanState>) {
         tokio::spawn(async move {
             if accept {
                 info!("Accepted connection offer.");
-                state.respond_connection_offer(UiResponse::Accept).await;
+                state
+                    .respond_connection_offer(UiResponse::AcceptConnection)
+                    .await;
             } else {
                 info!("Rejected connection offer.");
                 state
@@ -333,7 +386,7 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                                 if let Some(ui) = ui_weak.upgrade() {
                                     let bridge = ui.global::<AddDeviceBridge>();
                                     match result {
-                                        Ok(device) => {
+                                        Ok(()) => {
                                             bridge.set_lookup_state(LookupState::Connected);
                                             // And some info???
                                         }
@@ -471,9 +524,14 @@ pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
     });
 
     walker.walk();
+    spawn_walk_notifier(walker, w);
+}
 
+fn spawn_walk_notifier(walker: Walker, w: Weak<NectanWindow>) {
     std::thread::spawn(move || {
         loop {
+            std::thread::sleep(Duration::from_millis(18));
+
             let total_entries = walker.total_entries();
             let total_size = walker.total_size();
 
@@ -484,6 +542,7 @@ pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
                 bridge.set_walk_total_size(size_str.into());
             });
             if walker.finished() {
+                info!("Walker finished. Ready to send.");
                 let _ = w.upgrade_in_event_loop(move |w| {
                     let bridge = w.global::<OutcomingTransferModalBridge>();
                     let size_str = RoundedDecimalBytes(total_size).to_string();
@@ -493,8 +552,6 @@ pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
                 });
                 return;
             }
-
-            std::thread::sleep(Duration::from_millis(18));
         }
     });
 }
@@ -505,9 +562,9 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
     bridge.on_send(move |destination_id, transfer_name, compression| {
         info!("Sending offer. {transfer_name}. Compression - {compression}");
         if let Some(walk_info) = ui_state().walker().take() {
-            let transfer_id = Uuid::new_v4();
             let destination_device = device_id_from_base64(&destination_id).unwrap();
 
+            let transfer_id = Uuid::new_v4();
             let entries_num = walk_info.total_entries() as u32;
             let total_size = walk_info.total_size();
             let transfer_name = transfer_name.into();
@@ -629,7 +686,7 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
         let outcoming = ui_state().outcoming_transfer();
         let weak = weak.clone();
         let bridge = w.global::<OutcomingTransferModalBridge>();
-        let mut nodes: Vec<TreeNode> = bridge.get_nodes().iter().map(|node| node.clone()).collect();
+        let mut nodes: Vec<TreeNode> = bridge.get_nodes().iter().collect();
         if nodes[id].is_file {
             return;
         }
@@ -639,18 +696,18 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
             nodes[id].expanded = false;
 
             // Close the nodes
-            let mut end = id as usize + 1;
+            let mut end = id + 1;
             while end < nodes.len() && nodes[end].depth > parent_depth {
                 end += 1;
             }
-            nodes.drain(id as usize + 1..end);
+            nodes.drain(id + 1..end);
 
             let model = VecModel::from(nodes);
             bridge.set_nodes(ModelRc::from(Rc::new(model)));
             return;
         }
 
-        nodes[id as usize].expanded = true;
+        nodes[id].expanded = true;
 
         // Need to build the fucking walker beacuse the pathtree from walker is yielded after the walk is finished
         // Don;t block the ui thread
@@ -686,7 +743,7 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
                     result.push(node);
                 }
                 // Append the nodes to the tree
-                nodes.splice((id + 1) as usize..(id + 1) as usize, result);
+                nodes.splice((id + 1)..(id + 1), result);
                 println!("Result nodes {nodes:#?}");
 
                 let _ = weak.upgrade_in_event_loop(move |w| {
@@ -700,6 +757,27 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
             }
         });
     });
+    let weak = w.as_weak();
+    b.on_rescan_dir(move || {
+        let wk = weak.clone();
+        let Some(w) = weak.upgrade() else { return };
+        let b = w.global::<OutcomingTransferModalBridge>();
+        b.set_walk_finished(false);
+        b.set_walk_total_size("0 B".into());
+        b.set_walk_total_entries(0);
+
+        // Reuse old walker
+        let state = ui_state();
+        let lock = state.walker();
+        if let Some(walker) = &*lock {
+            println!("Rescanning");
+            walker.rescan();
+
+            spawn_walk_notifier(walker.clone(), wk);
+        } else {
+            println!("Walker not found!");
+        }
+    })
 }
 
 pub fn handle_paste(w: &NectanWindow) {
@@ -751,3 +829,311 @@ pub fn handle_open_transfers(w: &NectanWindow) {
         update_transfers(&weak);
     });
 }
+
+// fn ext_of(p: &Path) -> String {
+//     p.extension()
+//         .and_then(|e| e.to_str())
+//         .map(|e| e.to_lowercase())
+//         .unwrap_or_default()
+// }
+//
+// fn make_preview(path: &Path) -> Option<Image> {
+//     let ext = ext_of(path);
+//
+//     if ext == "svg" || ext == "svgz" {
+//         return Image::load_from_path(path).ok();
+//     }
+//
+//     let img = image::open(path).ok()?;
+//     let small = img.resize(
+//         PREVIEW_SIZE,
+//         PREVIEW_SIZE,
+//         image::imageops::FilterType::Triangle,
+//     );
+//     let rgba = small.to_rgba8();
+//
+//     let buf = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+//         rgba.as_raw(),
+//         rgba.width(),
+//         rgba.height(),
+//     );
+//     Some(Image::from_rgba8(buf))
+// }
+//
+// const DIR: &str = "/media/karol/kox/";
+// const PREVIEW_SIZE: u32 = 256;
+//
+// pub fn handle_explorer(w: &NectanWindow) {
+//     let Ok(read_dir) = std::fs::read_dir(DIR) else {
+//         eprintln!("cannot read {DIR}");
+//         return;
+//     };
+//
+//     ui_state().add_path(DIR.into());
+//
+//     let mut entries: Vec<Entry> = read_dir
+//         .filter_map(|e| e.ok())
+//         .map(|e| {
+//             let path = e.path();
+//             let ft = e.file_type().ok();
+//             let kind = if ft.map(|t| t.is_symlink()).unwrap_or(false) {
+//                 EntryType::Symlink
+//             } else if ft.map(|t| t.is_dir()).unwrap_or(false) {
+//                 EntryType::Folder
+//             } else {
+//                 EntryType::File
+//             };
+//
+//             // blocking: decode right here
+//             let preview = if matches!(kind, EntryType::File) {
+//                 make_preview(&path).unwrap_or_default()
+//             } else {
+//                 Image::default()
+//             };
+//
+//             Entry {
+//                 name: e.file_name().to_string_lossy().to_string().into(),
+//                 path: path.to_string_lossy().to_string().into(),
+//                 r#type: kind,
+//                 preview,
+//             }
+//         })
+//         .collect();
+//
+//     entries.sort_by_key(|e| {
+//         (
+//             !matches!(e.r#type, EntryType::Folder),
+//             e.name.to_lowercase(),
+//         )
+//     });
+//
+//     w.global::<ExplorerBridge>()
+//         .set_files(ModelRc::from(Rc::new(VecModel::from(entries))));
+//
+//     let weak = w.as_weak();
+//     w.global::<ExplorerBridge>().on_forward(move || {
+//         println!("Forward");
+//         let Some(p) = ui_state().next_path() else {
+//             println!("No history");
+//             return;
+//         };
+//         load_entry(&weak, &p);
+//     });
+//
+//     let weak = w.as_weak();
+//     w.global::<ExplorerBridge>().on_back(move || {
+//         println!("Back");
+//         let Some(p) = ui_state().last_path() else {
+//             println!("No history");
+//             return;
+//         };
+//         load_entry(&weak, &p);
+//     });
+//
+//     let weak = w.as_weak();
+//     w.global::<ExplorerBridge>().on_open(move |entry| {
+//         let p = entry.path.to_string();
+//         let path = Path::new(&p);
+//         load_entry(&weak, path);
+//     });
+//
+//     let weak = w.as_weak();
+//     w.global::<ExplorerBridge>().on_copy(move |from, to| {
+//         // Todo change this to model
+//         let Some(w) = weak.upgrade() else { return };
+//         let e = w.global::<ExplorerBridge>().get_files();
+//         let mut paths = Vec::new();
+//         for i in from..to {
+//             let Some(r) = e.row_data(i as usize) else {
+//                 continue;
+//             };
+//             let path = PathBuf::from(r.path.to_string());
+//             paths.push(path);
+//         }
+//         println!("Copying {:#?}", paths);
+//         let _ = copy_files(&paths);
+//     });
+// }
+// fn load_entry(weak: &Weak<NectanWindow>, path: &Path) {
+//     let Ok(read_dir) = std::fs::read_dir(path) else {
+//         eprintln!("cannot read {DIR}");
+//         return;
+//     };
+//
+//     let mut entries: Vec<Entry> = read_dir
+//         .filter_map(|e| e.ok())
+//         .map(|e| {
+//             let path = e.path();
+//             let ft = e.file_type().ok();
+//             let kind = if ft.map(|t| t.is_symlink()).unwrap_or(false) {
+//                 EntryType::Symlink
+//             } else if ft.map(|t| t.is_dir()).unwrap_or(false) {
+//                 EntryType::Folder
+//             } else {
+//                 EntryType::File
+//             };
+//
+//             let preview = if matches!(kind, EntryType::File) {
+//                 // make_preview(&path).unwrap_or_default()
+//                 Image::default()
+//             } else {
+//                 Image::default()
+//             };
+//
+//             Entry {
+//                 name: e.file_name().to_string_lossy().to_string().into(),
+//                 path: path.to_string_lossy().to_string().into(),
+//                 r#type: kind,
+//                 preview,
+//             }
+//         })
+//         .collect();
+//
+//     entries.sort_by_key(|e| {
+//         (
+//             !matches!(e.r#type, EntryType::Folder),
+//             e.name.to_lowercase(),
+//         )
+//     });
+//     let Some(w) = weak.upgrade() else { return };
+//
+//     let b = w.global::<ExplorerBridge>();
+//     b.set_files(ModelRc::from(Rc::new(VecModel::from(entries))));
+//     b.set_current(path.to_string_lossy().to_string().into());
+//
+//     println!("Added path {path:?}");
+//     ui_state().add_path(path.into());
+// }
+
+// use clipboard_rs::Clipboard;
+// fn copy_files(paths: &[PathBuf]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//     let ctx = ClipboardContext::new()?;
+//     let uris: Vec<String> = paths
+//         .iter()
+//         .filter_map(|p| Url::from_file_path(p).ok())
+//         .map(|u| u.to_string())
+//         .collect();
+//     ctx.set_files(uris)?;
+//     Ok(())
+// }
+
+// #[cfg(target_os = "windows")]
+// pub fn open_with_dialog(path: &Path) -> std::io::Result<()> {
+//     Command::new("rundll32.exe")
+//         .arg("shell32.dll,OpenAs_RunDLL")
+//         .arg(path)
+//         .spawn()?;
+//     Ok(())
+// }
+//
+
+//
+// #[cfg(target_os = "linux")]
+// pub fn open_with_dialog(path: &Path) -> std::io::Result<()> {
+//     use ashpd::desktop::open_uri::OpenFileRequest;
+//     use std::os::fd::AsFd;
+//     let file = std::fs::File::open(path)?;
+//
+//     tokio::spawn(async move {
+//         let fd = file.as_fd();
+//         let _ = OpenFileRequest::default().ask(true).send_file(&fd).await;
+//     });
+//     Ok(())
+// }
+//
+// #[cfg(target_os = "macos")]
+// pub fn open_with_dialog(path: &Path) -> std::io::Result<()> {
+//     // mac has no chooser dialog, so user picks the app
+//     let app = rfd::FileDialog::new()
+//         .set_title("Choose application")
+//         .set_directory("/Applications")
+//         .add_filter("Application", &["app"])
+//         .pick_file();
+//
+//     if let Some(app) = app {
+//         Command::new("open").arg("-a").arg(app).arg(path).spawn()?;
+//     }
+//     Ok(())
+// }
+//
+// static LIB: &[u8] = include_bytes!(concat!(
+//     "/home/karol/vendor/pdfium/linux-x64/lib/libpdfium.so"
+// ));
+//
+// fn load_pdfium() -> Result<Pdfium, PdfiumError> {
+//     let dir = std::env::temp_dir().join("nectan-pdfium");
+//     std::fs::create_dir_all(&dir).map_err(PdfiumError::IoError)?;
+//
+//     let path = dir.join(Pdfium::pdfium_platform_library_name());
+//     if std::fs::metadata(&path).map(|m| m.len() as usize).ok() != Some(LIB.len()) {
+//         std::fs::write(&path, LIB).map_err(PdfiumError::IoError)?;
+//     }
+//     Ok(Pdfium::new(Pdfium::bind_to_library(&path)?))
+// }
+//
+// thread_local! {
+//     static PDFIUM: Result<Pdfium, PdfiumError> = load_pdfium();
+// }
+//
+// pub fn render_pdf_page(path: &str, page_no: i32, width: i32) -> Result<Image, PdfiumError> {
+//     PDFIUM.with(|p| {
+//         let s = Instant::now();
+//         let pdfium = p
+//             .as_ref()
+//             .map_err(|_| PdfiumError::PdfiumLibraryBindingsAlreadyInitialized)?;
+//         let doc = pdfium.load_pdf_from_file(path, None)?;
+//         let page = doc.pages().get(page_no)?;
+//         let rgba = page
+//             .render_with_config(&PdfRenderConfig::new().set_target_width(width))?
+//             .as_image()?
+//             .to_rgba8();
+//         let buf = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+//             rgba.as_raw(),
+//             rgba.width(),
+//             rgba.height(),
+//         );
+//         println!("PDF render took {:?}", s.elapsed());
+//         Ok(Image::from_rgba8(buf))
+//     })
+// }
+//
+// pub fn set_file_preview(w: &NectanWindow) {
+//     let b = w.global::<PdfPreviewBridge>();
+//     let path = "/home/karol/Downloads/sample.pdf";
+//     let r = render_pdf_page(path, 0, 1920);
+//     let _ = open::that_detached(path);
+//
+//     match r {
+//         Ok(img) => {
+//             b.set_pdf_preview(img);
+//         }
+//         Err(e) => {
+//             println!("Err {e:?}");
+//         }
+//     }
+//
+//     let b = w.global::<TextPreviewBridge>();
+//     b.on_open_with(|| {
+//         // todo get real path
+//         let path = Path::new("/home/karol/test.txt");
+//         let _ = open_with_dialog(path);
+//     });
+//
+//     let w = w.as_weak();
+//     std::thread::spawn(move || {
+//         let path = "/home/karol/test.txt";
+//         let text = std::fs::read_to_string(&path).unwrap();
+//         let doc_name = "big.txt".into();
+//         let doc_size = BinaryBytes(text.len() as u64).to_string().into();
+//         let lines: Vec<SharedString> = text.lines().map(|l| l.into()).collect();
+//         let modified = "16 May 2026".into();
+//
+//         let _ = w.upgrade_in_event_loop(move |w| {
+//             let b = w.global::<TextPreviewBridge>();
+//             b.set_doc_text(ModelRc::new(VecModel::from(lines)));
+//             b.set_doc_size(doc_size);
+//             b.set_doc_name(doc_name);
+//             b.set_doc_modified(modified);
+//         });
+//     });
+// }
