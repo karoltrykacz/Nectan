@@ -3,19 +3,34 @@ use ed25519_dalek::Signature;
 use iroh::EndpointId;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{fmt::write, time::Duration};
 use tracing::{error, info, warn};
 
-use crate::protocol::DISCOVERY_URL;
-use crate::{devices::DeviceId, protocol::NectanState};
+use crate::{
+    devices::DeviceId,
+    protocol::{DISCOVERY_URL, NectanState},
+};
 
 pub const CODE_SESSION_TTL: Duration = Duration::from_secs(120);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodeLookupError {
     NotFound,
     ConnectionFailed,
     NectanService,
 }
+
+impl std::fmt::Display for CodeLookupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CodeLookupError::NotFound => write!(f, "Code not found."),
+            CodeLookupError::ConnectionFailed => write!(f, "Connection failed."),
+            CodeLookupError::NectanService => write!(f, "Nectan service error."),
+        }
+    }
+}
+
+impl std::error::Error for CodeLookupError {}
 
 #[derive(Deserialize, Serialize)]
 pub struct CodeLookupRequest {
@@ -126,6 +141,7 @@ pub async fn issue_code(state: &NectanState, code: String) -> Result<String> {
     }
     bail!("Connection error. Make sure you are connected to the internet and try again.")
 }
+
 pub fn gen_code() -> String {
     let mut r = String::new();
     for _ in 0..6 {

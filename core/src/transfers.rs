@@ -1,61 +1,45 @@
-use crate::devices::DeviceId;
-use crate::devices::Devices;
-use crate::devices::Username;
-use crate::messages::AppEvent;
-use crate::messages::NetMessage;
-use crate::messages::StreamableMessage;
-use crate::path_tree::PathTree;
-use crate::protocol::NectanState;
-use crate::protocol::TransferOffer;
-use crate::stream::StreamPair;
-use crate::transfers::TransferDirection::Outcoming;
-use anyhow::Result;
-use anyhow::bail;
-use anyhow::ensure;
+use crate::{
+    devices::{DeviceId, Devices, Username},
+    messages::{AppEvent, NetMessage, StreamableMessage},
+    protocol::{NectanState, TransferOffer},
+    stream::StreamPair,
+    transfers::TransferDirection::Outcoming,
+};
+use anyhow::{Result, bail, ensure};
 use ed25519_dalek::VerifyingKey;
 use fixedbitset::FixedBitSet;
 use iroh::endpoint::Connection;
-use redb::ReadableDatabase;
-use redb::ReadableTable;
-use redb::TableDefinition;
-use redb::TypeName;
-use redb::Value;
-use serde::Deserialize;
-use serde::Serialize;
-use std::collections::HashMap;
-use std::io::ErrorKind;
-use std::path::Component;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering::Relaxed;
-use std::time::Duration;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncSeekExt;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::OwnedSemaphorePermit;
-use tokio::sync::Semaphore;
-use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
-use tokio_util::sync::WaitForCancellationFuture;
-use tracing::error;
-use tracing::info;
-use tracing::warn;
+use redb::{ReadableDatabase, ReadableTable, TableDefinition, TypeName, Value};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    io::ErrorKind,
+    path::{Component, Path, PathBuf},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU32, AtomicU64, Ordering::Relaxed},
+    },
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
+    sync::{OwnedSemaphorePermit, Semaphore, mpsc},
+};
+use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TransferItem {
-    pub id: u32,
+    pub idx: u32,
     pub size: u64,
     pub sent_bytes: u64,
-    pub is_file: bool,
+    pub is_dir: bool,
     /// Relative path (starting from the transfer root path)
     pub path: PathBuf,
     pub err: Option<TransferItemError>,
 }
+
 impl TransferItem {
     pub fn name(&self) -> String {
         self.path
@@ -92,7 +76,7 @@ impl Value for TransferItem {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Copy)]
 pub enum TransferItemError {
     FileIOError,
     FileAlreadyExisted,
@@ -104,7 +88,7 @@ pub enum TransferItemError {
 }
 impl Eq for TransferItemError {}
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 #[serde(tag = "kind")]
 pub enum TransferOfferError {
     DeviceOffline,
@@ -112,12 +96,6 @@ pub enum TransferOfferError {
     TransferRejected,
     UnexpectedResponse,
     ConnectionFailed,
-}
-
-impl std::fmt::Display for TransferOfferError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -132,7 +110,7 @@ struct TransferItemHeader {
     id: u32,
     file_size: u64,
     sent_bytes: u64,
-    is_file: bool,
+    is_dir: bool,
     path: PathBuf,
 }
 
@@ -141,7 +119,8 @@ struct TransferItemHeader {
 pub async fn send_contents(
     state: &NectanState,
     target: DeviceId,
-    offer: TransferOffer<PathTree>,
+    offer: TransferOffer,
+    root_path: PathBuf,
 ) -> Result<(), TransferOfferError> {
     // Get device
     let Some(device) = state.devices.get(&target) else {
@@ -158,10 +137,11 @@ pub async fn send_contents(
         return Err(TransferOfferError::ConnectionFailed);
     };
 
+    // Get root path (will be needed later)
     // Write compressed offer
-    let c_offer = offer.clone().compress().unwrap();
+    let offer = Box::new(offer);
     let msg = NetMessage::TransferOfferMsg {
-        offer: Box::new(c_offer),
+        offer: offer.clone(),
     };
     if msg.write(&mut tx).await.is_err() {
         return Err(TransferOfferError::ConnectionFailed);
@@ -184,13 +164,11 @@ pub async fn send_contents(
     let NetMessage::Accepted = offer_response else {
         return Err(TransferOfferError::UnexpectedResponse);
     };
-    info!("Transfer accepted.");
 
-    let root_path = offer.tree.common_parent();
     // Transfer accepted, start processing
     state
         .transfers
-        .add_transfer(target, device.username, Outcoming, root_path, offer)
+        .add_transfer(target, device.username, Outcoming, root_path, *offer)
         .await;
 
     Ok(())
@@ -235,9 +213,8 @@ pub struct PendingTransfer {
     pub direction: TransferDirection,
     items_queue: Mutex<FixedBitSet>,
     pub name: String,
-    pub total_files: u32,
     /// Contains folders symlinks etc
-    pub total_entries: u32,
+    pub total_items: u32,
     /// Counter for sent (unrecoverably failed items count as sent)
     pub processed_items: AtomicU32,
     pub failed: AtomicU32,
@@ -273,11 +250,11 @@ impl PendingTransfer {
                     .insert(
                         i,
                         TransferItem {
-                            id: i,
+                            idx: i,
                             sent_bytes: (i * 123) as u64,
                             path: PathBuf::from(format!("/media/karol/file-{}", i)),
                             size: 123 * (i * i) as u64,
-                            is_file: true,
+                            is_dir: true,
                             err: None,
                         },
                     )
@@ -290,8 +267,7 @@ impl PendingTransfer {
             target_name: Username::default(),
             name: "Default".into(),
             processed_items: AtomicU32::new(123),
-            total_files: 123,
-            total_entries: 123123,
+            total_items: 123123,
             total_size: 1231233312,
             sent_bytes: AtomicU64::new(123432),
             speed: AtomicU64::new(100000000),
@@ -313,7 +289,7 @@ impl PendingTransfer {
         target_name: Username,
         root_path: PathBuf,
         direction: TransferDirection,
-        offer: TransferOffer<PathTree>,
+        offer: TransferOffer,
     ) -> Self {
         info!("New transfer from offer.");
 
@@ -325,27 +301,22 @@ impl PendingTransfer {
             TransferDirection::Outcoming => "out",
             TransferDirection::Incoming => "in",
         };
-        // Fuck that db reviving - transfers are temporary - for automatc synchronization use vaults.
         let db_dir = db_dir.join(format!("Nectan/t-{id}-{}", dir));
         let db = redb::Database::create(db_dir).expect("Failed to create database");
 
         let txn = db.begin_write().unwrap();
-        let mut total_entries = 0u32;
-        let mut total_files = 0;
         {
             let mut table = txn.open_table(DUMB_ITEMS).unwrap();
-            for (path, is_file, file_size, id) in &*offer.tree {
-                total_entries += 1;
-                total_files += is_file as u32;
+            for (idx, entry) in offer.entries.iter().enumerate() {
                 let item = TransferItem {
-                    path,
-                    is_file,
-                    id,
+                    path: entry.path.clone(),
+                    is_dir: entry.is_dir,
+                    idx: idx as u32,
                     sent_bytes: 0,
-                    size: file_size,
+                    size: entry.size,
                     err: None,
                 };
-                let _ = table.insert(id, item);
+                let _ = table.insert(idx as u32, item);
             }
         }
         let _ = txn.commit();
@@ -357,11 +328,10 @@ impl PendingTransfer {
             failed: AtomicU32::new(0),
             processed_items: AtomicU32::new(0),
             sent_bytes: AtomicU64::new(0),
-            items_queue: Mutex::new(FixedBitSet::with_capacity(total_entries as usize)),
+            items_queue: Mutex::new(FixedBitSet::with_capacity(offer.entries_num as usize)),
             speed: AtomicU64::new(0),
             db,
-            total_files,
-            total_entries,
+            total_items: offer.entries_num as u32,
             total_size: offer.total_size,
             root_path,
             cancel_token: CancellationToken::new(),
@@ -508,7 +478,7 @@ impl PendingTransfer {
                 }
                 None => {
                     let processed = self.processed_items.load(Relaxed);
-                    let drained = processed == self.total_entries;
+                    let drained = processed == self.total_items;
 
                     if drained {
                         // All transfers processed, wait until all finished
@@ -542,7 +512,7 @@ impl PendingTransfer {
 
             let s = self.clone();
             tokio::spawn(async move {
-                let item_id = item.id;
+                let item_id = item.idx;
                 let _permit = permit;
 
                 match s.send_item(item, stream).await {
@@ -568,7 +538,7 @@ impl PendingTransfer {
             }
         };
 
-        info!("Processing stream for {}", &self.id.to_string()[0..8]);
+        println!("Processing stream for {}", &self.id.to_string()[0..8]);
 
         ensure!(
             self.direction == TransferDirection::Incoming,
@@ -576,12 +546,17 @@ impl PendingTransfer {
         );
 
         let header: TransferItemHeader = stream.read().await?;
-        info!("Read header {:#?}", header);
+        println!("Read header {:#?}", header);
+
         let id = header.id;
 
-        let r = match self.recieve_item(header, stream, permit).await {
+        let r = match self.receive_item(header, &mut stream, permit).await {
             Ok(()) => self.item_finished(id),
-            Err(e) => self.handle_item_err(id, e),
+            Err(e) => {
+                println!("Failed to receive item [{e:?}]");
+                let _ = stream.write(&TransferControl::Error(e)).await;
+                self.handle_item_err(id, e)
+            }
         };
 
         if r == 0 {
@@ -594,19 +569,14 @@ impl PendingTransfer {
 
     // Todo - make second channel for transfer controls
 
-    async fn recieve_item(
+    async fn receive_item(
         &self,
         header: TransferItemHeader,
-        stream: StreamPair,
+        stream: &mut StreamPair,
         _permit: OwnedSemaphorePermit,
     ) -> Result<(), TransferItemError> {
         let file_size = header.file_size;
         let item_path = header.path;
-
-        // Guard from malicious paths
-        if item_path.is_absolute() {
-            return Err(TransferItemError::PermissionDenied);
-        }
 
         let item_path: PathBuf = item_path
             .components()
@@ -615,8 +585,8 @@ impl PendingTransfer {
 
         let output_dir = Path::new(&self.root_path).join(&item_path);
 
-        if !header.is_file {
-            // Just create the folder
+        // Just create the folder
+        if header.is_dir {
             if let Some(parent) = output_dir.parent() {
                 tokio::fs::create_dir_all(parent)
                     .await
@@ -654,8 +624,8 @@ impl PendingTransfer {
             .map_err(|_| TransferItemError::FileIOError)?;
 
         const CHUNK_SIZE: usize = 128 * 1024;
+
         let mut total_written = header.sent_bytes;
-        let (mut rx, mut tx) = stream.into_split();
 
         let period = Duration::from_millis(250);
         let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
@@ -667,15 +637,14 @@ impl PendingTransfer {
                     return Err(TransferItemError::Terminated);
                 }
                 _ = tick.tick() => {
-                    TransferControl::Ack(total_written)
-                        .write(&mut tx)
+                    stream.write(&TransferControl::Ack(total_written))
                         .await
                         .map_err(|_| {
                         error!("Failed to write the ack.");
                         TransferItemError::StreamError
                     })?;
                 }
-                r = rx.read_chunk(CHUNK_SIZE) => {
+                r = stream.rx().read_chunk(CHUNK_SIZE) => {
                     let chunk = r.map_err(|_| TransferItemError::StreamError)?;
                     let Some(chunk) = chunk else{
                         if total_written < file_size {
@@ -710,8 +679,8 @@ impl PendingTransfer {
         std::fs::rename(&lock_path, &output_dir).map_err(|_| TransferItemError::FileIOError)?;
 
         // Final ack
-        TransferControl::Ack(total_written)
-            .write(&mut tx)
+        stream
+            .write(&TransferControl::Ack(total_written))
             .await
             .map_err(|_| TransferItemError::StreamError)?;
 
@@ -724,8 +693,6 @@ impl PendingTransfer {
         mut item: TransferItem,
         mut stream: StreamPair,
     ) -> Result<(), TransferItemError> {
-        // let path = Path::new(&self.root_path).join(&item.path);
-        // info!("Sending {path:?}. Item path {}", item.path.display());
         let path = item.path;
         info!("Sending {}", path.display());
 
@@ -763,12 +730,13 @@ impl PendingTransfer {
                 return Err(TransferItemError::FileIOError);
             }
         };
+
         stream
             .write(&TransferItemHeader {
-                id: item.id,
+                id: item.idx,
                 file_size: item.size,
                 sent_bytes: item.sent_bytes,
-                is_file: item.is_file,
+                is_dir: item.is_dir,
                 path: relative_path,
             })
             .await
@@ -777,8 +745,8 @@ impl PendingTransfer {
                 TransferItemError::StreamError
             })?;
 
-        if !item.is_file {
-            // If its folder just send the header - and listen for the response?
+        // If its folder just send the header
+        if item.is_dir {
             self.ack_sent_bytes(item.size);
             return Ok(());
         }
@@ -809,7 +777,7 @@ impl PendingTransfer {
                         TransferControl::Ack(bytes) => {
                             let diff = bytes - item.sent_bytes;
                             self.ack_sent_bytes(diff);
-                            self.ack_sent_bytes_db(item.id, item.sent_bytes);
+                            self.ack_sent_bytes_db(item.idx, item.sent_bytes);
                             item.sent_bytes = bytes;
                         }
                     }
@@ -836,6 +804,7 @@ impl PendingTransfer {
         }
         info!("Sending {} finished", path.display());
         self.ack_sent_bytes(item.size);
+        // ctrl_rx.recv()
 
         Ok(())
     }
@@ -968,7 +937,7 @@ impl Transfers {
         target_name: Username,
         direction: TransferDirection,
         root_path: PathBuf,
-        offer: TransferOffer<PathTree>,
+        offer: TransferOffer,
     ) {
         let id = offer.transfer_id;
 
@@ -988,7 +957,7 @@ impl Transfers {
         if direction == TransferDirection::Outcoming
             && let Some(conn) = self.devices.get_connection(target)
         {
-            let _ = t.start_sending(conn).await;
+            tokio::spawn(t.start_sending(conn));
         }
         let _ = self.event_tx.send(AppEvent::TransfersUpdated).await;
     }

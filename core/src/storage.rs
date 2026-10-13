@@ -2,7 +2,7 @@ use crate::{devices::Username, storage_utils::DataWriter};
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, hash::Hash, path::PathBuf, sync::RwLock};
+use std::{collections::HashMap, hash::Hash, path::Path, sync::RwLock};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
@@ -18,6 +18,8 @@ pub enum Value {
     Theme(Theme),
     Key(SigningKey),
     Registered(bool),
+    // TODO
+    // ShowFoundNearby(bool),
 }
 
 impl Value {
@@ -37,7 +39,7 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let writer =
             DataWriter::new(path, "main_storage").expect("Failed to initialize Storage writer.");
         let initial = writer.load().unwrap_or_default();
@@ -70,6 +72,13 @@ impl Storage {
         match self.get(Key::Registered) {
             Some(Value::Registered(b)) => b,
             _ => false,
+        }
+    }
+
+    pub fn username(&self) -> Option<Username> {
+        match self.get(Key::Username) {
+            Some(Value::Username(u)) => Some(u),
+            _ => None,
         }
     }
 }

@@ -1,5 +1,4 @@
-use anyhow::anyhow;
-use anyhow::{Result, bail};
+use anyhow::bail;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use futures::StreamExt;
 pub use iroh::EndpointId;
@@ -10,28 +9,30 @@ use iroh::{
 };
 use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use n0_error::e;
-use rand::rand_core::UnwrapErr;
-use rand::rngs::SysRng;
+use rand::{rand_core::UnwrapErr, rngs::SysRng};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering::SeqCst;
-use std::{sync::Arc, time::Duration};
-use tokio::sync::{Mutex, OnceCell};
-use tokio::task::JoinHandle;
+use std::{
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicU64, Ordering::SeqCst},
+    },
+    time::Duration,
+};
+use tokio::{
+    sync::{Mutex, OnceCell},
+    task::JoinHandle,
+};
 use tracing::{Instrument, debug_span, error, info, trace, warn};
 use uuid::Uuid;
 
-use crate::messages::{ConnectionOffer, StreamableMessage};
-use crate::storage::{Key, Storage, Value};
-use crate::transfers::TransferDirection;
 use crate::{
     devices::{Device, DeviceId, DeviceStatus::Online, Devices, UserInfo, Username},
-    messages::{AppEvent, NetMessage, UiResponse},
-    path_tree::{CompressedPathTree, PathTree},
+    messages::{AppEvent, ConnectionOffer, NetMessage, StreamableMessage, UiResponse},
+    storage::{Key, Storage, Value},
     stream::StreamPair,
-    transfers::Transfers,
+    transfers::{TransferDirection, Transfers},
+    walker::TransferEntry,
 };
 
 pub const ONLINE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -218,12 +219,12 @@ async fn handle_stream(
     mut stream: StreamPair,
     sender: DeviceId,
     sender_name: Username,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     let msg: NetMessage = stream.read().await?;
 
     match msg {
         NetMessage::TransferOfferMsg { offer } => {
-            handle_transfer_offer(state, stream, sender, sender_name, *offer).await?;
+            handle_transfer_offer(state, stream, sender, sender_name, offer).await?;
         }
         NetMessage::TransferStream { transfer_id } => {
             state
@@ -243,47 +244,48 @@ async fn handle_stream(
     Ok(())
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TransferOffer<T> {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TransferOffer {
     pub transfer_name: String,
     pub transfer_id: Uuid,
     pub entries_num: u32,
     pub total_size: u64,
-    pub tree: Arc<T>,
+    pub entries: Arc<Vec<TransferEntry>>,
 }
 
-impl TransferOffer<CompressedPathTree> {
-    pub fn decompress(self) -> anyhow::Result<TransferOffer<PathTree>> {
-        let tree = Arc::new(self.tree.as_ref().decompress()?);
-
-        Ok(TransferOffer {
-            transfer_name: self.transfer_name,
-            transfer_id: self.transfer_id,
-            entries_num: self.entries_num,
-            total_size: self.total_size,
-            tree,
-        })
-    }
-}
-
-impl TransferOffer<PathTree> {
-    pub fn compress(self) -> anyhow::Result<TransferOffer<CompressedPathTree>> {
-        let tree = Arc::new(self.tree.as_ref().compress());
-
-        Ok(TransferOffer {
-            transfer_name: self.transfer_name,
-            transfer_id: self.transfer_id,
-            entries_num: self.entries_num,
-            total_size: self.total_size,
-            tree,
-        })
-    }
-}
+// Deprecated
+// impl TransferOffer<CompressedPathTree> {
+//     pub fn decompress(self) -> anyhow::Result<TransferOffer<PathTree>> {
+//         let tree = Arc::new(self.tree.as_ref().decompress()?);
+//
+//         Ok(TransferOffer {
+//             transfer_name: self.transfer_name,
+//             transfer_id: self.transfer_id,
+//             entries_num: self.entries_num,
+//             total_size: self.total_size,
+//             tree,
+//         })
+//     }
+// }
+//
+// impl TransferOffer<PathTree> {
+//     pub fn compress(self) -> anyhow::Result<TransferOffer<CompressedPathTree>> {
+//         let tree = Arc::new(self.tree.as_ref().compress());
+//
+//         Ok(TransferOffer {
+//             transfer_name: self.transfer_name,
+//             transfer_id: self.transfer_id,
+//             entries_num: self.entries_num,
+//             total_size: self.total_size,
+//             tree,
+//         })
+//     }
+// }
 
 #[derive(Clone, Debug)]
 pub struct TransferOfferRequest {
     pub sender_name: String,
-    pub inner: TransferOffer<PathTree>,
+    pub inner: TransferOffer,
     pub respond: tokio::sync::mpsc::Sender<UiResponse>,
 }
 
@@ -292,8 +294,8 @@ async fn handle_transfer_offer(
     mut stream: StreamPair,
     sender: DeviceId,
     sender_name: Username,
-    offer: TransferOffer<CompressedPathTree>,
-) -> Result<()> {
+    offer: Box<TransferOffer>,
+) -> anyhow::Result<()> {
     let (respond, mut rx) = tokio::sync::mpsc::channel(1);
 
     // Reject the offer if we already have some offer
@@ -304,10 +306,9 @@ async fn handle_transfer_offer(
             None
         } else {
             info!("Offer slot empty.");
-            let inner = offer.decompress()?;
             let offer = TransferOfferRequest {
                 sender_name: sender_name.to_string(),
-                inner,
+                inner: *offer,
                 respond,
             };
             *lock = Some(offer.clone());
@@ -379,7 +380,7 @@ impl NectanState {
         signing_key: SigningKey,
         devices: Devices,
         app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
-        storage: Storage,
+        storage: Arc<Storage>,
         mdns: MdnsAddressLookup,
     ) -> Self {
         NectanState {
@@ -395,7 +396,7 @@ impl NectanState {
             device_id,
             http_client: Client::new(),
             seq_num: SeqNumber::new(),
-            storage: Arc::new(storage),
+            storage,
         }
     }
 
@@ -445,8 +446,13 @@ impl NectanState {
     pub fn endpoint(&self) -> Option<Endpoint> {
         self.router.get().map(|r| r.endpoint().clone())
     }
+
     pub fn endpoint_id(&self) -> Option<EndpointId> {
         self.router.get().map(|r| r.endpoint().id())
+    }
+
+    pub fn endpoint_ticket(&self) -> Option<String> {
+        self.router.get().map(|r| r.endpoint().id().to_string())
     }
 }
 
@@ -488,37 +494,50 @@ pub fn start_mdns_discovery(state: &NectanState) {
     });
 }
 
-pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<()> {
+pub enum ConnectError {
+    Connection,
+    AlreadyConnected,
+    UserRejected,
+    Auth,
+}
+
+pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<(), ConnectError> {
     if state.devices.is_alive(target) {
         warn!("Connecting to the device cancelled. [CONNECTED]",);
-        bail!("Already connected")
+        return Err(ConnectError::AlreadyConnected);
     }
 
     let Some(endpoint) = state.endpoint() else {
         warn!("Connection to device failed. Router not attached.",);
-        bail!("Router not attached")
+        return Err(ConnectError::Connection);
     };
 
-    let conn = endpoint.connect(target, ALPN).await.map_err(|e| {
-        error!("Connecting to the device failed. [{e}]");
-        anyhow!("Connection failed. {}", e)
-    })?;
+    let Ok(conn) = endpoint.connect(target, ALPN).await else {
+        error!("Connecting to the device failed.");
+        return Err(ConnectError::Connection);
+    };
 
-    let (mut stream_tx, mut stream_rx) = conn.open_bi().await?;
+    let Ok((mut stream_tx, mut stream_rx)) = conn.open_bi().await else {
+        return Err(ConnectError::Connection);
+    };
 
     let signature = state.signing_key.sign(target.as_bytes());
     let username = state.userinfo.username();
 
-    NetMessage::Hello {
+    if (NetMessage::Hello {
         id: state.device_id,
         username: username.clone(),
         signature,
     }
     .write(&mut stream_tx)
-    .await?;
+    .await
+    .is_err())
+    {
+        return Err(ConnectError::Connection);
+    }
 
     let Ok(res) = NetMessage::read_async(&mut stream_rx).await else {
-        bail!("Failed to read response.")
+        return Err(ConnectError::Connection);
     };
 
     match res {
@@ -528,9 +547,12 @@ pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<()> 
             signature: remote_signature,
             ..
         } => {
-            remote_device_id
+            if (remote_device_id
                 .verify(endpoint.id().as_bytes(), &remote_signature)
-                .map_err(|_| anyhow!("Failed to verify signature."))?;
+                .is_err())
+            {
+                return Err(ConnectError::Auth);
+            }
 
             let stored_remote_device: Option<Device> = state.devices.get(&remote_device_id);
 
@@ -568,11 +590,11 @@ pub async fn connect(state: Arc<NectanState>, target: EndpointId) -> Result<()> 
         }
         NetMessage::Rejected { reason } => {
             warn!("Remote device rejected connection. [{:?}]", reason);
-            bail!("Remote device rejected connection.")
+            return Err(ConnectError::UserRejected);
         }
         r => {
             error!("Bad remote device response. {:#?}", r);
-            bail!("Remote device sent bad message.")
+            return Err(ConnectError::Connection);
         }
     }
 }
@@ -745,7 +767,7 @@ pub struct ResolveDevicesRequest {
 pub async fn resolve_devices(
     state: Arc<NectanState>,
     devices: Option<Vec<DeviceId>>,
-) -> Result<ResolveDevicesResponse> {
+) -> anyhow::Result<ResolveDevicesResponse> {
     let client = state.http_client.clone();
 
     let devices = match devices {

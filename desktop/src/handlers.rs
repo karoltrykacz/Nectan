@@ -230,7 +230,7 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
 
                 let children: Vec<TreeNode> = offer
                     .inner
-                    .tree
+                    .entries
                     .children_of(path)
                     .iter()
                     .map(|(p, is_file, _size)| TreeNode {
@@ -261,7 +261,7 @@ pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOfferRequest) 
         let b = w.global::<IncomingTransferOfferBridge>();
         let nodes: Vec<TreeNode> = offer
             .inner
-            .tree
+            .entries
             .get_depth_0()
             .iter()
             .map(|(path, is_file, _size)| TreeNode {
@@ -579,7 +579,7 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
                 transfer_name,
                 entries_num,
                 total_size,
-                tree,
+                entries: tree,
             };
 
             let s = s.clone();

@@ -37,7 +37,7 @@ pub async fn setup_core(
     userinfo: UserInfo,
     signing_key: SigningKey,
     devices: Devices,
-    storage: Storage,
+    storage: Arc<Storage>,
 ) -> Result<Arc<NectanState>> {
     let transport = QuicTransportConfig::builder()
         .stream_receive_window(32_000_000u32.into())

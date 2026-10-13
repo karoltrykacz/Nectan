@@ -40,10 +40,12 @@ impl<R: RecvStream, W: SendStream> StreamPair<R, W> {
         Self { reader, writer }
     }
 
+    #[inline]
     pub fn tx(&mut self) -> &mut W {
         &mut self.writer
     }
 
+    #[inline]
     pub fn rx(&mut self) -> &mut R {
         &mut self.reader
     }

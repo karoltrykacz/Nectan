@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use crate::{
     devices::{DeviceId, Username},
-    path_tree::CompressedPathTree,
     protocol::{TransferOffer, TransferOfferRequest},
+    walker::TransferEntry,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -21,7 +21,7 @@ pub enum NetMessage {
         signature: Signature,
     },
     TransferOfferMsg {
-        offer: Box<TransferOffer<CompressedPathTree>>,
+        offer: Box<TransferOffer>,
     },
     Accepted,
     Rejected {

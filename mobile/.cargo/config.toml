@@ -1,0 +1,11 @@
+# [target.aarch64-linux-android]
+# ar = "/home/karol/Android/Sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+# linker = "/home/karol/Android/Sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+#
+# [env]
+# CC_aarch64_linux_android = "/home/karol/Android/Sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+# CXX_aarch64_linux_android = "/home/karol/Android/Sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
+# AR_aarch64_linux_android = "/home/karol/Android/Sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+#
+# [build]
+# target = "aarch64-linux-android"

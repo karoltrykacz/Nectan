@@ -1,11 +1,11 @@
-use crate::path_tree::{CompressedPathTree, PathTree};
 use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{
-            AtomicBool, AtomicU64,
+            AtomicBool, AtomicU32, AtomicU64,
             Ordering::{self, SeqCst},
         },
         mpsc::{Sender, channel},
@@ -13,24 +13,39 @@ use std::{
     thread::JoinHandle,
     time::{Duration, Instant},
 };
-use tracing::trace;
+use tracing::info;
 
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
+use crate::common::common_parent;
+
 pub struct GitIgnoreSettings {}
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TransferEntry {
+    pub path: PathBuf,
+    pub size: u64,
+    pub is_dir: bool,
+}
+
 pub struct WalkControllerInner {
-    pub ignore_hidden_files: bool,
-    pub total_entries: AtomicU64,
+    pub total_entries: AtomicU32,
     pub total_size: AtomicU64,
     pub stop_token: AtomicBool,
     pub finished: AtomicBool,
-    /// The initial selected paths. May contain both paths and files
+    /// The initial selected paths. May contain mix of files, folders and symlinks
     pub paths: Vec<PathBuf>,
-    /// Processed path tree / to be sent to remote device
-    pub comp_tree: Mutex<Option<CompressedPathTree>>,
-    pub tree: Mutex<Option<PathTree>>,
+    /// Common parent of provided paths
+    pub root_path: PathBuf,
+    /// Result paths
+    pub entries: Mutex<Option<Vec<TransferEntry>>>,
+}
+
+pub fn merge_all<T>(s: &mut Vec<T>, vecs: impl IntoIterator<Item = Vec<T>>) {
+    for v in vecs {
+        s.extend(v);
+    }
 }
 
 #[derive(Clone)]
@@ -45,11 +60,11 @@ impl Walker {
         self.stop_token.load(Ordering::SeqCst)
     }
 
-    pub fn take_tree(&self) -> Option<PathTree> {
-        self.tree.lock().unwrap().take()
+    pub fn take_entries(&self) -> Option<Vec<TransferEntry>> {
+        self.entries.lock().unwrap().take()
     }
 
-    pub fn total_entries(&self) -> u64 {
+    pub fn total_entries(&self) -> u32 {
         self.total_entries.load(Ordering::Relaxed)
     }
 
@@ -57,27 +72,19 @@ impl Walker {
         self.total_size.load(Ordering::Relaxed)
     }
 
-    pub fn new(
-        paths: Vec<PathBuf>,
-        ignore_hidden_files: bool,
-        // options: IgnoreOptions,
-    ) -> Self {
+    pub fn new(paths: Vec<PathBuf>) -> Self {
         Walker(Arc::new(WalkControllerInner {
-            ignore_hidden_files,
-            // respect_gitignore,
-            total_entries: AtomicU64::new(0),
+            total_entries: AtomicU32::new(0),
             total_size: AtomicU64::new(0),
             stop_token: AtomicBool::new(false),
             finished: AtomicBool::new(false),
-            comp_tree: Mutex::new(None),
-            tree: Mutex::new(None),
+            entries: Mutex::new(None),
+            root_path: common_parent(&paths),
             paths,
         }))
     }
 
     pub fn rescan(&self) {
-        self.finished.store(false, SeqCst);
-
         if self.finished.load(SeqCst) {
             // Walker still not finished
             // Stop it and wait until it rearms itself so we can start
@@ -86,16 +93,13 @@ impl Walker {
             loop {
                 if self.should_abort() {
                     std::thread::sleep(Duration::from_micros(1));
-                    println!("Waiting for walker to go to sleep.");
                     continue;
                 } else {
-                    println!("Walker rearmed.");
                     break;
                 }
             }
         }
 
-        // Just in case
         self.rearm();
         self.walk();
     }
@@ -115,28 +119,24 @@ impl Walker {
         let c = self.clone();
         std::thread::spawn(move || {
             let start = Instant::now();
-            let mut tree = PathTree::new();
+            let mut entries = Vec::new();
             for p in c.paths.iter() {
-                let (tx, rx) = channel::<PathTree>();
-                // let matcher = WalkBuilder::build_matchers();
-
-                let walker = WalkBuilder::new(p)
-                    .hidden(c.ignore_hidden_files)
-                    .build_parallel();
+                let (tx, rx) = channel::<Vec<TransferEntry>>();
+                let walker = WalkBuilder::new(p).build_parallel();
 
                 walker.run(|| {
                     let c = c.clone();
                     let mut flush = Flush {
                         tx: tx.clone(),
-                        tree: PathTree::new(),
-                        next_id: 0,
+                        inner: Vec::new(),
+                        _next_id: 0,
                     };
                     Box::new(move |r| {
                         if let Ok(entry) = r
                             && let Ok(meta) = entry.metadata()
                         {
+                            let is_dir = meta.is_dir();
                             let path = entry.into_path();
-                            let is_file = meta.is_file();
 
                             #[cfg(unix)]
                             let size = meta.size();
@@ -144,7 +144,9 @@ impl Walker {
                             #[cfg(not(unix))]
                             let size = meta.len();
 
-                            flush.tree.insert(&path, is_file, size, &mut flush.next_id);
+                            let entry = TransferEntry { size, path, is_dir };
+                            flush.inner.push(entry);
+
                             c.total_entries.fetch_add(1, Ordering::Relaxed);
                             c.total_size.fetch_add(size, Ordering::Relaxed);
                         }
@@ -160,20 +162,12 @@ impl Walker {
                     return;
                 }
                 drop(tx);
-                tree.merge(PathTree::merge_all(rx.iter()));
+                merge_all(&mut entries, rx.iter());
             }
 
-            let compress = Instant::now();
-            *c.tree.lock().unwrap() = Some(tree.clone());
-            let compressed = tree.compress();
-            *c.comp_tree.lock().unwrap() = Some(compressed);
-            let compress_time = compress.elapsed();
+            *c.entries.lock().unwrap() = Some(entries);
 
-            trace!(
-                "Walker finished [{:?}]. Compressed in [{:?}]",
-                start.elapsed(),
-                compress_time
-            );
+            info!("Walker finished [{:?}]. ", start.elapsed(),);
 
             if c.should_abort() {
                 c.rearm();
@@ -191,14 +185,17 @@ impl std::ops::Deref for Walker {
     }
 }
 
-struct Flush {
-    tx: Sender<PathTree>,
-    tree: PathTree,
-    next_id: u32,
+struct Flush<T>
+where
+    T: Default,
+{
+    tx: Sender<T>,
+    inner: T,
+    _next_id: u32,
 }
-impl Drop for Flush {
+impl<T: Default> Drop for Flush<T> {
     fn drop(&mut self) {
-        let _ = self.tx.send(std::mem::take(&mut self.tree));
+        let _ = self.tx.send(std::mem::take(&mut self.inner));
     }
 }
 
@@ -209,66 +206,32 @@ mod tests {
     #[test]
     fn test_walker() {
         let root = "/home/karol";
-        let mut tree = PathTree::new();
+        let mut entries = Vec::new();
 
-        let (tx, rx) = channel::<PathTree>();
+        let (tx, rx) = channel::<Vec<PathBuf>>();
         let walker = WalkBuilder::new(root).build_parallel();
 
         walker.run(|| {
             let mut flush = Flush {
                 tx: tx.clone(),
-                tree: PathTree::new(),
-                next_id: 0,
+                inner: Vec::new(),
+                _next_id: 0,
             };
             Box::new(move |r| {
-                if let Ok(entry) = r
-                    && let Ok(meta) = entry.metadata()
-                {
+                if let Ok(entry) = r {
                     let path = entry.into_path();
-                    let is_file = meta.is_file();
-
-                    #[cfg(unix)]
-                    let size = meta.size();
-
-                    #[cfg(not(unix))]
-                    let size = meta.len();
-
-                    flush.tree.insert(&path, is_file, size, &mut flush.next_id);
+                    flush.inner.push(path);
                 }
                 ignore::WalkState::Continue
             })
         });
         drop(tx);
-        tree.merge(PathTree::merge_all(rx.iter()));
+
+        merge_all(&mut entries, rx.iter());
 
         let count_start = Instant::now();
-        let x = tree.count();
+        let x = entries.len();
+
         println!("Count took [{:?}] Result [{x}]", count_start.elapsed(),);
-
-        let serialized = tree.serialize();
-        let raw: usize = tree
-            .to_vec()
-            .iter()
-            .map(|t| t.0.to_string_lossy().len())
-            .sum();
-        let vectree = tree.to_vec();
-        println!("PATHS NUM [{}]", vectree.len());
-        let mut bytes = String::new();
-        for p in vectree {
-            bytes += &p.0.to_string_lossy();
-        }
-
-        let comp_tree = tree.compress();
-
-        let comp_vec_size = zstd::encode_all(bytes.as_bytes(), 0).unwrap().len();
-        let comp_tree_size = comp_tree.len();
-
-        println!(
-            "SERIALIZED {} RAW {} COMPRESSED SERIALIZED {} COMPRESSED RAW {}",
-            serialized.len(),
-            raw,
-            comp_tree_size,
-            comp_vec_size,
-        );
     }
 }

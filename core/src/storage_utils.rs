@@ -1,11 +1,12 @@
 #![allow(dead_code)]
 use core::fmt::Debug;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-use std::collections::HashMap;
-use std::io::Error;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use serde::{Serialize, de::DeserializeOwned};
+use std::{
+    collections::HashMap,
+    io::Error,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, RwLock},
+};
 
 pub trait Serializer: Default {
     fn serialize<V: Serialize>(&self, v: &V) -> Option<Vec<u8>>;
@@ -57,7 +58,8 @@ impl<S: Serializer, D: Deserializer> DataWriter<S, D> {
         self.storage_path.clone()
     }
 
-    pub fn new(mut storage_path: PathBuf, store_name: &str) -> Result<Self, Error> {
+    pub fn new<P: AsRef<Path>>(storage_path: P, store_name: &str) -> Result<Self, Error> {
+        let mut storage_path = storage_path.as_ref().to_path_buf();
         std::fs::create_dir_all(&storage_path)?;
         storage_path.push(format!("{store_name}.json"));
 
