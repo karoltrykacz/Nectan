@@ -48,7 +48,7 @@ impl Model for LazyFiles {
         self.src
             .borrow()
             .as_ref()
-            .map_or(0, |s| s.total_entries as usize)
+            .map_or(0, |s| s.total_items as usize)
     }
 
     fn row_data(&self, row: usize) -> Option<Self::Data> {
@@ -118,7 +118,7 @@ fn build_row(p: &PendingTransfer) -> Transfer {
         speed_text,
         status,
         title: p.name.clone().into(),
-        total_files: p.total_files as i32,
+        total_items: p.total_items as i32,
     }
 }
 

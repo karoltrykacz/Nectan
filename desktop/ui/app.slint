@@ -1,9 +1,11 @@
-import { Theme } from "theme.slint";
+import { Theme, ThemeAnimator } from "theme.slint";
 import {
     IconButton,
     SvgIcon,
     PrimaryButton,
     GeneralModal,
+    ThemeSelector,
+    Carousel,
 } from "elements.slint";
 import { ListView, VerticalBox } from "std-widgets.slint";
 import { SettingsBridge, SettingsModal, SettingsRow } from "settings.slint";
@@ -28,13 +30,16 @@ import {
     OutcomingTransferModalBridge,
 } from "transfer_offer_modal.slint";
 import { SearchBridge, Search, SearchBar } from "search.slint";
-import { Chat } from "chat.slint";
+import { WindowBridge, Window } from "window.slint";
+import { WelcomeScreen } from "welcome.slint";
 
 export {
     Theme,
+    Window,
     DeviceItem,
     TransferItem,
     SearchBridge,
+    WindowBridge,
     DevicesBridge,
     SettingsBridge,
     AddDeviceBridge,
@@ -43,40 +48,10 @@ export {
     IncomingTransferOfferBridge,
     OutcomingTransferModalBridge,
 }
-export enum Window {
-    device,
-    vaults,
-    transfers,
-}
-
 export global NotificationsBridge {
     in-out property <bool> notifications-visible: false;
 }
 
-export global WindowBridge {
-
-    callback reorder-requested(int, int);
-    callback close-requested(int);
-
-    in-out property <bool> nectan-modal-open: false;
-
-    in-out property <bool> topbar-hover: false;
-
-    in-out property <bool> sidebar-visible: true;
-    in-out property <bool> sidebar-hover: true;
-    in-out property <length> sidebar-width: 200px;
-
-    in-out property <Window> current-window: transfers;
-    in-out property <int> current-ref-id: 0;
-
-    in-out property <length> border-radius: 12px;
-
-    callback drag-window();
-
-    callback minimize-window();
-    callback maximize-window();
-    callback close-window();
-}
 
 
 component NectanModal inherits GeneralModal {
@@ -154,7 +129,7 @@ component SidebarDevice inherits Rectangle {
     height: 36px;
     border-radius: 12px;
 
-    background: drag.dragging ? Theme.colors.fourth-font : selected ? Theme.colors.fourth-col : area.has-hover ? Theme.colors.third-col : transparent;
+    background: area.has-hover ? Theme.colors.fourth-col : selected ? Theme.colors.third-col : Theme.colors.secondary-col;
 
     transform-scale: area.pressed ? 0.98 : 1.0;
     animate transform-scale {
@@ -163,46 +138,41 @@ component SidebarDevice inherits Rectangle {
     }
 
     callback clicked;
-    drag := DragArea {
-        data: Api.make-data();
-        allow-move: true;
-        allow-copy: true;
-        drag-image: @image-url("icons/link.svg");
 
-        HorizontalLayout {
-            padding-left: 12px;
-            alignment: start;
-            cross-axis-alignment: center;
+    HorizontalLayout {
+        padding-left: 12px;
+        alignment: start;
+        cross-axis-alignment: center;
 
-            Rectangle {
-                height: 6px;
-                width: 6px;
-                border-radius: 4px;
-                background: device.status == DeviceStatus.online ? #ff9800 :
-                    (device.status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
-            }
+        // Rectangle {
+        //     height: 6px;
+        //     width: 6px;
+        //     border-radius: 4px;
+        //     background: device.status == DeviceStatus.online ? #ff9800 :
+        //         (device.status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
+        // }
+        //
+        // Rectangle {
+        //     width: 4px;
+        // }
 
-            Rectangle {
-                width: 4px;
-            }
-
-            Text {
-                vertical-alignment: center;
-                height: root.height;
-                text: device.name;
-                overflow: elide;
-                color: Theme.colors.primary-font;
-                font-size: 13px;
-                font-weight: 600;
-                font-family: Theme.font-heading;
-            }
+        Text {
+            vertical-alignment: center;
+            height: root.height;
+            text: device.name;
+            overflow: elide;
+            color: Theme.colors.primary-font;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: Theme.font-heading;
         }
+    }
 
-        area := TouchArea {
-            width: 100%;
-            height: 100%;
-            clicked => { root.clicked(); }
-        }
+    area := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
     }
 }
 
@@ -213,11 +183,11 @@ export global Api {
 }
 
 component TopBarShower inherits Rectangle {
-    x: WindowBridge.sidebar-hover ? WindowBridge.sidebar-width + 20px : 0;
+    x: WindowBridge.sidebar-hover || WindowBridge.sidebar-visible ? WindowBridge.sidebar-width + 20px : 0;
     z: 3;
     y: 0;
     width: 100%;
-    height: WindowBridge.sidebar-hover ? 30px : 50px;
+    height: 25px;
 
     TouchArea {
         property <bool> maybe-dragging: false;
@@ -291,7 +261,6 @@ component Sidebar inherits Rectangle {
         easing: ease;
     }
     TouchArea {
-
         property <bool> maybe-dragging: false;
         moved => {
             if (self.maybe-dragging) {
@@ -313,7 +282,6 @@ component Sidebar inherits Rectangle {
 
         HorizontalLayout {
             // alignment: space-between;
-
             IconButton {
                 width: 28px;
                 height: 28px;
@@ -351,7 +319,7 @@ component Sidebar inherits Rectangle {
                 height: 28px;
                 SvgIcon {
                     source: @image-url("icons/sidebar.svg");
-                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
                     size: 16px;
                 }
 
@@ -384,7 +352,7 @@ component Sidebar inherits Rectangle {
 
                     SvgIcon {
                         source: @image-url("icons/link.svg");
-                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
                         size: 16px;
                     }
 
@@ -400,28 +368,28 @@ component Sidebar inherits Rectangle {
 
                     SvgIcon {
                         source: @image-url("icons/tranfsers.svg");
-                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
                         size: 17px;
                     }
 
                     clicked => { WindowBridge.current-window = Window.transfers; }
                 }
 
-                // IconButton {
-                //     border-radius: 12px;
-                //     height: 36px;
-                //     inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-                //     transform-y: 0;
-                //     inner-border: WindowBridge.current-window == Window.vaults ? Theme.colors.fourth-col : transparent;
-                //
-                //     SvgIcon {
-                //         source: @image-url("icons/archive.svg");
-                //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                //         size: 15px;
-                //     }
-                //
-                //     clicked => { WindowBridge.current-window = Window.vaults; }
-                // }
+                IconButton {
+                    border-radius: 12px;
+                    height: 36px;
+                    inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+                    transform-y: 0;
+                    inner-border: WindowBridge.current-window == Window.vaults ? Theme.colors.fourth-col : transparent;
+
+                    SvgIcon {
+                        source: @image-url("icons/archive.svg");
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 15px;
+                    }
+
+                    clicked => { WindowBridge.current-window = Window.vaults; }
+                }
             }
 
             // Row {
@@ -439,7 +407,6 @@ component Sidebar inherits Rectangle {
             //
             //         clicked => { AddDeviceBridge.open = true; }
             //     }
-            //
             //     IconButton {
             //         border-radius: 12px;
             //         height: 36px;
@@ -469,6 +436,26 @@ component Sidebar inherits Rectangle {
                 clicked => {
                     DevicesBridge.device-details-open-idx = i;
                     WindowBridge.current-window = Window.device;
+                }
+            }
+
+            if DevicesBridge.devices.length == 0: Rectangle {
+                height: 32px;
+
+                Text {
+                    x: 52px;
+                    y: 12px;
+                    height: root.height;
+                    text: "Add first device";
+                    color: Theme.colors.primary-font;
+                    font-size: 13px;
+                    font-weight: 600;
+                    font-family: Theme.font-heading;
+                }
+
+                SvgIcon {
+                    x: 20px;
+                    source: @image-url("icons/corner-left-up.svg");
                 }
             }
         }
@@ -596,6 +583,8 @@ export component NectanWindow inherits Window {
         root.error_title = title;
     }
 
+    ThemeAnimator { }
+
     forward-focus: focus-scope;
 
     focus-scope := FocusScope {
@@ -607,18 +596,19 @@ export component NectanWindow inherits Window {
             self.focus();
         }
 
+        KeyBinding {
+            keys: @keys(F11);
+            activated => { root.maximized = !root.maximized; }
+        }
+
+        KeyBinding {
+            keys: @keys(Shift + A);
+            activated => { AddDeviceBridge.open = true; }
+        }
+
         key-pressed(event) => {
 
-            if (event.text == Key.F11) {
-                root.maximized = !root.maximized;
-            }
-            if (event.modifiers.shift) {
-                if (event.text == "A") {
-                    AddDeviceBridge.open = true;
-                }
-            }
             if (event.modifiers.control || event.modifiers.meta) {
-
                 if (event.text == Key.S) {
                     WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
                     WindowBridge.sidebar-hover = false;
@@ -679,35 +669,25 @@ export component NectanWindow inherits Window {
                 }
 
                 Rectangle {
-                    // opacity: 0.5;
                     background: Theme.colors.secondary-col;
                     border-radius: 8px;
 
                     if WindowBridge.current-window == Window.device: DeviceScreen { }
 
                     if WindowBridge.current-window == Window.transfers: Transfers { }
+
+                    if Theme.theme-selector: ThemeSelector { }
                 }
             }
         }
 
-        // VerticalBox {
-        //     padding-bottom: NotificationsBridge.notifications-visible ? parent.height : 0;
-        //     animate padding-bottom {
-        //         duration: 80ms;
-        //         easing: ease;
-        //     }
-        //     opacity: 0.8;
-        //     Rectangle {
-        //         background: red;
-        //     }
-        // }
-
-	property <bool> any-modal-open:
-    	SettingsBridge.open
+        property <bool> any-modal-open: SettingsBridge.open
             || WindowBridge.nectan-modal-open
             || AddDeviceBridge.open
             || SearchBridge.open
-            || OutcomingTransferModalBridge.open;
+            || OutcomingTransferModalBridge.open
+            || WindowBridge.welcome-open
+            || Theme.theme-selector;
 
         changed any-modal-open => {
             if !any-modal-open {
@@ -719,11 +699,11 @@ export component NectanWindow inherits Window {
 
         if WindowBridge.nectan-modal-open: NectanModal { }
 
-        if AddDeviceBridge.open:  AddDeviceModal { }
-
         if OutcomingTransferModalBridge.open: OutcomingTransferModal { }
 
         if IncomingTransferOfferBridge.open: IncomingTransferOfferModal { }
+
+        if AddDeviceBridge.open:  AddDeviceModal { }
 
         if error_open: ErrorModal {
             title <=> error_title;
@@ -731,25 +711,9 @@ export component NectanWindow inherits Window {
             open <=> error_open;
             closed => { error_open = false; }
         }
+
+        if WindowBridge.welcome-open: WelcomeScreen {
+            border-radius: root.maximized ? 0 : 12px;
+        }
     }
 }
-
-// export component MyTray inherits SystemTrayIcon {
-//     icon: @image-url("icons/icon512.png");
-//     tooltip: "Nectan";
-//
-//     callback show-window();
-//     callback hide-window();
-//
-//     Menu {
-//         MenuItem {
-//             title: "Show";
-//             activated => { show-window(); }
-//         }
-//
-//         MenuItem {
-//             title: "Hide";
-//             activated => { hide-window(); }
-//         }
-//     }
-// }

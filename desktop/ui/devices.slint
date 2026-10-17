@@ -9,7 +9,6 @@ import {
 import { SettingsBridge } from "settings.slint";
 import { OutcomingTransferModalBridge } from "transfer_offer_modal.slint";
 import { SettingsBridge } from "settings.slint";
-import { Chat } from "chat.slint";
 
 export enum DeviceStatus {
     online,
@@ -38,37 +37,12 @@ export component DeviceStatusText inherits Text {
     in property <DeviceStatus> status;
 
     text: status == DeviceStatus.online ? "Online" : status == DeviceStatus.nearby ? @tr("Nearby") : "Offline";
-    color: status == DeviceStatus.online ? #ff9800 :
-        (status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
+    color: Theme.colors.secondary-font;
     font-size: 12px;
     font-family: Theme.font-heading;
     font-weight: 500;
 }
 
-// component Chat inherits VerticalLayout {
-//     alignment: center;
-//     spacing: 8px;
-//
-//     PrimaryButton {
-//         width: 142px;
-//         text: @tr("Send folder");
-//         image: @image-url("icons/folder-nofill.svg");
-//         animate-width: false;
-//         clicked => {
-//             OutcomingTransferModalBridge.select-folders();
-//         }
-//     }
-//
-//     PrimaryButton {
-//         width: 142px;
-//         text: @tr("Send files");
-//         image: @image-url("icons/file-nofill.svg");
-//         animate-width: false;
-//         clicked => {
-//             OutcomingTransferModalBridge.select-files();
-//         }
-//     }
-// }
 
 component Offline inherits VerticalLayout {
     in property <string> name;
@@ -79,9 +53,9 @@ component Offline inherits VerticalLayout {
     spacing: 20px;
 
     Text {
-        text: @tr("{} is offline",name);
-        font-family: Theme.font-body;
-        font-size: 16px;
+        text: @tr("{} is offline", name);
+        font-family: Theme.font-heading;
+        color: Theme.colors.primary-font;
     }
 
     SvgIcon {
@@ -212,6 +186,7 @@ export component DeviceScreen inherits Rectangle {
                             }
 
                             clicked => {
+                                device.favourite = !device.favourite;
                                 DevicesBridge.toggle-favourite(device.id);
                             }
                         }
@@ -234,11 +209,41 @@ export component DeviceScreen inherits Rectangle {
                 }
             }
 
-            if device.status != DeviceStatus.offline: Chat { }
+            if device.status != DeviceStatus.offline: VerticalLayout {
+                alignment: center;
+                cross-axis-self-alignment: center;
+                spacing: 8px;
+
+                PrimaryButton {
+                    width: 142px;
+                    text: @tr("Send folder");
+                    image: @image-url("icons/folder-nofill.svg");
+                    animate-width: false;
+                    clicked => {
+                        OutcomingTransferModalBridge.select-folders();
+                        OutcomingTransferModalBridge.sending-destination-id = device.id;
+                        OutcomingTransferModalBridge.sending-destination-name = device.name;
+                    }
+                }
+
+                PrimaryButton {
+                    width: 142px;
+                    text: @tr("Send files");
+                    image: @image-url("icons/file-nofill.svg");
+                    animate-width: false;
+                    clicked => {
+                        OutcomingTransferModalBridge.select-files();
+                        OutcomingTransferModalBridge.sending-destination-id = device.id;
+                        OutcomingTransferModalBridge.sending-destination-name = device.name;
+                    }
+                }
+            }
 
             if device.status == DeviceStatus.offline: HorizontalLayout {
                 alignment: center;
-                Offline { }
+                Offline {
+                    name: device.name;
+                }
             }
         }
     }

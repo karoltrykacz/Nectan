@@ -29,6 +29,7 @@ pub mod storage;
 mod storage_utils;
 pub mod stream;
 pub mod transfers;
+pub mod utils;
 pub mod walker;
 
 pub async fn setup_core(
@@ -79,7 +80,7 @@ pub async fn setup_core(
 
     s.attach_router(&router);
 
-    start_mdns_discovery(&s);
+    // start_mdns_discovery(&s);
     start_registration_loop(&s);
     announce_endpoint(&s);
 

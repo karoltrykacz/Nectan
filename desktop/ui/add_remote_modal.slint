@@ -4,11 +4,15 @@ import {
     PrimaryButton,
     Spinner,
     LinkButton,
+    IconButton,
+    SvgIcon,
 } from "elements.slint";
+import { DeviceOptionsModal } from "devices.slint";
 
 export enum LookupState {
-    none,
+    connection-failed,
     code-not-found,
+    already-connected,
     connecting,
     checking,
     waiting-for-remote-approval,
@@ -17,50 +21,509 @@ export enum LookupState {
 }
 
 export global AddDeviceBridge {
-    in-out property <LookupState> lookup-state: LookupState.none;
+    in-out property <LookupState> lookup-state;
     in-out property <string> our-code: "416 192";
     in-out property <int> time-left: 0;
-    in-out property <bool> show-lookup-panel: false;
 
+    in-out property <bool> connecting;
     in-out property <bool> open: false;
-    in-out property <bool> pre-loaded: false;
 
     callback request_code();
     callback code_submitted(string);
     callback copy_code(string);
+    callback cancel();
 
-    public function reset_add_remote() {
-        time-left = 0;
-        lookup-state = LookupState.none;
-        show-lookup-panel = false;
-    }
+    pure callback digits-only(string) -> string;
+    pure callback format-code(string) -> string;
 }
 
-
-export component AddDeviceModal inherits GeneralModal {
-
-    in-out property <string> typed-code: "";
-    in-out property <string> code-mode: "host";
-
-    property <string> input-error: "";
-
-    callback retry();
-
+component DisplayMode {
     property <int> minutes: AddDeviceBridge.time-left / 60;
     property <int> secs: Math.mod(AddDeviceBridge.time-left, 60);
     property <string> timer-display: "\{minutes}:\{secs < 10 ? "0" : ""}\{secs}";
+    property <int> copied;
+
+    Timer {
+        running: copied > 0;
+        interval: 2000ms;
+        triggered => {
+            copied = 0;
+        }
+    }
+
+    Rectangle {
+        clip: true;
+        width: 128px;
+        height: 32px;
+        x: copied > 0 ? -19px : -200px;
+        background: Theme.colors.primary-font;
+        border-bottom-right-radius: 12px;
+        border-top-right-radius: 12px;
+
+        animate x {
+            duration: 200ms;
+            easing: ease;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 0px;
+
+            Text {
+                text: "Copied";
+                color: Theme.colors.primary-col;
+                font-family: Theme.font-heading;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+
+            for i in copied: Text {
+                text: "!";
+                color: Theme.colors.primary-col;
+                font-family: Theme.font-heading;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+
+        Rectangle {
+            height: 128px;
+
+            VerticalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+
+                codeWrap := Rectangle {
+                    transform-scale: 1.0;
+
+                    animate transform-scale {
+                        duration: 100ms;
+                        easing: ease;
+                    }
+
+                    states [
+                        pressed when touch.pressed: {
+                            transform-scale: 0.97;
+                        }
+                    ]
+
+                    code-text := TextInput {
+                        width: 100%;
+                        height: 100%;
+                        text: AddDeviceBridge.our-code;
+                        font-family: Theme.font-heading;
+                        color: Theme.colors.primary-font;
+                        font-size: 36px;
+                        font-weight: 600;
+                        letter-spacing: 1px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        read-only: true;
+                        single-line: true;
+                        key-pressed(event) => {
+                            EventResult.reject
+                        }
+                    }
+
+                    touch := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            debug("Copied code");
+                            AddDeviceBridge.copy_code(code-text.text);
+                            if copied < 5 {
+                                copied += 1;
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    width: 100%;
+                    height: 20px;
+                    text: AddDeviceBridge.time-left <= 0
+                        ? @tr("Expired")
+                        : root.timer-display;
+                    font-family: Theme.font-body;
+                    color: Theme.colors.primary-font;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        if AddDeviceBridge.time-left <= 30: PrimaryButton {
+            cross-axis-self-alignment: center;
+            width: 96px;
+            text: @tr("Refresh");
+            image: @image-url("icons/refresh.svg");
+            clicked => {
+                AddDeviceBridge.time-left = 90;
+                AddDeviceBridge.request_code();
+            }
+        }
+    }
+}
+
+component Status inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+
+    alignment: center;
+    cross-axis-alignment: center;
+    spacing: 4px;
+
+    Text {
+        text: title;
+        color: Theme.colors.primary-font;
+        font-family: Theme.font-heading;
+        font-size: 16px;
+        font-weight: 500;
+        horizontal-alignment: center;
+    }
+
+    Text {
+        text: subtitle;
+        color: Theme.colors.secondary-font;
+        font-size: 13px;
+        horizontal-alignment: center;
+    }
+
+    @children
+}
+
+component ConnectingStatus {
+
+    init => { fs.focus(); }
+
+    fs := FocusScope {
+
+        KeyBinding {
+            keys: @keys(Return);
+            activated => {
+                debug("Activated");
+                if AddDeviceBridge.lookup-state == LookupState.code-not-found {
+                    AddDeviceBridge.connecting = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.rejected {
+                    AddDeviceBridge.connecting = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.connection-failed {
+                    AddDeviceBridge.connecting = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.already-connected {
+                    AddDeviceBridge.connecting = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.connected {
+                    AddDeviceBridge.connecting = false;
+                    AddDeviceBridge.open = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.waiting-for-remote-approval {}
+                if AddDeviceBridge.lookup-state == LookupState.connecting {}
+                if AddDeviceBridge.lookup-state == LookupState.checking {}
+            }
+        }
+
+        VerticalLayout {
+
+            cross-axis-alignment: center;
+
+            callback retry();
+
+            Rectangle {
+                width: 100%;
+                height: 20px;
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.checking: Status {
+
+                title: @tr("Finding");
+                subtitle: @tr("Looking for code.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                Spinner { }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.code-not-found: Status {
+
+                title: @tr("Code not found");
+                subtitle: @tr("Make sure code is valid and not expired.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                PrimaryButton {
+                    cross-axis-self-alignment: center;
+                    width: 102px;
+                    text: @tr("Try again");
+                    image: @image-url("icons/refresh.svg");
+                    clicked => {
+                        AddDeviceBridge.connecting = false;
+                    }
+                }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.connecting: Status {
+
+                title: @tr("Found device");
+                subtitle: @tr("Connecting to remote device.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                Spinner { }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.waiting-for-remote-approval: Status {
+
+                title: @tr("Request delivered");
+                subtitle: @tr("Remote device must approve new connection.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                Spinner { }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.rejected: Status {
+
+                title: @tr("Connection rejected");
+                subtitle: @tr("Remote device rejected connection");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                PrimaryButton {
+                    cross-axis-self-alignment: center;
+                    width: 102px;
+                    text: @tr("Try again");
+                    image: @image-url("icons/refresh.svg");
+                    clicked => {
+                        AddDeviceBridge.connecting = false;
+                    }
+                }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.connected: Status {
+
+                title: @tr("Connected");
+                subtitle: @tr("You can start sending and receiving files.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                PrimaryButton {
+                    width: 72px;
+                    text: @tr("Done");
+
+                    clicked => {
+                        AddDeviceBridge.open = false;
+                        AddDeviceBridge.connecting = false;
+                    }
+                }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.connection-failed: Status {
+
+                title: @tr("Connection failed");
+                subtitle: @tr("Remote device is unreachable.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                PrimaryButton {
+                    cross-axis-self-alignment: center;
+                    width: 102px;
+                    text: @tr("Try again");
+                    image: @image-url("icons/refresh.svg");
+                    clicked => {
+                        AddDeviceBridge.connecting = false;
+                    }
+                }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.checking: PrimaryButton {
+                cross-axis-self-alignment: end;
+                width: 86px;
+                alt: true;
+                text: @tr("Cancel");
+
+                clicked => {
+                    AddDeviceBridge.connecting = false;
+                }
+            }
+        }
+    }
+}
+
+component InputMode inherits VerticalLayout {
+    in-out property <string> typed-code: "";
+
+    callback retry();
+
+    retry => {
+        root.typed-code = "";
+        code-input.text = "";
+        AddDeviceBridge.connecting = false;
+    }
+
+    init => {
+        AddDeviceBridge.connecting = false;
+        root.typed-code = "";
+        code-input.focus();
+    }
+
+    alignment: center;
+
+    Rectangle {
+        height: 128px;
+
+        Text {
+            width: 100%;
+            height: 100%;
+            visible: code-input.text.is-empty;
+            text: "123 456";
+            font-size: 36px;
+            font-weight: 600;
+            font-family: Theme.font-heading;
+            color: Theme.colors.fourth-font.with-alpha(0.5);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        code-input := TextInput {
+            selection-background-color: Theme.colors.third-font;
+            selection-foreground-color: Theme.colors.primary-font;
+            width: 100%;
+            height: 100%;
+            font-size: 36px;
+            font-weight: 600;
+            color: Theme.colors.primary-font;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            input-type: InputType.number;
+            font-family: Theme.font-heading;
+            single-line: true;
+
+            init => {
+                self.focus();
+            }
+
+            edited() => {
+                root.typed-code = AddDeviceBridge.digits-only(self.text);
+                self.text = AddDeviceBridge.format-code(root.typed-code);
+                self.set-selection-offsets(self.text.character-count, self.text.character-count);
+                if root.typed-code.character-count == 6 {
+                    AddDeviceBridge.code_submitted(root.typed-code);
+                    AddDeviceBridge.connecting = true;
+                }
+            }
+        }
+    }
+}
+
+component AddRemoteHelp inherits GeneralModal {
+
+    on-close => {}
+
+    Rectangle {
+        width: min(512px, parent.width * 0.8);
+        height: min(220px, parent.height * 0.9);
+        background: Theme.colors.secondary-col;
+        border-radius: 14px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 50px;
+
+        TouchArea { }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 16px;
+            spacing: 14px;
+
+            Text {
+                text: @tr("Help");
+                font-family: Theme.font-heading;
+                color: Theme.colors.primary-font;
+                font-size: 20px;
+                font-weight: 600;
+            }
+
+            Text {
+                text: @tr("6 digit code exchange is quick and private method to connect two devices. To pair simply share your code with your friend and accept incoming connection.");
+                color: Theme.colors.secondary-font;
+                font-size: 14px;
+                wrap: word-wrap;
+            }
+
+            Rectangle { }
+
+            PrimaryButton {
+                cross-axis-self-alignment: end;
+                text: @tr("Ok");
+                clicked => {
+                    root.on-close();
+                }
+            }
+        }
+    }
+}
+
+    // component QrCode inherits VerticalLayout {
+//     cross-axis-alignment: center;
+//     spacing: 20px;
+//     alignment: center;
+//
+//     Rectangle {
+//         width: 190px;
+//         height: 190px;
+//         border-radius: 16px;
+//         clip: true;
+//         Image {
+//             source: @image-url("./icons/qr-code.png");
+//             width: 200px;
+//             height: 200px;
+//         }
+//     }
+//
+//     Text {
+//         text: @tr("Scan with your mobile device to pair");
+//         color: Theme.colors.secondary-font;
+//         font-size: 13px;
+//         font-weight: 500;
+//         horizontal-alignment: center;
+//     }
+// }
+
+enum AddMode { input, display }
+
+export component AddDeviceModal inherits GeneralModal {
+
+    property <bool> qr;
+    property <bool> help;
+    in-out property <AddMode> code-mode: AddMode.input;
 
     callback set-lookup-state(LookupState);
 
     set-lookup-state(state) => {
         AddDeviceBridge.lookup-state = state;
-    }
-
-    retry => {
-        root.typed-code = "";
-        root.input-error = "";
-        AddDeviceBridge.lookup-state = LookupState.none;
-        AddDeviceBridge.show-lookup-panel = false;
     }
 
     Timer {
@@ -75,11 +538,6 @@ export component AddDeviceModal inherits GeneralModal {
     }
 
     init => {
-        root.code-mode = "host";
-        root.typed-code = "";
-        root.input-error = "";
-        AddDeviceBridge.lookup-state = LookupState.none;
-
         if (AddDeviceBridge.time-left <= 0) {
             AddDeviceBridge.time-left = 90;
             AddDeviceBridge.request_code();
@@ -88,409 +546,117 @@ export component AddDeviceModal inherits GeneralModal {
 
     on-close => { AddDeviceBridge.open = false; }
 
-    Rectangle {
-        width: min(620px, parent.width * 0.8);
-        height: min(380px, parent.height * 0.8);
-
-        background: Theme.colors.primary-col;
-        border-radius: 14px;
-        border-width: 1px;
-        border-color: Theme.colors.hover-col;
-
-        drop-shadow-blur: 28px;
-
-        Text {
-            x: 20px;
-            y: 12px;
-            width: 100%;
-            height: 32px;
-
-            text: @tr("Add device");
-            font-family: Theme.font-heading;
-            color: Theme.colors.primary-font;
-            font-size: 20px;
-            font-weight: 600;
-            horizontal-alignment: start;
-            vertical-alignment: center;
+    fs := FocusScope {
+        KeyBinding {
+            keys: @keys(Tab);
+            activated => {
+                if !AddDeviceBridge.connecting {
+                    if root.code-mode == AddMode.input {
+                        root.code-mode = AddMode.display;
+                    } else {
+                        root.code-mode = AddMode.input;
+                    }
+                    fs.focus();
+                }
+            }
         }
 
-        HorizontalLayout {
+        Rectangle {
+            width: min(620px, parent.width * 0.8);
+            height: min(380px, parent.height * 0.8);
+            background: Theme.colors.secondary-col;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            drop-shadow-color: #00000088;
+            drop-shadow-blur: 50px;
+            clip: true;
 
-            Rectangle {
-                width: parent.width / 2;
-                if root.code-mode == "host": Rectangle {
-                    x: 0;
-                    y: 150px;
-                    width: 100%;
-                    height: 56px;
+            TouchArea { }
 
-                    codeWrap := Rectangle {
-                        width: 100%;
-                        height: 56px;
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 16px;
 
-                        animate y {
-                            duration: 100ms;
-                            easing: ease-out;
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    Text {
+                        text: @tr("Add device");
+                        font-family: Theme.font-heading;
+                        color: Theme.colors.primary-font;
+                        font-size: 20px;
+                        font-weight: 600;
+                    }
+
+                    // IconButton {
+                //     y: 4px;
+                //     width: 28px;
+                //     height: 28px;
+                //     inner-bg: help.hovered ? Theme.colors.secondary-font : Theme.colors.primary-font;
+                //     SvgIcon {
+                //         source: @image-url("icons/qr.svg");
+                //         size: 16px;
+                //         fg: parent.hovered ? Theme.colors.primary-col : Theme.colors.fourth-col;
+                //     }
+                //
+                //     clicked => { root.qr = true; }
+                // }
+
+                help := IconButton {
+                        y: 4px;
+                        width: 28px;
+                        height: 28px;
+                        inner-bg: help.hovered ? Theme.colors.secondary-font : Theme.colors.primary-font;
+                        SvgIcon {
+                            source: @image-url("icons/help-circle.svg");
+                            size: 16px;
+                            fg: parent.hovered ? Theme.colors.primary-col : Theme.colors.fourth-col;
                         }
 
-                        states [
-                            pressed when touch.pressed: {
-                                y: 5px;
-                            }
-                        ]
-
-                        code-text := TextInput {
-                            width: 100%;
-                            height: 100%;
-                            text: AddDeviceBridge.our-code;
-                            font-family: Theme.font-heading;
-                            color: #ffffff;
-                            font-size: 36px;
-                            font-weight: 600;
-                            letter-spacing: 1px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            read-only: true;
-                            single-line: true;
-                        }
-
-                        touch := TouchArea {
-                            width: 100%;
-                            height: 100%;
-                            mouse-cursor: pointer;
-                        }
+                        clicked => { root.help = true; }
                     }
                 }
 
-                if root.code-mode == "join" && !AddDeviceBridge.show-lookup-panel: Rectangle {
-                    x: 0;
-                    y: 150px;
-                    width: 100%;
-                    height: 64px;
+                if root.code-mode == AddMode.display && !AddDeviceBridge.connecting: DisplayMode { }
 
-                    Rectangle {
-                        x: (parent.width - 260px) / 2;
-                        y: 0;
-                        width: 260px;
-                        height: 64px;
+                if root.code-mode == AddMode.input && !AddDeviceBridge.connecting: InputMode { }
 
-                        border-radius: 8px;
-                        border-width: 1px;
+                if AddDeviceBridge.connecting: ConnectingStatus { }
 
-                        border-color: root.input-error == ""
-                            ? #363636
-                            : #a83232;
+                if !AddDeviceBridge.connecting: HorizontalLayout {
+                    alignment: end;
+                    spacing: 12px;
 
-                        background: #202020;
-
-                        TextInput {
-                            width: 100%;
-                            height: 100%;
-
-                            text: root.typed-code;
-                            font-size: 28px;
-                            color: #ffffff;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            input-type: InputType.number;
-                            font-family: Theme.font-heading;
-                            single-line: true;
-
-                            init => {
-                                self.focus();
-                            }
-
-                            property <string> old-text: "";
-
-                            edited() => {
-                                if (self.text.character-count > 6) {
-                                    self.text = self.old-text;
-                                } else {
-                                    self.old-text = self.text;
-                                    root.typed-code = self.text;
-                                    root.input-error = "";
-                                }
+                    PrimaryButton {
+                        width: 112px;
+                        text: root.code-mode == AddMode.display
+                            ? @tr("Enter code")
+                            : @tr("Show code");
+                        image: root.code-mode == AddMode.display ?
+                            @image-url("icons/edit.svg") : @image-url("icons/eye.svg");
+                        animate-width: false;
+                        clicked => {
+                            if root.code-mode == AddMode.input {
+                                root.code-mode = AddMode.display;
+                            } else {
+                                root.code-mode = AddMode.input;
                             }
                         }
-                    }
-                }
-
-                if root.code-mode == "host": Text {
-                    x: 0;
-                    y: 200px;
-                    width: 100%;
-                    height: 20px;
-
-                    text: AddDeviceBridge.time-left <= 0
-                        ? @tr("Expired")
-                        : root.timer-display;
-
-                    font-family: Theme.font-body;
-                    color: #b8b8b8;
-                    font-size: 14px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-
-                if root.code-mode == "join" && !AddDeviceBridge.show-lookup-panel
-                    && root.input-error != "": Text {
-                    x: 0;
-                    y: 190px;
-                    width: 100%;
-                    height: 20px;
-
-                    text: root.input-error;
-                    color: #e07a7a;
-                    font-size: 13px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-
-                if root.code-mode == "host" && AddDeviceBridge.time-left <= 80: PrimaryButton {
-                    x: (parent.width - 120px) / 2;
-                    y: 240px;
-                    width: 120px;
-
-                    text: @tr("Refresh");
-
-                    clicked => {
-                        AddDeviceBridge.time-left = 90;
-                        AddDeviceBridge.request_code();
-                    }
-                }
-
-                if root.code-mode == "join" && !AddDeviceBridge.show-lookup-panel: PrimaryButton {
-                    x: (parent.width - 120px) / 2;
-                    y: 240px;
-                    width: 120px;
-
-                    text: @tr("Find");
-                    button-enabled: root.typed-code.character-count == 6;
-
-                    clicked => {
-                        AddDeviceBridge.show-lookup-panel = true;
-                    }
-                }
-
-                if AddDeviceBridge.show-lookup-panel: Rectangle {
-                    x: 40px;
-                    y: 78px;
-                    width: parent.width - 80px;
-                    height: 152px;
-
-                    border-width: 1px;
-                    border-color: #242424;
-                    border-radius: 8px;
-                    background: #fff;
-
-                    VerticalLayout {
-                        padding: 16px;
-                        spacing: 8px;
-                        alignment: center;
-
-                        if AddDeviceBridge.lookup-state == LookupState.checking:
-                        VerticalLayout {
-                            spacing: 6px;
-                            alignment: center;
-
-                            Text {
-                                text: @tr("Checking");
-                                color: Theme.colors.primary-font;
-                                font-size: 15px;
-                                font-weight: 500;
-                                horizontal-alignment: center;
-                            }
-
-                            Text {
-                                text: @tr("Looking for code.");
-                                color: Theme.colors.secondary-font;
-                                font-size: 13px;
-                                horizontal-alignment: center;
-                            }
-
-                            Spinner { }
-                        }
-
-                        if AddDeviceBridge.lookup-state == LookupState.code-not-found:
-                        VerticalLayout {
-                            spacing: 6px;
-                            alignment: center;
-
-                            Text {
-                                text: @tr("Code not found");
-                                color: Theme.colors.primary-font;
-                                font-size: 15px;
-                                font-weight: 500;
-                                horizontal-alignment: center;
-                            }
-
-                            Text {
-                                text: @tr("Make sure code is valid and not expired.");
-                                color: Theme.colors.secondary-font;
-                                font-size: 13px;
-                                horizontal-alignment: center;
-                            }
-
-                            PrimaryButton {
-                                width: 140px;
-                                text: @tr("Try again");
-
-                                clicked => {
-                                    root.retry();
-                                }
-                            }
-                        }
-
-                        if AddDeviceBridge.lookup-state == LookupState.connecting:
-                        VerticalLayout {
-                            spacing: 6px;
-                            alignment: center;
-
-                            Text {
-                                text: @tr("Connecting");
-                                color: Theme.colors.primary-font;
-                                font-size: 15px;
-                                font-weight: 500;
-                                horizontal-alignment: center;
-                            }
-
-                            Text {
-                                text: @tr("Sending connection request.");
-                                color: Theme.colors.secondary-font;
-                                font-size: 13px;
-                                horizontal-alignment: center;
-                            }
-
-                            Spinner { }
-                        }
-
-                        if AddDeviceBridge.lookup-state == LookupState.waiting-for-remote-approval:
-                        VerticalLayout {
-                            spacing: 6px;
-                            alignment: center;
-
-                            Text {
-                                text: @tr("Request delivered");
-                                color: Theme.colors.primary-font;
-                                font-size: 15px;
-                                font-weight: 500;
-                                horizontal-alignment: center;
-                            }
-
-                            Text {
-                                text: @tr("Waiting for approval.");
-                                color: Theme.colors.secondary-font;
-                                font-size: 13px;
-                                horizontal-alignment: center;
-                            }
-
-                            Spinner { }
-                        }
-
-                        if AddDeviceBridge.lookup-state == LookupState.rejected:
-                        VerticalLayout {
-                            spacing: 6px;
-                            alignment: center;
-
-                            Text {
-                                text: @tr("Connection rejected");
-                                color: Theme.colors.primary-font;
-                                font-size: 15px;
-                                font-weight: 500;
-                                horizontal-alignment: center;
-                            }
-
-                            Text {
-                                text: @tr("Remote device rejected connetion.");
-                                color: Theme.colors.secondary-font;
-                                font-size: 13px;
-                                horizontal-alignment: center;
-                            }
-
-                            PrimaryButton {
-                                width: 140px;
-                                text: @tr("Try again");
-
-                                clicked => {
-                                    root.retry();
-                                }
-                            }
-                        }
-
-                        if AddDeviceBridge.lookup-state == LookupState.connected:
-                        VerticalLayout {
-                            spacing: 6px;
-                            alignment: center;
-
-                            Text {
-                                text: @tr("Connected");
-                                color: Theme.colors.primary-font;
-                                font-size: 15px;
-                                font-weight: 500;
-                                horizontal-alignment: center;
-                            }
-
-                            Text {
-                                text: @tr("You can start sending and receiving files.");
-                                color: Theme.colors.secondary-font;
-                                font-size: 13px;
-                                horizontal-alignment: center;
-                            }
-                        }
-                    }
-                }
-
-                LinkButton {
-                    x: 0;
-                    y: 316px;
-                    width: 100%;
-                    height: 20px;
-                    font-weight: 500;
-                    font-size: 13px;
-                    text: root.code-mode == "host"
-                        ? @tr("Enter code")
-                        : @tr("Show code");
-
-                    clicked => {
-                        root.input-error = "";
-                        root.typed-code = "";
-                        root.code-mode =
-                            root.code-mode == "host" ? "join" : "host";
                     }
                 }
             }
+        }
 
-            VerticalLayout {
-                cross-axis-alignment: center;
-                spacing: 20px;
-                alignment: center;
-
-                Rectangle {
-                    width: 190px;
-                    height: 190px;
-                    border-radius: 16px;
-                    clip: true;
-                    Image {
-                        source: @image-url("./icons/qr-code.png");
-                        width: 200px;
-                        height: 200px;
-                    }
-                }
-
-                Text {
-                    text: @tr("Scan with your mobile device to pair");
-                    color: Theme.colors.secondary-font;
-                    font-size: 13px;
-                    font-weight: 500;
-                    horizontal-alignment: center;
-                }
+        if root.help: AddRemoteHelp {
+            on-close => {
+                root.help = false;
             }
         }
     }
 }
 
-
-export global ConnectionOfferBridge {
+    export global ConnectionOfferBridge {
     in-out property <bool> open;
     in-out property <string> remote-device-name;
 

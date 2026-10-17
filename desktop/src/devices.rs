@@ -1,10 +1,13 @@
 use nectan_core::{
-    devices::device_id_to_base64, format::RoundedDecimalBytes, protocol::NectanState,
+    devices::{device_id_from_base64, device_id_to_base64},
+    format::RoundedDecimalBytes,
+    protocol::NectanState,
 };
-use slint::{Model, ModelNotify, ModelTracker, Weak};
-use std::cell::RefCell;
+use slint::{ComponentHandle, Model, ModelNotify, ModelTracker, Weak};
+use std::{cell::RefCell, sync::Arc};
+use uuid::Uuid;
 
-use crate::{DeviceItem, DeviceStatus, NectanWindow, state::ui_state};
+use crate::{DeviceItem, DeviceStatus, DevicesBridge, NectanWindow, state::ui_state};
 
 pub struct DevicesModel {
     devices: RefCell<Vec<DeviceItem>>,
@@ -84,5 +87,13 @@ pub fn update_devices(w: &Weak<NectanWindow>, state: &NectanState) {
         });
 
         ui_state().devices().update(devices);
+    });
+}
+
+pub fn handle_devices(w: &NectanWindow, s: Arc<NectanState>) {
+    let b = w.global::<DevicesBridge>();
+    b.on_toggle_favourite(move |id| {
+        let device_id = device_id_from_base64(id.as_str()).unwrap();
+        s.devices.toggle_favourite(device_id);
     });
 }

@@ -3,7 +3,7 @@ use ed25519_dalek::Signature;
 use iroh::EndpointId;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::{fmt::write, time::Duration};
+use std::time::Duration;
 use tracing::{error, info, warn};
 
 use crate::{
@@ -54,7 +54,7 @@ pub async fn lookup_code(code: String, state: &NectanState) -> Result<EndpointId
         .await
     {
         Ok(response) => match response.status() {
-            StatusCode::FOUND => {
+            StatusCode::OK => {
                 let body = response
                     .bytes()
                     .await
@@ -62,6 +62,7 @@ pub async fn lookup_code(code: String, state: &NectanState) -> Result<EndpointId
 
                 let body = postcard::from_bytes::<CodeLookupResponse>(&body).map_err(|e| {
                     error!("Failed to lookup code. {e:?}");
+                    println!("Failed to Deserialize code response.");
                     CodeLookupError::NectanService
                 })?;
 

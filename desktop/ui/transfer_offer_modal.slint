@@ -10,7 +10,71 @@ import {
 import { TreeList, TreeNode } from "file_tree.slint";
 import { Theme } from "theme.slint";
 import { SettingsRow } from "settings.slint";
+import { ListView } from "std-widgets.slint";
+import { Window, WindowBridge } from "window.slint";
 
+export struct OfferEntry { filename: string, is-dir: bool, size: string }
+
+export component EntryRow inherits Rectangle {
+    in property <length> row-padding-right;
+    in property <length> row-padding-left;
+
+    in property <OfferEntry> entry;
+
+    in property <bool> is-last;
+
+    height: 32px;
+    background: touch-area.has-hover ? Theme.colors.fourth-col : transparent;
+
+    HorizontalLayout {
+        padding-left: row-padding-left;
+        padding-right: row-padding-right;
+
+        Image {
+            source: entry.is-dir ? @image-url("icons/folder-nofill.svg") : @image-url("icons/file-nofill.svg");
+            width: 13px;
+            height: 13px;
+            colorize: Theme.colors.third-font;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Rectangle {
+            width: 8px;
+        }
+
+        Text {
+            text: entry.filename;
+            color: Theme.colors.primary-font;
+            font-family: Theme.font-heading;
+            font-size: 14px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            font-weight: 500;
+            overflow: elide;
+        }
+
+        Rectangle {
+            width: 12px;
+        }
+
+        Text {
+            text: entry.is-dir ? "-" : entry.size;
+            color: Theme.colors.secondary-font;
+            font-size: 13px;
+            font-family: Theme.font-heading;
+            vertical-alignment: center;
+        }
+    }
+
+    if !is-last: Rectangle {
+        y: parent.height;
+        height: 1px;
+        background: Theme.colors.border-col;
+        width: parent.width - 40px;
+    }
+
+    touch-area := TouchArea { }
+}
 
 component TransferSizeEntriesInfoHeader inherits Rectangle {
     in property <int> total-entries;
@@ -37,7 +101,7 @@ component TransferSizeEntriesInfoHeader inherits Rectangle {
             }
 
             Text {
-                text: @tr(" entries");
+                text: @tr(" items");
                 color: Theme.colors.secondary-font;
                 font-size: 13px;
                 font-weight: 500;
@@ -177,14 +241,6 @@ export component OutcomingTransferModal inherits Rectangle {
                         }
                     }
 
-                    if (send-state == SendModalState.Accepted):Rectangle {
-                        vertical-stretch: 1;
-                        background: red;
-                        Text {
-                            text: @tr("Here show transfer progress");
-                        }
-                    }
-
                     HorizontalLayout {
                         alignment: end;
                         spacing: 12px;
@@ -208,12 +264,25 @@ export component OutcomingTransferModal inherits Rectangle {
                                 OutcomingTransferModalBridge.open = false;
                             }
                         }
-                        if send-state == SendModalState.Rejected ||
-                            send-state == SendModalState.Accepted ||
-                            send-state == SendModalState.Error: PrimaryButton {
+                        if send-state == SendModalState.Rejected || send-state == SendModalState.Error: PrimaryButton {
                             text: @tr("Ok");
                             clicked => {
                                 OutcomingTransferModalBridge.open = false;
+                            }
+                        }
+                        if send-state == SendModalState.Accepted: PrimaryButton {
+                            alt: true;
+                            text: @tr("Go to transfers");
+                            clicked => {
+                                OutcomingTransferModalBridge.open = false;
+                            }
+                        }
+
+                        if send-state == SendModalState.Accepted: PrimaryButton {
+                            text: @tr("Ok");
+                            clicked => {
+                                OutcomingTransferModalBridge.open = false;
+                                WindowBridge.current-window = Window.transfers;
                             }
                         }
                     }
@@ -583,10 +652,11 @@ export struct IncomingTransferOffer {
     total-size: string,
 }
 
+
 export global IncomingTransferOfferBridge {
     in-out property <bool> open: false;
     in-out property <IncomingTransferOffer> offer;
-    in-out property <[TreeNode]> nodes;
+    in-out property <[OfferEntry]> entries;
 
     in-out property <string> target-path;
     callback change-destination();
@@ -673,6 +743,7 @@ export component IncomingTransferOfferModal inherits GeneralModal {
                     background: Theme.colors.third-col;
 
                     VerticalLayout {
+
                         Rectangle {
                             height: 8px;
                         }
@@ -690,10 +761,12 @@ export component IncomingTransferOfferModal inherits GeneralModal {
                             height: 8px;
                         }
 
-                        TreeList {
-                            nodes: IncomingTransferOfferBridge.nodes;
-                            toggle-node(id, path) => {
-                                IncomingTransferOfferBridge.toggle-node(id, path)
+                        ListView {
+                            for f[i] in IncomingTransferOfferBridge.entries: EntryRow {
+                                row-padding-left: 12px;
+                                row-padding-right: 12px;
+                                entry: f;
+                                is-last: i == IncomingTransferOfferBridge.entries.length - 1;
                             }
                         }
                     }

@@ -980,3 +980,124 @@
 //     ctx.set_files(uris)?;
 //     Ok(())
 // }
+//
+    // b.on_toggle_node(move |id, path| {
+    //     let Some(w) = weak.upgrade() else { return };
+    //
+    //     let bridge = w.global::<IncomingTransferOfferBridge>();
+    //     let nodes = bridge.get_nodes();
+    //     let mut nodes: Vec<TreeNode> = nodes.iter().collect();
+    //     if nodes[id as usize].is_file {
+    //         return;
+    //     }
+    //     let parent_depth = nodes[id as usize].depth;
+    //
+    //     if nodes[id as usize].expanded {
+    //         nodes[id as usize].expanded = false;
+    //         // Close the nodes
+    //         let mut end = id as usize + 1;
+    //         while end < nodes.len() && nodes[end].depth > parent_depth {
+    //             end += 1;
+    //         }
+    //         nodes.drain(id as usize + 1..end);
+    //
+    //         let model = VecModel::from(nodes);
+    //         bridge.set_nodes(ModelRc::from(Rc::new(model)));
+    //         return;
+    //     }
+    //
+    //     nodes[id as usize].expanded = true;
+    //     let depth = parent_depth + 1;
+    //     let weak = w.as_weak();
+    //     let s = s.clone();
+    //
+    //     tokio::spawn(async move {
+    //         let path = Path::new(&path);
+    //         let children = {
+    //             let offer = s.transfer_offer.lock().await;
+    //
+    //             let Some(offer) = &*offer else {
+    //                 return;
+    //             };
+    //
+    //             let children: Vec<TreeNode> = offer
+    //                 .inner
+    //                 .entries
+    //                 .children_of(path)
+    //                 .iter()
+    //                 .map(|(p, is_file, _size)| TreeNode {
+    //                     depth,
+    //                     expanded: false,
+    //                     is_file: *is_file,
+    //                     filename: p.file_name().unwrap().to_string_lossy().to_string().into(),
+    //                     path: p.to_string_lossy().to_string().into(),
+    //                 })
+    //                 .collect();
+    //             children
+    //         };
+    //
+    //         nodes.splice((id + 1) as usize..(id + 1) as usize, children);
+    //
+    //         let _ = weak.upgrade_in_event_loop(move |w| {
+    //             let bridge = w.global::<IncomingTransferOfferBridge>();
+    //             let model = VecModel::from(nodes);
+    //             bridge.set_nodes(ModelRc::from(Rc::new(model)));
+    //         });
+    //     });
+    // });
+// const MAX_HISTORY: usize = 256;
+//
+// #[derive(Default)]
+// pub struct ExplorerHistory {
+//     cursor: usize,
+//     history: Vec<PathBuf>,
+// }
+// impl ExplorerHistory {
+//     fn push(&mut self, p: PathBuf) {
+//         println!("Adding to history {p:?}");
+//         if self.history.get(self.cursor) == Some(&p) {
+//             println!("Skipped");
+//             return;
+//         }
+//         if !self.history.is_empty() {
+//             info!("Truncuated history.");
+//             self.history.truncate(self.cursor + 1);
+//         }
+//         self.history.push(p);
+//         if self.history.len() > MAX_HISTORY {
+//             info!("Truncuated history.");
+//             self.history.remove(0);
+//         }
+//         self.cursor = self.history.len() - 1;
+//     }
+//
+//     fn back(&mut self) -> Option<PathBuf> {
+//         println!("Self cursor: {}, len {}", self.cursor, self.history.len());
+//         if self.cursor > 0 {
+//             self.cursor -= 1;
+//             return self.history.get(self.cursor).cloned();
+//         }
+//         None
+//     }
+//
+//     fn forward(&mut self) -> Option<PathBuf> {
+//         println!("Self cursor: {}, len {}", self.cursor, self.history.len());
+//         if self.cursor + 1 < self.history.len() {
+//             self.cursor += 1;
+//             return self.history.get(self.cursor).cloned();
+//         }
+//         None
+//     }
+// }
+//
+    // pub fn add_path(&self, p: PathBuf) {
+    //     self.history.borrow_mut().push(p);
+    // }
+    //
+    // pub fn last_path(&self) -> Option<PathBuf> {
+    //     self.history.borrow_mut().back()
+    // }
+    //
+    // pub fn next_path(&self) -> Option<PathBuf> {
+    //     self.history.borrow_mut().forward()
+    // }

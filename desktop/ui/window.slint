@@ -1,0 +1,44 @@
+
+import { DropDownOption } from "dropdown.slint";
+
+export enum Window {
+    device,
+    vaults,
+    transfers,
+}
+
+export global WindowBridge {
+
+    callback reorder-requested(int, int);
+    callback close-requested(int);
+
+    in-out property <bool> welcome-open: true;
+
+    in-out property <bool> nectan-modal-open: false;
+
+    in-out property <bool> topbar-hover: false;
+
+    in-out property <bool> sidebar-visible: true;
+    in-out property <bool> sidebar-hover: true;
+    in-out property <length> sidebar-width: 200px;
+
+    in-out property <Window> current-window: transfers;
+    in-out property <int> current-ref-id: 0;
+
+    in-out property <length> border-radius: 12px;
+
+    callback drag-window();
+
+    callback minimize-window();
+    callback maximize-window();
+    callback close-window();
+
+    in-out property <string> username;
+
+    callback change-username(string);
+    callback close-welcome(string);
+
+    in-out property <[DropDownOption]> languages;
+    in-out property <int> selected-language-idx;
+    callback select-language(string);
+}

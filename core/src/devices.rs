@@ -14,7 +14,7 @@ use tracing::info;
 
 pub type DeviceId = VerifyingKey;
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, PartialEq)]
 pub enum DeviceStatus {
     #[default]
     Offline,
@@ -29,7 +29,7 @@ pub struct Username {
 
 impl fmt::Display for Username {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Username {}", self.inner)
+        write!(f, "{}", self.inner)
     }
 }
 
@@ -146,13 +146,12 @@ pub struct Devices {
 
 impl Devices {
     pub fn new(path: Option<PathBuf>) -> Result<Self, std::io::Error> {
-        let mut base_path = match path {
+        let base_path = match path {
             Some(p) => p,
             None => dirs::data_dir()
-                .expect("No path provided and system data directory could not be determined"),
+                .expect("No path provided and system data directory could not be determined")
+                .join("Nectan"),
         };
-
-        base_path.push("Nectan");
 
         let writer = DataWriter::new(base_path, "nectan_devices_store")?;
         let mut initial: Vec<Device> = writer.load().unwrap_or_default();
@@ -178,6 +177,7 @@ impl Devices {
     pub fn get(&self, target: &DeviceId) -> Option<Device> {
         self.inner.read().unwrap().get(target).cloned()
     }
+
     pub fn get_all(&self) -> Vec<Device> {
         self.inner.read().unwrap().values().cloned().collect()
     }
@@ -198,20 +198,25 @@ impl Devices {
         self.nearby_endpoints.write().unwrap().remove(&endpoint_id);
     }
 
-    /// Returns true if device is newly inserted
+    /// Returns whether the value was newly inserted.
+    /// If device is known, and device is online, connection state will be upgraded to nearby.
     pub fn add_nearby(&self, endpoint_id: EndpointId) -> bool {
-        self.nearby_endpoints.write().unwrap().insert(endpoint_id)
+        let new = self.nearby_endpoints.write().unwrap().insert(endpoint_id);
+        if new {
+            for device in self.inner.write().unwrap().values_mut() {
+                if device
+                    .connection
+                    .as_ref()
+                    .is_some_and(|c| c.remote_id() == endpoint_id)
+                    && device.status == DeviceStatus::Online
+                {
+                    device.status = DeviceStatus::Nearby;
+                }
+            }
+        }
+        new
     }
-    // pub fn set_or_init(&self, new: &Device) -> Result<Option<Device>, std::io::Error> {
-    //     let mut lock = self.inner.write().unwrap();
-    //     let entry = lock.entry(device.id).and_modify(|d| {
-    //         d.username = new.username;
-    //         d.status = new.status;
-    //         d.deleted = new.deleted;
-    //         d.connection = new.connection;
-    //         d.deleted
-    //     });
-    // }
+
     pub fn insert(
         &self,
         target: DeviceId,
@@ -246,9 +251,9 @@ impl Devices {
                 .is_some_and(|c| c.remote_id() == target && c.close_reason().is_none())
         })
     }
-    pub fn remove_conn(&self, target: &DeviceId, conn_id: usize) -> bool {
+    pub fn remove_conn(&self, target: DeviceId, conn_id: usize) -> bool {
         let mut lock = self.inner.write().unwrap();
-        let Some(device) = lock.get_mut(target) else {
+        let Some(device) = lock.get_mut(&target) else {
             return false;
         };
 
@@ -269,6 +274,14 @@ impl Devices {
             .unwrap()
             .get(&device_id)
             .and_then(|d| d.connection.clone())
+    }
+
+    pub fn toggle_favourite(&self, id: DeviceId) {
+        self.inner
+            .write()
+            .unwrap()
+            .get_mut(&id)
+            .map(|d| d.fav = !d.fav);
     }
 }
 

@@ -3,9 +3,6 @@ name = "rust_lib_nectan_mobile"
 version = "0.1.0"
 edition = "2024"
 
-[cargo]
-target = "aarch64-linux-android"
-
 [lib]
 name = "rust_lib_nectan_mobile"
 crate-type = ["cdylib", "staticlib"]

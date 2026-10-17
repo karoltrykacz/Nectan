@@ -4,10 +4,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::SigningKey;
 use rand::{rand_core::UnwrapErr, rngs::SysRng};
 
-use crate::storage::{
-    Key::{self},
-    Storage, Value,
-};
+use crate::storage::Storage;
 
 // fn validate_path_component(component: &str) -> anyhow::Result<()> {
 //     anyhow::ensure!(
@@ -38,12 +35,12 @@ pub fn common_parent(paths: &[PathBuf]) -> PathBuf {
 }
 
 pub fn get_signing_key(storage: &Storage) -> SigningKey {
-    if let Some(Value::Key(key)) = storage.get(Key::Key) {
+    if let Some(key) = storage.key() {
         key
     } else {
         let mut csprng = UnwrapErr(SysRng);
         let signing_key = SigningKey::generate(&mut csprng);
-        let _ = storage.set(Value::Key(signing_key.clone()));
+        let _ = storage.update(|s| s.key = Some(signing_key.clone()));
         signing_key
     }
 }

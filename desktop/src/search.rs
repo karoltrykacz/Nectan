@@ -200,7 +200,7 @@ impl SearchProvider for DeviceProvider {
     }
 }
 
-pub fn setup_search(w: &NectanWindow) {
+pub fn handle_search(w: &NectanWindow) {
     let weak = w.as_weak();
 
     let registry = Rc::new(Registry(vec![

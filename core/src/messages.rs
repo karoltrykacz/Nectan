@@ -9,7 +9,6 @@ use uuid::Uuid;
 use crate::{
     devices::{DeviceId, Username},
     protocol::{TransferOffer, TransferOfferRequest},
-    walker::TransferEntry,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,6 +33,7 @@ pub enum NetMessage {
     TransferCancelled {
         transfer_id: Uuid,
     },
+    Ack,
 }
 
 pub trait StreamableMessage: Sized {
@@ -72,6 +72,7 @@ pub struct ConnectionOffer {
 
 pub enum AppEvent {
     FoundNearby,
+    Autoaccepted { from: Username },
     Connected { device_id: DeviceId },
     ConnectionOffer { offer: ConnectionOffer },
     IncomingTransferOffer { offer: TransferOfferRequest },
@@ -83,6 +84,9 @@ pub enum AppEvent {
 impl std::fmt::Debug for AppEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Autoaccepted { from } => {
+                f.debug_struct("Autoaccepted ").field("from", from).finish()
+            }
             Self::TransfersUpdated => f.debug_struct("transfer_updated").finish(),
             Self::DeviceWentOffline { device_id } => f
                 .debug_struct("DeviceWentOffline")

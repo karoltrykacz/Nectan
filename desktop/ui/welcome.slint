@@ -1,0 +1,178 @@
+import { Theme, ThemeColors } from "theme.slint";
+import {
+    PrimaryButton,
+    PlainLineEdit,
+    SvgIcon,
+    IconButton,
+    LangSelection,
+} from "elements.slint";
+import { ScrollView } from "std-widgets.slint";
+import { WindowBridge } from "window.slint";
+
+component StepProgress inherits HorizontalLayout {
+    in property <int> step;
+    in property <int> count: 3;
+    alignment: center;
+
+    Rectangle {
+        width: 200px;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.colors.fourth-col;
+        clip: true;
+
+        Rectangle {
+            x: 0;
+            width: parent.width * (root.step + 1) / root.count;
+            border-radius: 2px;
+            background: Theme.colors.secondary-font;
+
+            animate width {
+                duration: 300ms;
+                easing: ease;
+            }
+        }
+    }
+}
+
+component StepHeader inherits Text {
+    horizontal-alignment: center;
+    color: Theme.colors.primary-font;
+    font-family: Theme.font-heading;
+    font-size: 28px;
+    font-weight: 700;
+    wrap: word-wrap;
+}
+
+
+
+export component WelcomeScreen inherits Rectangle {
+
+    property <int> step: 0;
+
+    background: Theme.colors.primary-col;
+
+    width: 100%;
+    height: 100%;
+
+    function next() {
+        if step == 0 {
+            step += 1;
+        } else {
+            WindowBridge.welcome-open = false;
+            Theme.theme-selector = true;
+            WindowBridge.close-welcome(WindowBridge.username);
+        }
+    }
+
+    TouchArea {
+        property <bool> maybe-dragging: false;
+        moved => {
+            if self.maybe-dragging {
+                WindowBridge.drag-window();
+            }
+        }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                self.maybe-dragging = true;
+            } else if event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel {
+                self.maybe-dragging = false;
+            }
+        }
+    }
+
+    FocusScope {
+
+        init => { self.focus(); }
+
+        KeyBinding {
+            keys: @keys(Return);
+            activated => { next(); }
+        }
+
+        HorizontalLayout {
+            padding: 8px;
+
+            Rectangle {
+                background: Theme.colors.secondary-col;
+                width: 100%;
+                height: 100%;
+                border-radius: 8px;
+
+                VerticalLayout {
+                    alignment: center;
+                    cross-axis-alignment: center;
+
+                    StepProgress {
+                        step: root.step;
+                    }
+
+                    Rectangle {
+                        height: 32px;
+                    }
+
+                    VerticalLayout {
+                        width: min(420px, root.width - 48px);
+                        spacing: 24px;
+
+                        Rectangle {
+                            height: 200px;
+                            z: 1;
+
+                            VerticalLayout {
+                                cross-axis-alignment: center;
+                                alignment: start;
+
+                                if root.step == 0: StepHeader {
+                                    text: @tr("Welcome to Nectan");
+                                }
+
+                                if root.step == 1: StepHeader {
+                                    text: @tr("Enter your username");
+                                }
+
+                                if root.step == 2: StepHeader {
+                                    text: @tr("Theme");
+                                }
+
+                                Rectangle {
+                                    height: 72px;
+                                }
+
+                                if root.step == 0: LangSelection { }
+
+                                if root.step == 1: Rectangle {
+                                    border-radius: 8px;
+                                    background: Theme.colors.fourth-col;
+                                    width: 256px;
+                                    height: 40px;
+
+                                    PlainLineEdit {
+                                        placeholder-text: @tr("Enter username");
+                                        input-text <=> WindowBridge.username;
+                                        // edited(text) => {
+                                        //     root.new-username = text;
+                                        // }
+                                        accepted => { root.next(); }
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+                            PrimaryButton {
+                                text: @tr("Continue");
+                                button-enabled: (root.step == 1 && (WindowBridge.username.character-count < 3 ||
+                                    WindowBridge.username.character-count > 24))
+                                    ? false : true;
+                                animate-width: false;
+                                clicked => { root.next(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

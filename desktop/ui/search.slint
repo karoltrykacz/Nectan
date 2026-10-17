@@ -233,11 +233,12 @@ export component SearchBar inherits Rectangle {
             text: @tr("Search...");
             font-size: 13px;
             font-family: Theme.font-body;
-            color: Theme.colors.third-font;
+            color: Theme.colors.secondary-font;
         }
     }
 
     h := TouchArea {
+        mouse-cursor: pointer;
         clicked => {
             SearchBridge.open = true;
         }

@@ -19,7 +19,7 @@ export enum TransferStatus { processing, finished, cancelled }
 export struct Transfer {
     id: string,
     title: string,
-    total_files: int,
+    total-items: int,
     status: TransferStatus,
     progress: float,
     size-text: string,
@@ -395,7 +395,7 @@ export component TransferDetails inherits Rectangle {
                         padding-left: 12px;
 
                         Text {
-                            text: @tr("Contents ({})",round(transfer.total-files));
+                            text: @tr("Contents ({})",round(transfer.total-items));
                             color: Theme.colors.primary-font;
                             font-size: 13px;
                             font-weight: 500;
@@ -441,7 +441,7 @@ export component TransferDetails inherits Rectangle {
                             size-text: f.size-text;
                             percent-text: f.percent-text;
                             progress: f.progress;
-                            is-last: i == transfer.total-files - 1;
+                            is-last: i == transfer.total-items - 1;
                         }
                     }
                 }

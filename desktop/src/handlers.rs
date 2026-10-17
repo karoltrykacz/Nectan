@@ -1,3 +1,4 @@
+use anyhow::bail;
 use clipboard_rs::ClipboardContext;
 use ignore::WalkBuilder;
 use nectan_core::{
@@ -9,16 +10,14 @@ use nectan_core::{
         AppEvent::{self},
         ConnectionOffer, UiResponse,
     },
-    protocol::{NectanState, TransferOffer, TransferOfferRequest, connect},
-    storage,
+    protocol::{ConnectStatus, NectanState, TransferOffer, TransferOfferRequest, connect},
+    storage::Storage,
     transfers::{TransferOfferError, send_contents},
     walker::Walker,
 };
+use notify_rust::Hint;
 use rfd::FileHandle;
-use slint::{
-    ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
-    Weak, invoke_from_event_loop,
-};
+use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, invoke_from_event_loop};
 use slint::{
     ToSharedString,
     winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent},
@@ -35,11 +34,12 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::{
-    AddDeviceBridge, ConnectionOfferBridge, IncomingTransferOffer, IncomingTransferOfferBridge,
-    LookupState, NectanWindow, OutcomingTransferModalBridge, SendModalState, SettingsBridge,
-    TransfersBridge, TreeNode, WindowBridge, devices::update_devices, state::ui_state,
-    transfers::update_transfers,
+    AddDeviceBridge, ConnectionOfferBridge, DropDownOption, IncomingTransferOffer,
+    IncomingTransferOfferBridge, LookupState, NectanWindow, OfferEntry,
+    OutcomingTransferModalBridge, SendModalState, SettingsBridge, TransfersBridge, TreeNode,
+    WindowBridge, devices::update_devices, state::ui_state, transfers::update_transfers,
 };
+
 pub const MB: f32 = 1024.0 * 1024.0;
 
 pub fn show_error(
@@ -54,8 +54,8 @@ pub fn show_error(
 }
 
 pub fn handle_window_controls(w: &NectanWindow) {
-    let w_weak = w.as_weak();
     let bridge = w.global::<WindowBridge>();
+    let w_weak = w.as_weak();
 
     // Titlebar drag
     bridge.on_drag_window(move || {
@@ -87,14 +87,55 @@ pub fn handle_window_controls(w: &NectanWindow) {
         }
     });
 }
+fn notify(offer_from: &str) {
+    let mut n = notify_rust::Notification::new();
+    n.appname("Nectan")
+        .summary("Nectan")
+        .body(&format!("You have a new offer from {}.", offer_from));
+
+    #[cfg(target_os = "linux")]
+    {
+        n.icon("nectan")
+            .hint(Hint::Category("email".to_owned()))
+            .hint(Hint::DesktopEntry("nectan".to_owned()))
+            .sound_name("message-new-instant");
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        n.sound_name("Ping");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        n.sound_name("Mail"); // maps to ms-winsoundevent:Notification.Mail
+    }
+
+    let _ = n.show();
+}
 
 pub async fn event_listener(
     w: Weak<NectanWindow>,
     mut rx: Receiver<AppEvent>,
     state: Arc<NectanState>,
 ) {
+    let r = notify_rust::Notification::new()
+        .appname("Nectan")
+        .summary("Nectan ")
+        .body("Test {}.")
+        .icon("Nectan")
+        .hint(Hint::Category("email".to_owned()))
+        .show();
+
+    println!("Shown notification {r:#?}");
+
+    notify("Siema");
+
     while let Some(msg) = rx.recv().await {
         match msg {
+            AppEvent::Autoaccepted { from } => {
+                info!("Autoaccepted {from}");
+            }
             AppEvent::TransfersUpdated => {
                 update_transfers(&w);
             }
@@ -112,6 +153,7 @@ pub async fn event_listener(
             }
             AppEvent::TransferOfferDelivered => {
                 info!("Delivered transfer offer.");
+                println!("Delivered transfer offer.");
                 transfer_offer_delivered(&w);
             }
             AppEvent::DeviceWentOffline { .. } => {
@@ -186,95 +228,25 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
             });
         }
     });
-
-    let weak = w.as_weak();
-    let s = state.clone();
-    b.on_toggle_node(move |id, path| {
-        let Some(w) = weak.upgrade() else { return };
-
-        let bridge = w.global::<IncomingTransferOfferBridge>();
-        let nodes = bridge.get_nodes();
-        let mut nodes: Vec<TreeNode> = nodes.iter().collect();
-        if nodes[id as usize].is_file {
-            return;
-        }
-        let parent_depth = nodes[id as usize].depth;
-
-        if nodes[id as usize].expanded {
-            nodes[id as usize].expanded = false;
-            // Close the nodes
-            let mut end = id as usize + 1;
-            while end < nodes.len() && nodes[end].depth > parent_depth {
-                end += 1;
-            }
-            nodes.drain(id as usize + 1..end);
-
-            let model = VecModel::from(nodes);
-            bridge.set_nodes(ModelRc::from(Rc::new(model)));
-            return;
-        }
-
-        nodes[id as usize].expanded = true;
-        let depth = parent_depth + 1;
-        let weak = w.as_weak();
-        let s = s.clone();
-
-        tokio::spawn(async move {
-            let path = Path::new(&path);
-            let children = {
-                let offer = s.transfer_offer.lock().await;
-
-                let Some(offer) = &*offer else {
-                    return;
-                };
-
-                let children: Vec<TreeNode> = offer
-                    .inner
-                    .entries
-                    .children_of(path)
-                    .iter()
-                    .map(|(p, is_file, _size)| TreeNode {
-                        depth,
-                        expanded: false,
-                        is_file: *is_file,
-                        filename: p.file_name().unwrap().to_string_lossy().to_string().into(),
-                        path: p.to_string_lossy().to_string().into(),
-                    })
-                    .collect();
-                children
-            };
-
-            nodes.splice((id + 1) as usize..(id + 1) as usize, children);
-
-            let _ = weak.upgrade_in_event_loop(move |w| {
-                let bridge = w.global::<IncomingTransferOfferBridge>();
-                let model = VecModel::from(nodes);
-                bridge.set_nodes(ModelRc::from(Rc::new(model)));
-            });
-        });
-    });
 }
 
 pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOfferRequest) {
-    // TODO show the contents
     let _ = w.upgrade_in_event_loop(move |w| {
         let b = w.global::<IncomingTransferOfferBridge>();
-        let nodes: Vec<TreeNode> = offer
+        let nodes: Vec<_> = offer
             .inner
             .entries
-            .get_depth_0()
             .iter()
-            .map(|(path, is_file, _size)| TreeNode {
-                depth: 0,
-                path: path.to_string_lossy().to_string().into(),
-                expanded: false,
-                filename: path
+            .map(|e| OfferEntry {
+                filename: e
+                    .path
                     .file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string()
                     .into(),
-                is_file: *is_file,
+                is_dir: e.is_dir,
+                size: BinaryBytes(e.size).to_shared_string(),
             })
             .collect();
 
@@ -283,9 +255,9 @@ pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOfferRequest) 
             total_size: format!("{}", DecimalBytes(1_500)).into(),
             transfer_name: offer.inner.transfer_name.into(),
             total_entries: offer.inner.entries_num as i32,
-            // offer,
         };
-        b.set_nodes(ModelRc::new(VecModel::from(nodes)));
+
+        b.set_entries(ModelRc::new(VecModel::from(nodes)));
         b.set_offer(offer);
         b.set_open(true);
     });
@@ -326,6 +298,32 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
     let ui_weak = w.as_weak();
     let s = state.clone();
 
+    bridge.on_copy_code(|s| {
+        let code = s.to_string();
+
+        println!(
+            "Copied {code} [{:?}]",
+            ui_state().get_clipboard().set_text(&code)
+        );
+    });
+
+    bridge.on_digits_only(|s| {
+        s.chars()
+            .filter(|c| c.is_ascii_digit())
+            .take(6)
+            .collect::<String>()
+            .into()
+    });
+
+    bridge.on_format_code(|s| {
+        let digits: String = s.chars().filter(|c| c.is_ascii_digit()).take(6).collect();
+        if digits.len() > 3 {
+            format!("{} {}", &digits[..3], &digits[3..]).into()
+        } else {
+            digits.into()
+        }
+    });
+
     bridge.on_request_code(move || {
         let code = gen_code();
         let code_split = format!("{} {}", &code[0..3], &code[3..6]);
@@ -350,7 +348,7 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                         }
                         Err(e) => {
                             ui.invoke_show_error("Error".into(), e.to_string().into());
-                            bridge.invoke_reset_add_remote();
+                            // bridge.invoke_reset_add_remote();
                             bridge.set_open(false);
                             error!("Failed to issue code {e:?}");
                         }
@@ -364,63 +362,117 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
     // Handle code lookup
     let s = state.clone();
     let ui_weak = w.as_weak();
+
     bridge.on_code_submitted(move |code| {
         let state = s.clone();
         let ui_weak = ui_weak.clone();
-        tokio::spawn(async move {
-            if let Some(ui) = ui_weak.upgrade() {
-                let bridge = ui.global::<AddDeviceBridge>();
-                bridge.set_lookup_state(LookupState::Checking);
-            }
-            let result = lookup_code(code.to_string(), &state).await;
-            slint::invoke_from_event_loop(move || {
-                if let Some(ui) = ui_weak.upgrade() {
-                    let bridge = ui.global::<AddDeviceBridge>();
-                    match result {
-                        // Server may replace code to new one if it collides
-                        Ok(addr) => {
-                            bridge.set_lookup_state(LookupState::Connecting);
-                            tokio::spawn(async move {
-                                let result = connect(state, addr).await;
 
-                                if let Some(ui) = ui_weak.upgrade() {
-                                    let bridge = ui.global::<AddDeviceBridge>();
-                                    match result {
-                                        Ok(()) => {
-                                            bridge.set_lookup_state(LookupState::Connected);
-                                            // And some info???
-                                        }
-                                        Err(_e) => {
-                                            // TODO COULDE BE MORE VERBOSE
-                                            bridge.set_lookup_state(LookupState::Rejected);
-                                        }
-                                    }
-                                }
-                            });
-                        }
-                        Err(e) => match e {
-                            CodeLookupError::NotFound => {
-                                bridge.set_lookup_state(LookupState::CodeNotFound);
-                            }
-                            CodeLookupError::NectanService => {
-                                ui.invoke_show_error(
-                                    "Nectan failed".into(),
-                                    "Unexpected error.".into(),
-                                );
-                                bridge.invoke_reset_add_remote();
-                            }
-                            CodeLookupError::ConnectionFailed => {
-                                ui.invoke_show_error(
-                                    "Connection failed".into(),
-                                    "Check your connection and try again.".into(),
-                                );
-                                bridge.invoke_reset_add_remote();
-                            }
-                        },
+        tokio::spawn(async move {
+            ui_weak.upgrade_in_event_loop(|ui| {
+                ui.global::<AddDeviceBridge>()
+                    .set_lookup_state(LookupState::Checking);
+            })?;
+
+            let result = lookup_code(code.to_string(), &state).await;
+            if let Err(e) = result {
+                match e {
+                    CodeLookupError::NotFound => {
+                        ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AddDeviceBridge>()
+                                .set_lookup_state(LookupState::CodeNotFound);
+                        })?;
+                    }
+                    CodeLookupError::ConnectionFailed => {
+                        ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AddDeviceBridge>()
+                                .set_lookup_state(LookupState::ConnectionFailed);
+                        })?;
+                    }
+                    CodeLookupError::NectanService => {
+                        ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.invoke_show_error(
+                                "Nectan failed".into(),
+                                "Unexpected error.".into(),
+                            );
+                        })?;
                     }
                 }
-            })
-            .unwrap();
+                bail!("Code err")
+            }
+
+            let addr = result.unwrap();
+            ui_weak.upgrade_in_event_loop(|ui| {
+                println!("Connecting");
+                ui.global::<AddDeviceBridge>()
+                    .set_lookup_state(LookupState::Connecting);
+            })?;
+
+            let mut rx = connect(state, addr);
+            let result = rx.recv().await.unwrap();
+
+            if let ConnectStatus::RequestDelivered = result {
+                println!("Request delivered");
+                ui_weak.upgrade_in_event_loop(move |ui| {
+                    ui.global::<AddDeviceBridge>()
+                        .set_lookup_state(LookupState::WaitingForRemoteApproval);
+                })?;
+                let result = rx.recv().await.unwrap();
+                match result {
+                    ConnectStatus::UserRejected => {
+                        println!("User rejected");
+                        ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AddDeviceBridge>()
+                                .set_lookup_state(LookupState::Rejected);
+                        })?;
+                    }
+                    ConnectStatus::Accepted(_device) => {
+                        println!("Accepted");
+                        ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AddDeviceBridge>()
+                                .set_lookup_state(LookupState::Connected);
+                        })?;
+                    }
+                    ConnectStatus::AuthFailed => {
+                        println!("AuthFailed");
+                        ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AddDeviceBridge>()
+                                .set_lookup_state(LookupState::Rejected);
+                        })?;
+                    }
+                    ConnectStatus::ConnectionFailed => {
+                        println!("Conn failed");
+                        ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AddDeviceBridge>()
+                                .set_lookup_state(LookupState::ConnectionFailed);
+                        })?;
+                    }
+                    ConnectStatus::RequestDelivered | ConnectStatus::AlreadyConnected => {
+                        panic!("Impossible state")
+                    }
+                }
+                return Ok(());
+            }
+
+            match result {
+                ConnectStatus::ConnectionFailed => {
+                    ui_weak.upgrade_in_event_loop(move |ui| {
+                        println!("Connection failed");
+                        ui.global::<AddDeviceBridge>()
+                            .set_lookup_state(LookupState::ConnectionFailed);
+                    })?;
+                }
+                ConnectStatus::AlreadyConnected => {
+                    println!("Already connected");
+                    ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AddDeviceBridge>()
+                            .set_lookup_state(LookupState::AlreadyConnected);
+                    })?;
+                }
+                _ => {
+                    panic!("Impossible state")
+                }
+            }
+            Ok::<(), anyhow::Error>(())
         });
     });
 }
@@ -478,7 +530,7 @@ pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
     let common = common_parent(&paths);
     let builder = WalkBuilder::new(common);
 
-    let walker = Walker::new(paths.clone(), true);
+    let walker = Walker::new(paths.clone());
 
     // Store the walker in ui state so it can be cancelled
     let walker2 = walker.clone();
@@ -559,6 +611,7 @@ fn spawn_walk_notifier(walker: Walker, w: Weak<NectanWindow>) {
 pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
     let weak = w.as_weak();
     let bridge = w.global::<OutcomingTransferModalBridge>();
+
     bridge.on_send(move |destination_id, transfer_name, compression| {
         info!("Sending offer. {transfer_name}. Compression - {compression}");
         if let Some(walk_info) = ui_state().walker().take() {
@@ -569,8 +622,8 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
             let total_size = walk_info.total_size();
             let transfer_name = transfer_name.into();
 
-            let tree = walk_info
-                .take_tree()
+            let entries = walk_info
+                .take_entries()
                 .expect("At this point the tree should be Some.")
                 .into();
 
@@ -579,13 +632,14 @@ pub fn handle_send(w: &NectanWindow, s: Arc<NectanState>) {
                 transfer_name,
                 entries_num,
                 total_size,
-                entries: tree,
+                entries,
             };
+            let root_path = walk_info.root_path.clone();
 
             let s = s.clone();
             let weak = weak.clone();
             tokio::spawn(async move {
-                match send_contents(&s, destination_device, info).await {
+                match send_contents(&s, destination_device, info, root_path).await {
                     Ok(()) => {
                         let _ = weak.upgrade_in_event_loop(move |w| {
                             let bridge = w.global::<OutcomingTransferModalBridge>();
@@ -709,8 +763,7 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
 
         nodes[id].expanded = true;
 
-        // Need to build the fucking walker beacuse the pathtree from walker is yielded after the walk is finished
-        // Don;t block the ui thread
+        // Need to build the walker beacuse the pathtree from walker is yielded after the walk is finished
         std::thread::spawn(move || match std::fs::read_dir(path.clone()) {
             Ok(dir) => {
                 let mut lock = outcoming.match_builder.lock().unwrap();
@@ -744,7 +797,6 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
                 }
                 // Append the nodes to the tree
                 nodes.splice((id + 1)..(id + 1), result);
-                println!("Result nodes {nodes:#?}");
 
                 let _ = weak.upgrade_in_event_loop(move |w| {
                     let bridge = w.global::<OutcomingTransferModalBridge>();
@@ -801,18 +853,19 @@ pub fn handle_paste(w: &NectanWindow) {
 }
 
 pub fn handle_username_change(w: &NectanWindow, s: Arc<NectanState>) {
-    let b = w.global::<SettingsBridge>();
+    let b = w.global::<WindowBridge>();
+
+    if let Some(u) = s.storage.username() {
+        b.set_username(u.as_string().into());
+    }
+
     let weak = w.as_weak();
     b.on_change_username(move |username| {
-        if let Some(w) = weak.upgrade() {
-            let b = w.global::<SettingsBridge>();
-            b.set_username_modal(false);
-            b.set_username(username.clone());
-        }
+        let Some(w) = weak.upgrade() else { return };
 
         match Username::new(username) {
             Ok(u) => {
-                if let Err(e) = s.storage.set(storage::Value::Username(u)) {
+                if let Err(e) = s.storage.update(|s| s.username = Some(u)) {
                     show_error(&weak, "Error", e.to_string());
                 }
             }
@@ -827,6 +880,59 @@ pub fn handle_open_transfers(w: &NectanWindow) {
     let weak = w.as_weak();
     w.global::<TransfersBridge>().on_open_transfers(move || {
         update_transfers(&weak);
+    });
+}
+
+pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
+    let b = w.global::<SettingsBridge>();
+
+    let state = s.clone();
+    let weak = w.as_weak();
+    b.on_change_default_dir(move || {
+        let weak = weak.clone();
+        let s = state.clone();
+        tokio::spawn(async move {
+            let Some(h) = rfd::AsyncFileDialog::new().pick_folder().await else {
+                return;
+            };
+            let path = h.path();
+            // Ensure if has writing permission
+            if let Err(e) = std::fs::write(path.join("test.txt"), b"Permission check") {
+                show_error(&weak, "Error", e.to_string());
+                return;
+            }
+            let _ = std::fs::remove_file(path);
+            let _ = s.storage.update(|s| s.default_destination = path.into());
+            let path = path.to_string_lossy().to_shared_string();
+            let _ = weak.upgrade_in_event_loop(move |w| {
+                w.global::<SettingsBridge>().set_default_download_dir(path);
+            });
+        });
+    });
+
+    let state = s.clone();
+    b.on_toggle_accept_nearby(move || {
+        let _ = state
+            .storage
+            .update(|s| s.autoaccept_from_nearby = !s.autoaccept_from_nearby);
+    });
+
+    b.on_toggle_accept_favourites(move || {
+        let _ = s
+            .storage
+            .update(|s| s.autoaccept_from_favourites = !s.autoaccept_from_favourites);
+    });
+
+    b.on_open_github(move || {
+        let _ = open::that("https://github.com/karoltrykacz/Nectan");
+    });
+
+    b.on_join_discord(move || {
+        let _ = open::that("https://discord.gg/your-server");
+    });
+
+    b.on_open_privacy(move || {
+        let _ = open::that("https://nectan.co/privacy");
     });
 }
 
@@ -1137,3 +1243,5 @@ pub fn handle_open_transfers(w: &NectanWindow) {
 //         });
 //     });
 // }
+//
+//

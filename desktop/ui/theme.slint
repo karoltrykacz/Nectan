@@ -37,59 +37,389 @@ export struct ThemeColors {
     hover-col: color,
     border-col: color,
 }
-export enum ThemeMode { dark, light }
+
+export struct ThemeDef {
+    code: string,
+    name: string,
+    colors: ThemeColors,
+}
 
 export global Theme {
-    in-out property <ThemeMode> mode: dark;
-
-    out property <ThemeColors> dark-theme: {
-        primary-col: #1a1a1a,
-        secondary-col: #1f1f1f,
-        third-col: #272727,
-        fourth-col: #333,
-        primary-font: #ffffff,
-        secondary-font: #cccccc,
-        third-font: #aaaaaa,
-        fourth-font: #888,
-        hover-col: #ffffff27,
-    };
-
-    out property <ThemeColors> light-theme: {
-        primary-col: #f1f1f1,
-        secondary-col: #ececec,
-        third-col: #dddddd,
-        fourth-col: #bfbfbf,
-        primary-font: #1a1a1a,
-        secondary-font: #333333,
-        third-font: #555555,
-        fourth-font: #888,
-        border-col: #ccc,
-        hover-col: #00000022,
-    };
-
-    out property <color> sidebar-color;
-
-    out property <ThemeColors> colors: root.mode == ThemeMode.light ? root.light-theme : root.dark-theme;
+    in-out property <int> mode: 0;
+    in-out property <bool> theme-selector;
 
     out property <string> font-heading: "Rubik";
     out property <string> font-body: "Inter";
 
-    callback mode-changed(ThemeMode);
+    callback mode-changed(int);
 
-    public function toggle-mode() {
-        root.mode = root.mode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
-        mode-changed(root.mode);
+    public function set-mode(idx: int) {
+        root.mode = idx;
+        root.mode-changed(idx);
     }
 
-    public function set-mode(new-mode: ThemeMode) {
-        root.mode = new-mode;
+    out property <[ThemeDef]> themes: [
+        {
+            code: "light",
+            name: "Light",
+            colors: {
+                primary-col: #f1f1f1,
+                secondary-col: #ddd,
+                third-col: #ccc,
+                fourth-col: #bfbfbf,
+                primary-font: #1a1a1a,
+                secondary-font: #333333,
+                third-font: #555555,
+                fourth-font: #888888,
+                hover-col: #00000022,
+                border-col: #cccccc,
+            },
+        },
+        {
+            code: "dark",
+            name: "Dark",
+            colors: {
+                primary-col: #1a1a1a,
+                secondary-col: #1f1f1f,
+                third-col: #272727,
+                fourth-col: #333333,
+                primary-font: #ffffff,
+                secondary-font: #cccccc,
+                third-font: #aaaaaa,
+                fourth-font: #888888,
+                hover-col: #ffffff27,
+                border-col: #404040,
+            },
+        },
+        {
+            code: "midnight",
+            name: "Midnight",
+            colors: {
+                primary-col: #0b1020,
+                secondary-col: #111a2e,
+                third-col: #1a2742,
+                fourth-col: #263653,
+                primary-font: #f0f4ff,
+                secondary-font: #c4d0e8,
+                third-font: #8fa5c9,
+                fourth-font: #6f83a6,
+                hover-col: #ffffff18,
+                border-col: #2c3d5c,
+            },
+        },
+        {
+            code: "solarized-dark",
+            name: "Solarized Dark",
+            colors: {
+                primary-col: #002b36,
+                secondary-col: #073642,
+                third-col: #0d4350,
+                fourth-col: #1a5563,
+                primary-font: #fdf6e3,
+                secondary-font: #eee8d5,
+                third-font: #93a1a1,
+                fourth-font: #839496,
+                hover-col: #b5890022,
+                border-col: #1a5563,
+            },
+        },
+        {
+            code: "syks-the-limit",
+            name: "Sky's the limit",
+            colors: {
+                primary-col: #163e62,
+                secondary-col: #42679b,
+                //2196F3
+                third-col: #73a7d7,
+                fourth-col: #E3F2FD,
+                primary-font: #f1f1f1,
+                secondary-font: #f1f1f1,
+                third-font: #f1f1f1,
+                fourth-font: #93a1a1,
+                hover-col: #b5890022,
+                border-col: #d9d2bc,
+            },
+        },
+        {
+            code: "caramel",
+            name: "Gruvbox",
+            colors: {
+                primary-col: #282828,
+                secondary-col: #32302f,
+                third-col: #3c3836,
+                fourth-col: #504945,
+                primary-font: #ebdbb2,
+                secondary-font: #d5c4a1,
+                third-font: #bdae93,
+                fourth-font: #928374,
+                hover-col: #fabd2f20,
+                border-col: #49483e,
+            },
+        },
+        {
+            code: "honey",
+            name: "Honey",
+            colors: {
+                primary-col: #cc5803,
+                secondary-col: #e2711d,
+                third-col: #ff9505,
+                fourth-col: #FFA318,
+                primary-font: #f1f1f1,
+                secondary-font: #f1f1f1,
+                third-font: #FFE8C2,
+                fourth-font: #FFE8C2,
+                hover-col: #FFA318,
+                border-col: #e2711d,
+            },
+        },
+	// Love this colour
+        {
+            code: "broccoli",
+            name: "Broccoli",
+            colors: {
+                primary-col: #004b23,
+                secondary-col: #006400,
+                third-col: #007200,
+                fourth-col: #008000,
+                primary-font: #f1f1f1,
+                secondary-font: #e1e1e1,
+                third-font: #d1d1d1,
+                fourth-font: #c1c1c1,
+                hover-col: #70e000,
+                border-col: #00640033,
+            },
+        },
+        {
+            code: "toxic",
+            name: "Toxic",
+            colors: {
+                primary-col: #7400b8,
+                secondary-col: #6930c3,
+                third-col: #5e60ce,
+                fourth-col: #5390d9,
+                primary-font: #80ffdb,
+                secondary-font: #72efdd,
+                third-font: #64dfdf,
+                fourth-font: #56cfe1,
+                hover-col: #48bfe3,
+                border-col: #48bfe3,
+            },
+        },
+        {
+            code: "ocean",
+            name: "Deep ocean",
+            colors: {
+                primary-col: #03045e,
+                secondary-col: #023e8a,
+                third-col: #0077b6,
+                fourth-col: #0096c7,
+                primary-font: #caf0f8,
+                secondary-font: #ade8f4,
+                third-font: #90e0ef,
+                fourth-font: #48cae4,
+                hover-col: #48cae4,
+                border-col: #023e8a33,
+            },
+        },
+        {
+            code: "forest",
+            name: "Forest",
+            colors: {
+                primary-col: #12191a,
+                secondary-col: #182224,
+                third-col: #1f2d2e,
+                fourth-col: #2a3d3e,
+                primary-font: #e6f0e8,
+                secondary-font: #c2d6c6,
+                third-font: #8fb09a,
+                fourth-font: #6a8a76,
+                hover-col: #7fd99a1c,
+                border-col: #2a3d3e,
+            },
+        },
+        {
+            code: "pinky",
+            name: "Pinky",
+            colors: {
+                primary-col: #ff6890,
+                secondary-col: #ff8fab,
+                third-col: #ff7ea0,
+                fourth-col: #ff96b2,
+                primary-font: #f1f1f1,
+                secondary-font: #ffe5ec,
+                third-font: #ffd9e3,
+                fourth-font: #ffd0dd,
+                hover-col: #ffc1d2,
+                border-col: #ff7ea0,
+            },
+        },
+        {
+            code: "ice-cream",
+            name: "Neapolitan ice cream",
+            colors: {
+                primary-col: #f1c5d4,
+                secondary-col:#fcf7d9,
+                third-col: #f6d8d6,
+                fourth-col: #fae7e6,
+                primary-font: #614736,
+                secondary-font: #614736,
+                third-font: #614736,
+                fourth-font: #665a5255,
+                hover-col: #fae7e6,
+                border-col: #614736,
+            },
+        },
+        {
+            code: "glamour",
+            name: "Glamour",
+            colors: {
+                primary-col: #5b0619,
+                secondary-col:#710d23,
+                third-col: #8b1a29,
+                fourth-col: #a7252c,
+                primary-font: #f1f1f1,
+                secondary-font: #e1e1e1,
+                third-font: #d1d1d1,
+                fourth-font: #c1c1c1,
+                hover-col: #a7252c,
+                border-col: #8b1a29,
+            },
+        },
+        {
+            code: "sand",
+            name: "Sand",
+            colors: {
+                primary-col: #f4efe6,
+                secondary-col: #ebe4d6,
+                third-col: #ddd3c0,
+                fourth-col: #c5b9a1,
+                primary-font: #2b2418,
+                secondary-font: #4a4030,
+                third-font: #6e6350,
+                fourth-font: #948872,
+                hover-col: #2b241820,
+                border-col: #c5b9a1,
+            },
+        },
+        {
+            code: "diamond",
+            name: "Diamond",
+            colors: {
+                primary-col:#225d91.darker(0.3),
+                secondary-col:#30b6f4.darker(0.4),
+                third-col: #44d4f9.darker(0.5),
+                fourth-col: #59f4ff.darker(0.2),
+                primary-font: #f1f1f1,
+                secondary-font:#e1e1e1,
+                third-font: #d1d1d1,
+                fourth-font: #c1c1c1,
+                hover-col: #f1f1f1,
+                border-col: #44d4f9,
+            },
+        },
+        {
+            code: "fishy",
+            name: "Fishy business",
+            colors: {
+                primary-col: #1b2d61,
+                secondary-col: #234b8f,
+                third-col: #2c6bbe,
+                fourth-col: #5d9bff,
+                primary-font: #fff9f2,
+                secondary-font:#d7f8f8,
+                third-font: #b1f8ff,
+                fourth-font: #67c8ff,
+                hover-col: #b1f8ff,
+                border-col: #5d9bff,
+            },
+        },
+        {
+            code: "kill-****",
+            name: "Kill ****",
+            colors: {
+                primary-col: #e68612,
+                secondary-col:#f8b71e,
+                third-col: #fac31a,
+                fourth-col: #fcd613,
+                primary-font: #000,
+                secondary-font: #000,
+                third-font: #000,
+                fourth-font: #000,
+                hover-col: #fcd613,
+                border-col: #fcd613,
+            },
+        },
+        {
+            code: "high-contrast",
+            name: "High Contrast",
+            colors: {
+                primary-col: #000000,
+                secondary-col: #0a0a0a,
+                third-col: #141414,
+                fourth-col: #262626,
+                primary-font: #ffffff,
+                secondary-font: #f0f0f0,
+                third-font: #ffff66,
+                fourth-font: #c0c0c0,
+                hover-col: #ffff0030,
+                border-col: #ffffff,
+            },
+        },
+    ];
+
+    out property <ThemeColors> target: root.themes[root.mode].colors;
+
+    in-out property <color> a-primary-col: root.target.primary-col;
+    in-out property <color> a-secondary-col: root.target.secondary-col;
+    in-out property <color> a-third-col: root.target.third-col;
+    in-out property <color> a-fourth-col: root.target.fourth-col;
+    in-out property <color> a-primary-font: root.target.primary-font;
+    in-out property <color> a-secondary-font: root.target.secondary-font;
+    in-out property <color> a-third-font: root.target.third-font;
+    in-out property <color> a-fourth-font: root.target.fourth-font;
+    in-out property <color> a-hover-col: root.target.hover-col;
+    in-out property <color> a-border-col: root.target.border-col;
+
+    out property <ThemeColors> colors: {
+        primary-col: root.a-primary-col,
+        secondary-col: root.a-secondary-col,
+        third-col: root.a-third-col,
+        fourth-col: root.a-fourth-col,
+        primary-font: root.a-primary-font,
+        secondary-font: root.a-secondary-font,
+        third-font: root.a-third-font,
+        fourth-font: root.a-fourth-font,
+        hover-col: root.a-hover-col,
+        border-col: root.a-border-col,
+    };
+}
+
+export component ThemeAnimator inherits Rectangle {
+
+    property <color> p-primary-col: Theme.target.primary-col;
+    property <color> p-secondary-col: Theme.target.secondary-col;
+    property <color> p-third-col: Theme.target.third-col;
+    property <color> p-fourth-col: Theme.target.fourth-col;
+    property <color> p-primary-font: Theme.target.primary-font;
+    property <color> p-secondary-font: Theme.target.secondary-font;
+    property <color> p-third-font: Theme.target.third-font;
+    property <color> p-fourth-font: Theme.target.fourth-font;
+    property <color> p-hover-col: Theme.target.hover-col;
+    property <color> p-border-col: Theme.target.border-col;
+
+    animate p-primary-col, p-secondary-col, p-third-col, p-fourth-col, p-primary-font, p-secondary-font, p-third-font, p-fourth-font, p-hover-col, p-border-col {
+        duration: 250ms;
+        easing: ease-in-out;
     }
 
-    public pure function is-light() -> bool {
-        root.mode == ThemeMode.light;
-    }
-
-    public pure function is-dark() -> bool {
-        root.mode == ThemeMode.dark;
-    }
+    changed p-primary-col => { Theme.a-primary-col = root.p-primary-col; }
+    changed p-secondary-col => { Theme.a-secondary-col = root.p-secondary-col; }
+    changed p-third-col => { Theme.a-third-col = root.p-third-col; }
+    changed p-fourth-col => { Theme.a-fourth-col = root.p-fourth-col; }
+    changed p-primary-font => { Theme.a-primary-font = root.p-primary-font; }
+    changed p-secondary-font => { Theme.a-secondary-font = root.p-secondary-font; }
+    changed p-third-font => { Theme.a-third-font = root.p-third-font; }
+    changed p-fourth-font => { Theme.a-fourth-font = root.p-fourth-font; }
+    changed p-hover-col => { Theme.a-hover-col = root.p-hover-col; }
+    changed p-border-col => { Theme.a-border-col = root.p-border-col; }
 }

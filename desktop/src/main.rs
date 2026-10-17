@@ -2,24 +2,21 @@
 
 slint::include_modules!();
 
-use crate::devices::update_devices;
+use crate::devices::{handle_devices, update_devices};
 use crate::handlers::{
     event_listener, handle_add_device, handle_cancel_walker, handle_connection_offer,
     handle_drag_and_drop_files, handle_incoming_transfer_offer, handle_open_transfers,
     handle_outcoming_transfer, handle_paste, handle_scan_files, handle_scan_folders, handle_send,
-    handle_username_change, handle_window_controls,
+    handle_settings, handle_username_change, handle_window_controls,
 };
 use anyhow::Result;
 use nectan_core::common::get_signing_key;
-use nectan_core::storage;
-use nectan_core::storage::{Storage, Value};
-use search::setup_search;
-use slint::DataTransfer;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::time::Duration;
+use nectan_core::storage::Storage;
+use search::handle_search;
+use slint::{Model, ModelRc, VecModel, Weak};
+use tracing::info;
 
-use crate::state::init_app_state;
+use crate::state::{init_app_state, init_transfers};
 use crate::transfers::{
     handle_lazyfiles_source, handle_refresh_items_list, handle_refresh_transfers_list,
     handle_transfer_controls, init_models, set_transfers,
@@ -28,7 +25,6 @@ use nectan_core::devices::Devices;
 use nectan_core::devices::UserInfo;
 use nectan_core::devices::Username;
 use nectan_core::setup_core;
-use slint::language::DragAction;
 use std::sync::Arc;
 
 mod devices;
@@ -37,148 +33,186 @@ mod search;
 mod state;
 mod transfers;
 
-struct DragPayload {}
-
-// impl Into<storage::Theme> for ThemeMode {
-//     fn into(self) -> storage::Theme {
-//         match self {
-//             ThemeMode::Dark => storage::Theme::Dark,
-//             ThemeMode::Light => storage::Theme::Light,
-//         }
-//     }
-// }
-//
-impl From<ThemeMode> for storage::Theme {
-    fn from(mode: ThemeMode) -> storage::Theme {
-        match mode {
-            ThemeMode::Dark => storage::Theme::Dark,
-            ThemeMode::Light => storage::Theme::Light,
-        }
-    }
+pub fn theme_code(theme: &Theme<'_>, idx: i32) -> String {
+    theme
+        .get_themes()
+        .row_data(idx as usize)
+        .map(|t| t.code.to_string())
+        .unwrap_or_else(|| "light".to_string())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), slint::PlatformError> {
-    let w = NectanWindow::new()?;
+pub fn theme_index(theme: &Theme<'_>, code: &str) -> i32 {
+    theme
+        .get_themes()
+        .iter()
+        .position(|t| t.code.as_str() == code)
+        .unwrap_or(0) as i32
+}
 
-    println!("{}", env!("CARGO_MANIFEST_DIR"));
-    println!("{}", env!("CARGO_PKG_NAME"));
-
-    slint::init_translations!(concat!(env!("CARGO_MANIFEST_DIR"), "/locales/"));
-    // slint::select_bundled_translation("pl").unwrap();
-
-    let api = w.global::<Api>();
-    api.on_make_data(|| {
-        let mut t = DataTransfer::default();
-        t.set_user_data(Rc::new(DragPayload {}));
-        t
-    });
-    api.on_can_drop(|| -> DragAction { DragAction::Copy });
-    api.on_dropped(|| {
-        println!("Dropped.");
-    });
-
-    // let tray = Tray::new()?;
-
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
-
-    let userinfo = UserInfo::new(Username::new("Desktop User").unwrap());
-    let data_dir = dirs::data_dir()
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let devices = Devices::new(Some(data_dir)).expect("Failed to create devices pool.");
-
-    let (tx, rx) = tokio::sync::mpsc::channel(16);
-
-    let data_dir = dirs::data_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("Nectan");
-    let storage = Storage::new(data_dir);
-
-    let key = get_signing_key(&storage);
-    let device_id = key.verifying_key();
-
-    let state = setup_core(tx, device_id, userinfo, key, devices, storage)
-        .await
-        .unwrap();
-
-    handle_username_change(&w, state.clone());
-
-    // Theme
-    let theme = w.global::<Theme>();
-    let s = state.clone();
-    theme.on_mode_changed(move |theme| {
-        let t = theme.into();
-        if s.storage.set(Value::Theme(t)).is_ok() {
-            println!("Updated theme.");
-        } else {
-            println!("Failed to update theme.");
-        }
-    });
-
-    let t = state.storage.theme();
-    println!("Loaded {t:?} theme.");
-
-    match t {
-        storage::Theme::Dark => {
-            theme.set_mode(ThemeMode::Dark);
-        }
-        storage::Theme::Light => {
-            theme.set_mode(ThemeMode::Light);
-        }
-    }
-
-    pub fn handle_settings(w: &NectanWindow) {
-        let bridge = w.global::<SettingsBridge>();
-
-        bridge.on_open_github(move || {
-            let _ = open::that("https://github.com/karoltrykacz/Nectan");
-        });
-
-        bridge.on_join_discord(move || {
-            let _ = open::that("https://discord.gg/your-server");
-        });
-
-        bridge.on_open_privacy(move || {
-            let _ = open::that("https://nectan.co/privacy");
-        });
-    }
-
-    handle_settings(&w);
-    init_app_state(&w, state.transfers.clone());
-    setup_search(&w);
-
-    tokio::spawn(event_listener(w.as_weak(), rx, Arc::clone(&state)));
-
+fn stateless_handlers(w: &NectanWindow) {
+    init_app_state(&w);
+    handle_search(&w);
     handle_paste(&w);
     handle_scan_files(&w);
     handle_scan_folders(&w);
     handle_drag_and_drop_files(&w);
-    handle_send(&w, Arc::clone(&state));
-
-    init_models(&w);
     handle_lazyfiles_source(&w);
     handle_refresh_items_list(&w);
-    handle_transfer_controls(&w, Arc::clone(&state));
-
     handle_window_controls(&w);
-
-    handle_outcoming_transfer(&w);
-    handle_incoming_transfer_offer(&w, Arc::clone(&state));
-
-    handle_connection_offer(&w, Arc::clone(&state));
-    handle_add_device(&w, Arc::clone(&state));
-
-    update_devices(&w.as_weak(), &state);
-
-    handle_cancel_walker(&w);
-
-    handle_refresh_transfers_list(&w);
-
-    set_transfers(&w.as_weak(), &state);
-    handle_open_transfers(&w);
-
-    w.run();
-    Ok(())
 }
+
+pub const LANGUAGES: [(&str, &str); 2] = [("English", "en"), ("Polish", "pl")];
+
+pub fn apply_language(code: &str) {
+    let lang = if code == "en" { "" } else { code };
+    if let Err(e) = slint::select_bundled_translation(lang) {
+        println!("Failed to select language [{code}] {e}");
+    }
+}
+
+pub fn language_options() -> Vec<DropDownOption> {
+    LANGUAGES
+        .iter()
+        .map(|(name, code)| DropDownOption {
+            name: (*name).into(),
+            code: (*code).into(),
+        })
+        .collect()
+}
+fn init_lang(w: &NectanWindow, storage: Arc<Storage>) {
+    let b = w.global::<WindowBridge>();
+
+    let saved = storage.language();
+    let idx = LANGUAGES
+        .iter()
+        .position(|(_, code)| *code == saved)
+        .unwrap_or(0);
+    b.set_selected_language_idx(idx as i32);
+    apply_language(&saved);
+
+    b.set_languages(ModelRc::new(VecModel::from(language_options())));
+
+    b.on_select_language({
+        let storage = storage.clone();
+        move |code| {
+            apply_language(code.as_str());
+            if let Err(e) = storage.update(|s| s.language = code.to_string()) {
+                eprintln!("Failed to save language: {e}");
+            }
+        }
+    });
+}
+
+fn init_state(weak: Weak<NectanWindow>, storage: Arc<Storage>) {
+    tokio::spawn(async move {
+        let userinfo = UserInfo::new(Username::new("Desktop User").unwrap());
+        let devices = Devices::new(None).expect("Failed to create devices pool.");
+        let key = get_signing_key(&storage);
+        let device_id = key.verifying_key();
+
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+        let state = match setup_core(tx, device_id, userinfo, key, devices, storage).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("setup_core failed: {e:?}");
+                return;
+            }
+        };
+
+        tokio::spawn(event_listener(weak.clone(), rx, Arc::clone(&state)));
+
+        let _ = weak.upgrade_in_event_loop(move |w| {
+            handle_username_change(&w, state.clone());
+
+            // Theme
+            let theme = w.global::<Theme>();
+            let s = state.clone();
+            let weak = w.as_weak();
+            theme.on_mode_changed(move |idx| {
+                let ui = weak.unwrap();
+                let code = theme_code(&ui.global::<Theme>(), idx);
+                let _ = s.storage.update(|s| s.theme = code);
+            });
+
+            w.global::<SettingsBridge>().set_default_download_dir(
+                state
+                    .storage
+                    .default_dir()
+                    .to_string_lossy()
+                    .to_string()
+                    .into(),
+            );
+
+            init_transfers(&w, Arc::clone(&state.transfers));
+            handle_settings(&w, Arc::clone(&state));
+            handle_send(&w, Arc::clone(&state));
+            handle_transfer_controls(&w, Arc::clone(&state));
+            handle_incoming_transfer_offer(&w, Arc::clone(&state));
+            handle_connection_offer(&w, Arc::clone(&state));
+            handle_add_device(&w, Arc::clone(&state));
+            handle_devices(&w, Arc::clone(&state));
+
+            update_devices(&w.as_weak(), &state);
+            set_transfers(&w.as_weak(), &state);
+
+            init_models(&w);
+            handle_cancel_walker(&w);
+            handle_outcoming_transfer(&w);
+            handle_refresh_transfers_list(&w);
+            handle_open_transfers(&w);
+        });
+    });
+}
+
+#[tokio::main]
+async fn main() -> Result<(), slint::PlatformError> {
+    tracing_subscriber::fmt::init();
+
+    let w = NectanWindow::new()?;
+
+    stateless_handlers(&w);
+
+    let storage = Arc::new(Storage::new(Storage::dir()));
+    let is_setup = storage.username().is_none();
+
+    init_lang(&w, storage.clone());
+
+    let theme = w.global::<Theme>();
+    theme.set_mode(theme_index(&theme, &storage.theme()));
+
+    println!("Is setup? {is_setup}");
+    w.global::<WindowBridge>().set_welcome_open(is_setup);
+
+    let st = storage.clone();
+    let weak = w.as_weak();
+    w.global::<WindowBridge>()
+        .on_close_welcome(move |username| {
+            info!("Welcome done. {username}");
+            // ok to unwrap beacuse input check is on slint side
+            let username = Username::new(username).expect("Invalid username.");
+            let _ = st.update(|s| s.username = Some(username));
+            init_state(weak.clone(), st.clone());
+            info!("Welcome done.");
+        });
+
+    if !is_setup {
+        init_state(w.as_weak(), storage);
+    }
+
+    w.run()
+}
+
+// struct DragPayload {}
+// let api = w.global::<Api>();
+// api.on_make_data(|| {
+//     let mut t = DataTransfer::default();
+//     t.set_user_data(Rc::new(DragPayload {}));
+//     t
+// });
+// api.on_can_drop(|| -> DragAction { DragAction::Copy });
+// api.on_dropped(|| {
+//     println!("Dropped.");
+// });
+//
+// let tray = Tray::new()?;
