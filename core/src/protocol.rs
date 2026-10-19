@@ -700,8 +700,7 @@ pub struct EndpointAnncounceResponse {
     pub seq_num: u64,
 }
 
-pub fn announce_endpoint(state: &NectanState) {
-    let state = state.clone();
+pub fn announce_endpoint(state: Arc<NectanState>) {
     tokio::spawn(async move {
         let endpoint_id = state.endpoint_id().unwrap();
         let device_id = state.device_id();
@@ -726,12 +725,10 @@ pub fn announce_endpoint(state: &NectanState) {
                         let bytes = response.bytes().await;
                         match bytes {
                             Ok(body) => {
-                                let Ok(res) =
-                                    postcard::from_bytes::<EndpointAnncounceResponse>(&body)
-                                else {
-                                    continue;
-                                };
-                                break res.seq_num;
+                                info!("Announced endpoint");
+                                break postcard::from_bytes::<EndpointAnncounceResponse>(&body)
+                                    .unwrap()
+                                    .seq_num;
                             }
                             Err(e) => error!(
                                 "Annouce endpoint. Failed to parse response: {:?}, retrying...",
@@ -741,8 +738,8 @@ pub fn announce_endpoint(state: &NectanState) {
                     }
                     StatusCode::NOT_FOUND => {
                         error!("Announce endpoint. NOT_FOUND");
-                        // ???
-                        // return;
+                        // panic here ??? - register???
+                        return;
                     }
                     StatusCode::UNAUTHORIZED => {
                         error!("Announce endpoint. UNAUTHORIZED");
@@ -762,6 +759,13 @@ pub fn announce_endpoint(state: &NectanState) {
 
         trace!("Endpoint announced. Recovered sequence number {seq}");
         state.seq_num.set(seq + 1);
+
+        // After announcing resolve devices
+        if let Ok(response) = resolve_devices(&state, None).await {
+            for (_device_id, endpoint_id) in response.devices {
+                connect(state.clone(), endpoint_id);
+            }
+        }
     });
 }
 
@@ -817,7 +821,7 @@ pub fn start_registration_loop(state: &NectanState) -> JoinHandle<()> {
 
 #[derive(Deserialize, Serialize)]
 pub struct ResolveDevicesResponse {
-    pub devices: Vec<(DeviceId, EndpointAddr)>,
+    pub devices: Vec<(DeviceId, EndpointId)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -829,7 +833,7 @@ pub struct ResolveDevicesRequest {
 }
 
 pub async fn resolve_devices(
-    state: Arc<NectanState>,
+    state: &NectanState,
     devices: Option<Vec<DeviceId>>,
 ) -> anyhow::Result<ResolveDevicesResponse> {
     let client = state.http_client.clone();
@@ -869,6 +873,7 @@ pub async fn resolve_devices(
     let response: ResolveDevicesResponse = postcard::from_bytes(&bytes)?;
 
     info!("Resolved devices");
+
     Ok(response)
 }
 

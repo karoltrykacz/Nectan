@@ -182,6 +182,10 @@ export component Search inherits GeneralModal {
                     padding: 8px;
 
                     list := ListView {
+                        animate content-y {
+                            duration: 200ms;
+                            easing: ease;
+                        }
                         height: min(320px, root.total * 52px);
                         for r[i] in SearchBridge.results: ResultRow {
                             title: r.title;

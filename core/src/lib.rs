@@ -82,9 +82,7 @@ pub async fn setup_core(
 
     // start_mdns_discovery(&s);
     start_registration_loop(&s);
-    announce_endpoint(&s);
-
-    tokio::spawn(resolve_devices(s.clone(), None));
+    announce_endpoint(s.clone());
 
     Ok(s)
 }

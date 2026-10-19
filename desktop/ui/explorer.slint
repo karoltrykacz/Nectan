@@ -1,0 +1,10 @@
+export global ExplorerBridge {
+    in-out property <string> current-dir;
+}
+
+export component Explorer {
+
+    Text {
+        text: ExplorerBridge.current-dir;
+    }
+}

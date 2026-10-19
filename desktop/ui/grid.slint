@@ -1,0 +1,108 @@
+import { Theme } from "theme.slint";
+export struct TileData { id: int, slot: int, label: string }
+
+
+export component DragGrid inherits Rectangle {
+
+    in property <[TileData]> tiles;
+    in property <length> min-cell-w: 120px;
+    in property <length> cell-h: 90px;
+    in property <length> gap: 12px;
+    callback reorder(int, int);
+    pure callback id-at-slot(int) -> int;
+
+    property <int> cols: Math.max(1, Math.floor((root.width + gap) / (min-cell-w + gap)));
+    property <length> cell-w: (root.width - gap * (cols - 1)) / cols;
+
+    property <int> dragged-id: -1;
+    property <int> drag-slot: 0;
+    property <length> drag-x;
+    property <length> drag-y;
+    property <length> grab-dx;
+    property <length> grab-dy;
+
+    pure function slot-x(slot: int) -> length {
+        Math.mod(slot, cols) * (cell-w + gap)
+    }
+    pure function slot-y(slot: int) -> length {
+        Math.floor(slot / cols) * (cell-h + gap)
+    }
+    pure function slot-at(px: length, py: length) -> int {
+        let asdf = 123;
+        Math.min(tiles.length - 1,
+                Math.max(0, Math.floor(py / (cell-h + gap))) * cols
+            + Math.min(cols - 1, Math.max(0, Math.floor(px / (cell-w + gap)))))
+    }
+
+    ta := TouchArea {
+        mouse-cursor: self.pressed ? grabbing : pointer;
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left) {
+                if (e.kind == PointerEventKind.down) {
+                    let s = root.slot-at(self.mouse-x, self.mouse-y);
+                    let ox = self.mouse-x - root.slot-x(s);
+                    let oy = self.mouse-y - root.slot-y(s);
+                    if (ox >= 0px && ox <= root.cell-w && oy >= 0px && oy <= root.cell-h) {
+                        root.drag-slot = s;
+                        root.dragged-id = root.id-at-slot(s);
+                        root.grab-dx = ox;
+                        root.grab-dy = oy;
+                        root.drag-x = root.slot-x(s);
+                        root.drag-y = root.slot-y(s);
+                    }
+                } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                    root.dragged-id = -1;
+                }
+            }
+        }
+        moved => {
+            if (root.dragged-id >= 0) {
+                root.drag-x = self.mouse-x - root.grab-dx;
+                root.drag-y = self.mouse-y - root.grab-dy;
+                let target = root.slot-at(self.mouse-x, self.mouse-y);
+                if (target != root.drag-slot) {
+                    root.reorder(root.dragged-id, target);
+                    root.drag-slot = target;
+                }
+            }
+        }
+    }
+
+    for t in root.tiles: Rectangle {
+        property <bool> dragged: t.id == root.dragged-id;
+
+        property <float> grid-col: Math.mod(t.slot, root.cols);
+        property <float> grid-row: Math.floor(t.slot / root.cols);
+        animate grid-col, grid-row {
+            duration: 180ms;
+            easing: ease-in-out;
+        }
+
+        property <length> off-x: dragged ? root.drag-x - grid-col * (root.cell-w + root.gap) : 0px;
+        property <length> off-y: dragged ? root.drag-y - grid-row * (root.cell-h + root.gap) : 0px;
+        animate off-x, off-y {
+            duration: dragged ? 0ms : 100ms;
+            easing: ease;
+        }
+
+        x: grid-col * (root.cell-w + root.gap) + off-x;
+        y: grid-row * (root.cell-h + root.gap) + off-y;
+        width: root.cell-w;
+        height: root.cell-h;
+        z: dragged ? 10 : 0;
+        opacity: dragged ? 0.85 : 1.0;
+
+        background: true ? Theme.colors.fourth-col : Theme.colors.third-col;
+
+        border-radius: 10px;
+        drop-shadow-blur: dragged ? 16px : 0px;
+        drop-shadow-color: dragged ? #0008 : transparent;
+
+        Text {
+            text: t.label;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+        }
+    }
+}

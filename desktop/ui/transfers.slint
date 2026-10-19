@@ -15,7 +15,6 @@ export struct TransferItem {
 }
 export enum TransferStatus { processing, finished, cancelled }
 
-
 export struct Transfer {
     id: string,
     title: string,
@@ -171,12 +170,15 @@ component FileRow inherits Rectangle {
     in property <length> row-padding-right;
     in property <length> row-padding-left;
     in property <bool> is-last;
+
     height: 36px;
     background: touch-area.has-hover ? Theme.colors.fourth-col : transparent;
+    border-radius: 8px;
 
     HorizontalLayout {
         padding-left: row-padding-left;
         padding-right: row-padding-right;
+        alignment: stretch;
 
         Image {
             source: @image-url("icons/file.svg");
@@ -238,15 +240,15 @@ component FileRow inherits Rectangle {
             font-weight: 600;
             font-size: 14px;
             vertical-alignment: center;
-            width: 45px;
+            width: 64px;
             horizontal-alignment: right;
         }
     }
 
     if !is-last: Rectangle {
-        y: parent.height;
+        y: parent.height - 0.5px;
         height: 1px;
-        background: Theme.colors.border-col;
+        background: Theme.colors.border-col.with-alpha(0.5);
         width: parent.width - 40px;
     }
 
@@ -423,7 +425,7 @@ export component TransferDetails inherits Rectangle {
                     }
 
                     Timer {
-                        interval: 1s;
+                        interval: 50ms;
                         running: transfer.status == TransferStatus.processing;
                         triggered() => {
                             TransfersBridge.refresh-range(items.content-x / -36px, items.height / 36px);
@@ -435,7 +437,7 @@ export component TransferDetails inherits Rectangle {
                         horizontal-scrollbar-policy: always-off;
 
                         for f[i] in TransfersBridge.files: FileRow {
-                            row-padding-right: 18px;
+                            row-padding-right: 12px;
                             row-padding-left: 12px;
                             name: f.name;
                             size-text: f.size-text;
@@ -482,16 +484,10 @@ export component Transfers inherits Rectangle {
         }
     }
 
-    if TransfersBridge.transfers.length == 0: VerticalLayout {
-        padding: 20px;
-
-        Rectangle {
-            Text {
-                text: @tr("No ongoing transfers.");
-                font-family: Theme.font-heading;
-                color: Theme.colors.primary-font;
-            }
-        }
+    if TransfersBridge.transfers.length == 0: Text {
+        text: @tr("No ongoing transfers.");
+        font-family: Theme.font-heading;
+        color: Theme.colors.primary-font;
     }
 
     if TransfersBridge.selected-transfer >= 0: TransferDetails {

@@ -171,7 +171,7 @@ export component GeneralModal inherits Rectangle {
 
         focus-on-click: true;
 
-        init => { self.focus(); }
+        // init => { self.focus(); }
 
         key-pressed(event) => {
             if (event.text == Key.Escape) {
@@ -294,20 +294,30 @@ export component Switch {
 
         background: root.checked ? Theme.colors.primary-font : Theme.colors.secondary-col;
 
+        transform-scale: ta.pressed ? 0.975 : 1.0;
+        animate transform-scale {
+            duration: 100ms;
+            easing: ease;
+        }
+
         animate background {
             duration: 100ms;
             easing: ease;
         }
 
         Rectangle {
-
             x: root.checked ? parent.width - self.width - 2px : 2px;
             y: (parent.height - self.height) / 2;
             width: 18px;
             height: 18px;
             border-radius: 9px;
-            // background: Theme.is-dark() ? (root.checked ? Theme.colors.primary-col : Theme.colors.primary-font) : 
-	   background: (root.checked ? Theme.colors.secondary-col : Theme.colors.fourth-font);
+            background: (root.checked ? Theme.colors.secondary-col : Theme.colors.fourth-font);
+
+            transform-scale: ta.pressed ? 0.9 : 1.0;
+            animate transform-scale {
+                duration: 100ms;
+                easing: ease;
+            }
 
             animate x {
                 duration: 100ms;
@@ -316,7 +326,7 @@ export component Switch {
         }
     }
 
-    TouchArea {
+    ta := TouchArea {
         clicked => {
             root.checked = !root.checked;
             root.toggled(root.checked);
@@ -435,7 +445,9 @@ export component PrimaryButton {
                 alignment: center;
                 Image {
                     source: root.image;
-                    colorize: root.alt ? Theme.colors.third-font : Theme.colors.third-col;
+                    colorize: root.alt
+                        ? Theme.colors.primary-font
+                        : (root.is-disabled ? Theme.colors.third-col : Theme.colors.primary-col);
                     width: 16px;
                     height: 16px;
                 }
@@ -518,8 +530,7 @@ export component IconButton inherits Rectangle {
             easing: ease;
         }
 
-        transform-scale-x: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
-        transform-scale-y: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
+        transform-scale: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
 
         y: root.transform ? area.pressed ? root.transform-y : 0 : 0;
 
@@ -528,8 +539,8 @@ export component IconButton inherits Rectangle {
             @children
 
             animate width, height {
-                duration: 80ms;
-                easing: ease-out;
+                duration: 50ms;
+                easing: ease;
             }
         }
     }
@@ -1100,6 +1111,236 @@ export component ThemeSelector inherits Rectangle {
                     Theme.theme-selector = false;
                 }
             }
+        }
+    }
+}
+
+export component Slider inherits Rectangle {
+    in-out property <float> value: 0;
+    in property <float> minimum: 0;
+    in property <float> maximum: 1;
+    in property <bool> enabled: true;
+
+    in property <brush> track-color: Theme.colors.third-col;
+    in property <brush> fill-color: Theme.colors.primary-font;
+    in property <brush> knob-color: Theme.colors.primary-font;
+    in property <length> track-height: 3px;
+    in property <length> knob-size: 12px;
+
+    callback changed(float);
+    callback released(float);
+
+    height: knob-size;
+
+    private property <float> ratio: (maximum - minimum) == 0
+        ? 0 : (value - minimum) / (maximum - minimum);
+    private property <length> usable: root.width - root.knob-size;
+
+    function set-from-x(x: length) {
+        if (root.usable <= 0) { return; }
+        root.value = Math.clamp(
+            root.minimum + (x - root.knob-size / 2) / root.usable * (root.maximum - root.minimum),
+            root.minimum, root.maximum);
+        root.changed(root.value);
+    }
+
+    Rectangle {
+        width: parent.width;
+        height: root.track-height;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.height / 2;
+        background: root.track-color;
+        opacity: root.enabled ? 1.0 : 0.5;
+
+        Rectangle {
+            x: 0;
+            width: root.knob-size / 2 + root.usable * root.ratio;
+            border-radius: parent.border-radius;
+            background: root.fill-color;
+        }
+    }
+
+    Rectangle {
+        x: root.usable * root.ratio;
+        y: (parent.height - self.height) / 2;
+        width: root.knob-size;
+        height: root.knob-size;
+        border-radius: self.width / 2;
+        background: root.knob-color;
+        opacity: root.enabled ? 1.0 : 0.5;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left) {
+                if (e.kind == PointerEventKind.down) {
+                    root.set-from-x(self.mouse-x);
+                } else if (e.kind == PointerEventKind.up) {
+                    root.released(root.value);
+                }
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.set-from-x(self.mouse-x);
+            }
+        }
+    }
+}
+
+export struct DragGridTileData { id: int, slot: int, emoji: string, icon: image }
+
+export component DragGrid inherits Rectangle {
+
+    in property <[DragGridTileData]> tiles;
+    in property <length> min-cell-w: 120px;
+    in property <length> cell-h: 90px;
+    in property <length> gap;
+    in property <length> drag-threshold: 8px;
+
+    callback reorder(int, int);
+    callback clicked(int);
+    pure callback id-at-slot(int) -> int;
+
+    out property <int> pressed-id: (root-ta.pressed && !root.did-drag) ? root.press-id : -1;
+
+    property <int> cols: Math.max(1, Math.floor((root.width + gap) / (min-cell-w + gap)));
+    property <length> cell-w: (root.width - gap * (cols - 1)) / cols;
+
+    property <int> press-id: -1;
+    property <length> press-x;
+    property <length> press-y;
+
+    property <int> dragged-id: -1;
+    property <bool> did-drag: false;
+    property <int> drag-slot: 0;
+    property <length> drag-x;
+    property <length> drag-y;
+    property <length> grab-dx;
+    property <length> grab-dy;
+
+    property <int> hover-slot: root-ta.has-hover
+        ? root.slot-hit(root-ta.mouse-x, root-ta.mouse-y)
+        : -1;
+
+    pure function slot-x(slot: int) -> length {
+        Math.mod(slot, cols) * (cell-w + gap)
+    }
+    pure function slot-y(slot: int) -> length {
+        Math.floor(slot / cols) * (cell-h + gap)
+    }
+    pure function slot-at(px: length, py: length) -> int {
+        Math.min(tiles.length - 1,
+                Math.max(0, Math.floor(py / (cell-h + gap))) * cols
+            + Math.min(cols - 1, Math.max(0, Math.floor(px / (cell-w + gap)))))
+    }
+    pure function slot-hit(px: length, py: length) -> int {
+        let s = slot-at(px, py);
+        let ox = px - slot-x(s);
+        let oy = py - slot-y(s);
+        (s >= 0 && ox >= 0px && ox <= cell-w && oy >= 0px && oy <= cell-h) ? s : -1
+    }
+
+    root-ta := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+
+        changed pressed => {
+            if (!self.pressed) {
+                root.dragged-id = -1;
+            }
+        }
+
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left) {
+                if (e.kind == PointerEventKind.down) {
+                    let s = root.slot-hit(self.mouse-x, self.mouse-y);
+                    if (s >= 0) {
+                        root.press-id = root.id-at-slot(s);
+                        root.drag-slot = s;
+                        root.did-drag = false;
+                        root.press-x = self.mouse-x;
+                        root.press-y = self.mouse-y;
+                        root.grab-dx = self.mouse-x - root.slot-x(s);
+                        root.grab-dy = self.mouse-y - root.slot-y(s);
+                    }
+                } else if (e.kind == PointerEventKind.up) {
+                    if (root.press-id >= 0 && !root.did-drag) {
+                        root.clicked(root.press-id);
+                    }
+                    root.press-id = -1;
+                    root.dragged-id = -1;
+                    root.did-drag = false;
+                } else if (e.kind == PointerEventKind.cancel) {
+                    root.press-id = -1;
+                    root.dragged-id = -1;
+                    root.did-drag = false;
+                }
+            }
+        }
+
+        moved => {
+            if (self.pressed && root.press-id >= 0) {
+                if (!root.did-drag) {
+                    let dx = (self.mouse-x - root.press-x) / 1px;
+                    let dy = (self.mouse-y - root.press-y) / 1px;
+                    if (dx * dx + dy * dy > (root.drag-threshold / 1px) * (root.drag-threshold / 1px)) {
+                        root.did-drag = true;
+                        root.dragged-id = root.press-id;
+                    }
+                }
+                if (root.dragged-id >= 0) {
+                    root.drag-x = self.mouse-x - root.grab-dx;
+                    root.drag-y = self.mouse-y - root.grab-dy;
+                    let target = root.slot-at(self.mouse-x, self.mouse-y);
+                    if (target != root.drag-slot) {
+                        root.reorder(root.dragged-id, target);
+                        root.drag-slot = target;
+                    }
+                }
+            }
+        }
+    }
+
+    for t in root.tiles: Rectangle {
+
+        property <bool> dragged: t.id == root.dragged-id;
+        property <bool> hovered: root.dragged-id >= 0 ? dragged : t.slot == root.hover-slot;
+
+        property <float> grid-col: Math.mod(t.slot, root.cols);
+        property <float> grid-row: Math.floor(t.slot / root.cols);
+        animate grid-col, grid-row {
+            duration: 180ms;
+            easing: ease-in-out;
+        }
+
+        property <length> off-x: dragged ? root.drag-x - grid-col * (root.cell-w + root.gap) : 0px;
+        property <length> off-y: dragged ? root.drag-y - grid-row * (root.cell-h + root.gap) : 0px;
+        animate off-x, off-y {
+            duration: dragged ? 0ms : 100ms;
+            easing: ease;
+        }
+
+        x: grid-col * (root.cell-w + root.gap) + off-x;
+        y: grid-row * (root.cell-h + root.gap) + off-y;
+        width: root.cell-w;
+        height: root.cell-h;
+        z: dragged ? 10 : 0;
+        opacity: dragged ? 0.85 : 1.0;
+        background: hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+        border-radius: 10px;
+
+        drop-shadow-spread: 2px;
+        drop-shadow-blur: dragged ? 4px : 0px;
+        drop-shadow-color: dragged ? #0008 : transparent;
+
+        transform-scale: pressed-id == t.id ? 0.97 : 1.0;
+
+        SvgIcon {
+            source: t.icon;
+            fg: hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: 16px;
         }
     }
 }

@@ -1,12 +1,12 @@
 use crate::{
-    DevicesBridge, NectanWindow, TransfersBridge, devices::DevicesModel, transfers::TransfersModel,
+    DevicesBridge, NectanWindow, TransfersBridge, devices::DevicesModel,
+    explorer::Explorer, sidebar::EssentialsModel, transfers::TransfersModel,
 };
-use arboard::Clipboard;
 use ignore::WalkBuilder;
 use nectan_core::{transfers::Transfers, utils::CancelToken, walker::Walker};
-use slint::{Global, ModelRc};
+use slint::{Global, ModelRc, Timer};
 use std::{
-    cell::{OnceCell, RefCell, RefMut},
+    cell::{OnceCell, Ref, RefCell, RefMut},
     collections::HashSet,
     path::{Path, PathBuf},
     rc::Rc,
@@ -15,7 +15,6 @@ use std::{
         atomic::{AtomicBool, AtomicU64},
     },
 };
-use tracing::info;
 
 pub struct OutcomingTransfer {
     pub walker: Mutex<Option<Walker>>,
@@ -26,11 +25,14 @@ pub struct OutcomingTransfer {
 
 pub struct UiState {
     paths: RefCell<HashSet<PathBuf>>,
+    essentials: Rc<EssentialsModel>,
+    explorer: Explorer,
     devices_model: Rc<DevicesModel>,
     transfers_model: OnceCell<Rc<TransfersModel>>,
     outcoming_transfer: Arc<OutcomingTransfer>,
-    clipboard: RefCell<Clipboard>,
+    // clipboard: RefCell<Clipboard>,
     save_destination: RefCell<PathBuf>,
+    code_timer: RefCell<Timer>,
 }
 
 impl UiState {
@@ -51,6 +53,10 @@ impl UiState {
         self.transfers_model.get().unwrap().clone()
     }
 
+    pub fn timer(&self) -> Ref<'_, Timer> {
+        self.code_timer.borrow()
+    }
+
     pub fn walker(&self) -> MutexGuard<'_, Option<Walker>> {
         self.outcoming_transfer.walker.lock().unwrap()
     }
@@ -66,9 +72,10 @@ impl UiState {
     pub fn take_paths(&self) -> Vec<PathBuf> {
         self.paths.replace(HashSet::new()).drain().collect()
     }
-    pub fn get_clipboard(&self) -> RefMut<'_, Clipboard> {
-        self.clipboard.borrow_mut()
-    }
+
+    // pub fn get_clipboard(&self) -> RefMut<'_, Clipboard> {
+    //     self.clipboard.borrow_mut()
+    // }
 }
 
 thread_local! {
@@ -99,14 +106,18 @@ pub fn init_app_state(w: &NectanWindow) {
         walker: Mutex::default(),
         match_builder: Mutex::default(),
     };
+    let essentials = Rc::new(EssentialsModel::new());
 
     let ui = Rc::new(UiState {
         paths: RefCell::new(HashSet::new()),
+        essentials,
         devices_model,
+        explorer: Explorer::new(),
         transfers_model: OnceCell::new(),
-        clipboard: RefCell::new(Clipboard::new().expect("Clipboard error.")),
+        // clipboard: RefCell::new(Clipboard::new().expect("Clipboard error.")),
         save_destination: RefCell::new(save_destination),
         outcoming_transfer: Arc::new(out_t),
+        code_timer: RefCell::new(Timer::default()),
     });
 
     UI.with(|c| c.set(ui).ok().expect("UiState already initialized."));

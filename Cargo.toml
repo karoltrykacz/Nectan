@@ -10,17 +10,18 @@ repository = "https://github.com/karoltrykacz/Nectan"
 opt-level = 3 
 lto = true 
 codegen-units = 1
-strip = true
 panic = "abort"
+strip = true
+debug = false
 
-[profile.release-fast]
-inherits = "release"
-opt-level = 3
-lto = false
-codegen-units =256 
-
-[profile.release-debug]
-inherits = "release"
-debug = true
-strip = false
-
+# [profile.release-fast]
+# inherits = "release"
+# opt-level = 3
+# lto = false
+# codegen-units = 256 
+#
+# [profile.release-debug]
+# inherits = "release"
+# debug = true
+# strip = false
+#

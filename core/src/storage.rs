@@ -8,6 +8,13 @@ use std::{
 };
 
 #[derive(Serialize, Deserialize, Clone)]
+/// In bytes/s
+pub struct SpeedLimits {
+    pub upload: u64,
+    pub download: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct Settings {
     pub username: Option<Username>,
@@ -18,6 +25,7 @@ pub struct Settings {
     pub autoaccept_from_favourites: bool,
     pub default_destination: PathBuf,
     pub language: String,
+    pub speed_limits: Option<SpeedLimits>,
 }
 
 fn default_language() -> String {
@@ -39,6 +47,7 @@ impl Default for Settings {
             autoaccept_from_favourites: false,
             default_destination: default_destination(),
             language: default_language(),
+            speed_limits: None,
         }
     }
 }
@@ -99,6 +108,10 @@ impl Storage {
 
     pub fn default_dir(&self) -> PathBuf {
         self.read(|s| s.default_destination.clone())
+    }
+
+    pub fn speed_limits(&self) -> Option<SpeedLimits> {
+        self.read(|s| s.speed_limits.clone())
     }
 
     pub fn dir() -> PathBuf {

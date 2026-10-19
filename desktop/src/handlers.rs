@@ -1,30 +1,28 @@
 use anyhow::bail;
-use clipboard_rs::ClipboardContext;
 use ignore::WalkBuilder;
 use nectan_core::{
     code_lookup::{CodeLookupError, gen_code, issue_code, lookup_code},
     common::{common_parent, gen_transfer_name},
     devices::{Username, device_id_from_base64},
-    format::{BinaryBytes, DecimalBytes, RoundedDecimalBytes},
+    format::{DecimalBytes, RoundedDecimalBytes},
     messages::{
         AppEvent::{self},
         ConnectionOffer, UiResponse,
     },
     protocol::{ConnectStatus, NectanState, TransferOffer, TransferOfferRequest, connect},
-    storage::Storage,
+    storage::SpeedLimits,
     transfers::{TransferOfferError, send_contents},
     walker::Walker,
 };
-use notify_rust::Hint;
 use rfd::FileHandle;
-use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak, invoke_from_event_loop};
+use slint::{ComponentHandle, Model, ModelRc, TimerMode, VecModel, Weak, invoke_from_event_loop};
 use slint::{
     ToSharedString,
     winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent},
 };
 use std::{
     fs::DirEntry,
-    path::{Path, PathBuf},
+    path::PathBuf,
     rc::Rc,
     sync::{Arc, atomic::Ordering::Relaxed},
     time::Duration,
@@ -34,10 +32,13 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::{
-    AddDeviceBridge, ConnectionOfferBridge, DropDownOption, IncomingTransferOffer,
+    AddDeviceBridge, ConnectionOfferBridge, Error, IncomingTransferOffer,
     IncomingTransferOfferBridge, LookupState, NectanWindow, OfferEntry,
     OutcomingTransferModalBridge, SendModalState, SettingsBridge, TransfersBridge, TreeNode,
-    WindowBridge, devices::update_devices, state::ui_state, transfers::update_transfers,
+    WindowBridge,
+    devices::update_devices,
+    state::ui_state,
+    transfers::{format_speed, map_speed, unmap_speed, update_transfers},
 };
 
 pub const MB: f32 = 1024.0 * 1024.0;
@@ -49,7 +50,7 @@ pub fn show_error(
 ) {
     let (title, msg) = (title.into(), msg.into());
     let _ = weak.upgrade_in_event_loop(move |w| {
-        w.invoke_show_error(title, msg);
+        w.global::<Error>().invoke_show_error(title, msg);
     });
 }
 
@@ -88,30 +89,38 @@ pub fn handle_window_controls(w: &NectanWindow) {
     });
 }
 fn notify(offer_from: &str) {
-    let mut n = notify_rust::Notification::new();
-    n.appname("Nectan")
-        .summary("Nectan")
-        .body(&format!("You have a new offer from {}.", offer_from));
-
-    #[cfg(target_os = "linux")]
-    {
-        n.icon("nectan")
-            .hint(Hint::Category("email".to_owned()))
-            .hint(Hint::DesktopEntry("nectan".to_owned()))
-            .sound_name("message-new-instant");
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        n.sound_name("Ping");
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        n.sound_name("Mail"); // maps to ms-winsoundevent:Notification.Mail
-    }
-
-    let _ = n.show();
+    // let mut n = notify_rust::Notification::new();
+    // n.appname("Nectan")
+    //     .summary("Nectan")
+    //     .body(&format!("You have a new offer from {}.", offer_from));
+    //
+    // #[cfg(target_os = "linux")]
+    // {
+    //     n.icon("nectan")
+    //         .hint(Hint::Category("email".to_owned()))
+    //         .hint(Hint::DesktopEntry("nectan".to_owned()))
+    //         .sound_name("message-new-instant");
+    // }
+    //
+    // #[cfg(target_os = "macos")]
+    // {
+    //     n.sound_name("Ping");
+    // }
+    //
+    // #[cfg(target_os = "windows")]
+    // {
+    //     n.sound_name("Mail"); // maps to ms-winsoundevent:Notification.Mail
+    // }
+    //
+    // let _ = n.show();
+    //
+    // let r = notify_rust::Notification::new()
+    //     .appname("Nectan")
+    //     .summary("Nectan ")
+    //     .body("Test {}.")
+    //     .icon("Nectan")
+    //     .hint(Hint::Category("email".to_owned()))
+    //     .show();
 }
 
 pub async fn event_listener(
@@ -119,16 +128,6 @@ pub async fn event_listener(
     mut rx: Receiver<AppEvent>,
     state: Arc<NectanState>,
 ) {
-    let r = notify_rust::Notification::new()
-        .appname("Nectan")
-        .summary("Nectan ")
-        .body("Test {}.")
-        .icon("Nectan")
-        .hint(Hint::Category("email".to_owned()))
-        .show();
-
-    println!("Shown notification {r:#?}");
-
     notify("Siema");
 
     while let Some(msg) = rx.recv().await {
@@ -246,7 +245,7 @@ pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOfferRequest) 
                     .to_string()
                     .into(),
                 is_dir: e.is_dir,
-                size: BinaryBytes(e.size).to_shared_string(),
+                size: DecimalBytes(e.size).to_shared_string(),
             })
             .collect();
 
@@ -301,10 +300,10 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
     bridge.on_copy_code(|s| {
         let code = s.to_string();
 
-        println!(
-            "Copied {code} [{:?}]",
-            ui_state().get_clipboard().set_text(&code)
-        );
+        // println!(
+        //     "Copied {code} [{:?}]",
+        //     // ui_state().get_clipboard().set_text(&code)
+        // );
     });
 
     bridge.on_digits_only(|s| {
@@ -325,6 +324,26 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
     });
 
     bridge.on_request_code(move || {
+        let ui = ui_state();
+        let weak = ui_weak.clone();
+
+        ui.timer().start(
+            TimerMode::Repeated,
+            std::time::Duration::from_millis(1000),
+            move || {
+                let Some(w) = weak.upgrade() else {
+                    return;
+                };
+                let time_left = w.global::<AddDeviceBridge>().get_time_left();
+                w.global::<AddDeviceBridge>().set_time_left(time_left - 1);
+
+                if time_left == 0 {
+                    let ui = ui_state();
+                    ui.timer().stop();
+                }
+            },
+        );
+
         let code = gen_code();
         let code_split = format!("{} {}", &code[0..3], &code[3..6]);
 
@@ -347,7 +366,8 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                             bridge.set_our_code(code_split.into());
                         }
                         Err(e) => {
-                            ui.invoke_show_error("Error".into(), e.to_string().into());
+                            ui.global::<Error>()
+                                .invoke_show_error("Error".into(), e.to_string().into());
                             // bridge.invoke_reset_add_remote();
                             bridge.set_open(false);
                             error!("Failed to issue code {e:?}");
@@ -390,7 +410,7 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                     }
                     CodeLookupError::NectanService => {
                         ui_weak.upgrade_in_event_loop(|ui| {
-                            ui.invoke_show_error(
+                            ui.global::<Error>().invoke_show_error(
                                 "Nectan failed".into(),
                                 "Unexpected error.".into(),
                             );
@@ -833,23 +853,23 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
 }
 
 pub fn handle_paste(w: &NectanWindow) {
-    let weak = w.as_weak();
-    w.on_pasted(move || {
-        let weak = weak.clone();
-        let ui = ui_state();
-        let mut cl = ui.get_clipboard();
-        let contents = cl.get();
-
-        if let Ok(list) = contents.file_list() {
-            let list: Vec<PathBuf> = list
-                .into_iter()
-                .map(|p| PathBuf::from(p.to_string_lossy().trim_end_matches(['\r', '\n'])))
-                .collect();
-            open_send_modal(weak, list);
-        } else {
-            println!("Failed to get files list from clipboard.");
-        }
-    })
+    // let weak = w.as_weak();
+    // w.on_pasted(move || {
+    //     let weak = weak.clone();
+    //     let ui = ui_state();
+    //     let mut cl = ui.get_clipboard();
+    //     let contents = cl.get();
+    //
+    //     if let Ok(list) = contents.file_list() {
+    //         let list: Vec<PathBuf> = list
+    //             .into_iter()
+    //             .map(|p| PathBuf::from(p.to_string_lossy().trim_end_matches(['\r', '\n'])))
+    //             .collect();
+    //         open_send_modal(weak, list);
+    //     } else {
+    //         println!("Failed to get files list from clipboard.");
+    //     }
+    // })
 }
 
 pub fn handle_username_change(w: &NectanWindow, s: Arc<NectanState>) {
@@ -917,8 +937,9 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
             .update(|s| s.autoaccept_from_nearby = !s.autoaccept_from_nearby);
     });
 
+    let state = s.clone();
     b.on_toggle_accept_favourites(move || {
-        let _ = s
+        let _ = state
             .storage
             .update(|s| s.autoaccept_from_favourites = !s.autoaccept_from_favourites);
     });
@@ -934,6 +955,37 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
     b.on_open_privacy(move || {
         let _ = open::that("https://nectan.co/privacy");
     });
+
+    b.on_format_speed(move |speed| format_speed(map_speed(speed)).into());
+
+    let l = s.storage.speed_limits();
+    if let Some(l) = l {
+        b.set_speed_limits_on(true);
+        b.set_upload_limit(unmap_speed(l.upload as f32 * 8.0));
+        b.set_download_limit(unmap_speed(l.download as f32 * 8.0));
+    } else {
+        b.set_speed_limits_on(false);
+        b.set_upload_limit(0.5);
+        b.set_download_limit(0.5);
+    }
+
+    let state = s.clone();
+    b.on_confirm_limits(move |enabled, upload, download| {
+        let speed_limits = if enabled {
+            // Map to bytes
+            let upload = (map_speed(upload) / 8.0) as u64;
+            let download = (map_speed(download) / 8.0) as u64;
+            info!("New limits {upload} {download}");
+            Some(SpeedLimits { upload, download })
+        } else {
+            info!("Disabled limits");
+            None
+        };
+        let _ = state.storage.update(|s| s.speed_limits = speed_limits);
+        // TODO update transfers
+    });
+
+    // b.on_
 }
 
 // fn ext_of(p: &Path) -> String {
@@ -1230,7 +1282,7 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
 //         let path = "/home/karol/test.txt";
 //         let text = std::fs::read_to_string(&path).unwrap();
 //         let doc_name = "big.txt".into();
-//         let doc_size = BinaryBytes(text.len() as u64).to_string().into();
+//         let doc_size = (text.len() as u64).to_string().into();
 //         let lines: Vec<SharedString> = text.lines().map(|l| l.into()).collect();
 //         let modified = "16 May 2026".into();
 //

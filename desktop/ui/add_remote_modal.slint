@@ -28,6 +28,7 @@ export global AddDeviceBridge {
     in-out property <bool> connecting;
     in-out property <bool> open: false;
 
+    // Ask server to validate code and start timer
     callback request_code();
     callback code_submitted(string);
     callback copy_code(string);
@@ -48,6 +49,13 @@ component DisplayMode {
         interval: 2000ms;
         triggered => {
             copied = 0;
+        }
+    }
+
+    init => {
+        if (AddDeviceBridge.time-left <= 0) {
+            AddDeviceBridge.time-left = 90;
+            AddDeviceBridge.request_code();
         }
     }
 
@@ -526,23 +534,17 @@ export component AddDeviceModal inherits GeneralModal {
         AddDeviceBridge.lookup-state = state;
     }
 
-    Timer {
-        interval: 1s;
-        running: AddDeviceBridge.time-left > 0;
+    // Timer {
+    //     interval: 1s;
+    //     running: AddDeviceBridge.time-left > 0;
+    //
+    //     triggered => {
+    //         if (AddDeviceBridge.time-left > 0) {
+    //             AddDeviceBridge.time-left -= 1;
+    //         }
+    //     }
+    // }
 
-        triggered => {
-            if (AddDeviceBridge.time-left > 0) {
-                AddDeviceBridge.time-left -= 1;
-            }
-        }
-    }
-
-    init => {
-        if (AddDeviceBridge.time-left <= 0) {
-            AddDeviceBridge.time-left = 90;
-            AddDeviceBridge.request_code();
-        }
-    }
 
     on-close => { AddDeviceBridge.open = false; }
 

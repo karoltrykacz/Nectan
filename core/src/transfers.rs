@@ -432,23 +432,28 @@ impl PendingTransfer {
     fn start_speed_updater(s: Arc<Self>) {
         std::thread::spawn(move || {
             let mut last_sent = s.sent_bytes.load(Relaxed);
+
+            // Temporal resolution
             let tick = std::time::Duration::from_millis(100);
+
+            // Bytes per second
             let mut speed = 0.0;
+
             loop {
                 if s.is_cancelled() {
                     return;
                 }
                 std::thread::sleep(tick);
                 let sent = s.sent_bytes.load(Relaxed);
-                let diff = sent - last_sent;
+                // Convert to bits
+                let diff = (sent - last_sent) * 8;
                 let bps = diff as f32 / tick.as_secs_f32();
-                let mbps = bps * 1_000_000.0;
-                let diff = (speed - mbps) * 0.1;
+                let diff = (speed - bps) * 0.01;
 
                 speed -= diff;
                 last_sent = sent;
 
-                s.speed.store((speed * 1_000_000.0) as u64, Relaxed);
+                s.speed.store(speed as u64, Relaxed);
             }
         });
     }
@@ -584,6 +589,12 @@ impl PendingTransfer {
             .collect();
 
         let output_dir = Path::new(&self.root_path).join(&item_path);
+
+        println!(
+            "Receiving {} to {}",
+            item_path.display(),
+            output_dir.display()
+        );
 
         // Just create the folder
         if header.is_dir {
@@ -762,7 +773,9 @@ impl PendingTransfer {
             }
         });
 
-        let mut buf = Vec::with_capacity(64 * 1024);
+        const BUF_SIZE: usize = 64 * 1024;
+
+        let mut buf = Vec::with_capacity(BUF_SIZE);
 
         loop {
             tokio::select! {
@@ -787,11 +800,12 @@ impl PendingTransfer {
                         error!("Failed to read file.");
                         TransferItemError::FileIOError
                     })?;
+
                     if n == 0 {
                         break;
                     }
 
-                    let chunk = std::mem::replace(&mut buf, Vec::with_capacity(64 * 1024));
+                    let chunk = std::mem::replace(&mut buf, Vec::with_capacity(BUF_SIZE));
                     tx
                         .write_chunk(chunk.into())
                         .await

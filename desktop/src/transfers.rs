@@ -1,4 +1,4 @@
-use nectan_core::format::BinaryBytes;
+use nectan_core::format::DecimalBytes;
 use nectan_core::protocol::NectanState;
 use nectan_core::transfers::{PendingTransfer, TransferStatus, Transfers};
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, ToSharedString, Weak};
@@ -7,10 +7,10 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::{cell::RefCell, sync::Arc};
 use uuid::Uuid;
 
-use crate::Transfer;
 use crate::handlers::show_error;
 use crate::state::ui_state;
 use crate::{NectanWindow, TransfersBridge};
+use crate::{SidebarBridge, Transfer};
 
 /// Lazy loader for the contents of ONE selected transfer.
 pub struct LazyFiles {
@@ -59,16 +59,18 @@ impl Model for LazyFiles {
             return None;
         }
 
-        let progress = item.sent_bytes as f32;
+        let progress = item.sent_bytes as f32 / item.size as f32;
         let percent_text = format!("{:.2}%", progress * 100.0).into();
-
-        println!("Item progress {}", progress);
 
         Some(crate::TransferItem {
             name: item.name().into(),
             percent_text,
-            size_text: BinaryBytes(item.size).to_string().into(),
             progress,
+            size_text: if item.is_dir {
+                "-".into()
+            } else {
+                DecimalBytes(item.size).to_string().into()
+            },
         })
     }
 
@@ -105,8 +107,10 @@ fn build_row(p: &PendingTransfer) -> Transfer {
         TransferStatus::CancelledByRemote => crate::TransferStatus::Cancelled,
     };
 
-    let mbps = p.speed.load(Relaxed) as f32 / 1_000_000.0;
-    let speed_text = format!("{mbps} MB/s").into();
+    let bps = p.speed.load(Relaxed);
+    // Convert bits/s to mbps
+    let mbps = bps as f32 / (1_000_000.0);
+    let speed_text = format!("{mbps:.2} Mbps").into();
 
     Transfer {
         id: p.id.to_shared_string(),
@@ -114,7 +118,7 @@ fn build_row(p: &PendingTransfer) -> Transfer {
         percent_text: format!("{:.2}%", progress * 100.0).into(),
         progress,
         receiver_name,
-        size_text: BinaryBytes(p.total_size).to_string().into(),
+        size_text: DecimalBytes(p.total_size).to_string().into(),
         speed_text,
         status,
         title: p.name.clone().into(),
@@ -245,10 +249,16 @@ pub fn handle_refresh_transfers_list(w: &NectanWindow) {
 }
 
 pub fn init_models(w: &NectanWindow) {
-    let m = ui_state().transfers(); // Rc<TransfersModel>
-    let b = w.global::<TransfersBridge>();
-    b.set_transfers(ModelRc::from(m.clone()));
-    b.set_files(ModelRc::from(m.files()));
+    let m = ui_state().transfers();
+
+    w.global::<TransfersBridge>()
+        .set_transfers(ModelRc::from(m.clone()));
+
+    w.global::<TransfersBridge>()
+        .set_files(ModelRc::from(m.files()));
+
+    // w.global::<SidebarBridge>()
+    //     .set_files(ModelRc::from(m.files()));
 }
 
 pub fn handle_transfer_controls(w: &NectanWindow, state: Arc<NectanState>) {
@@ -264,4 +274,42 @@ pub fn handle_transfer_controls(w: &NectanWindow, state: Arc<NectanState>) {
             show_error(&weak, "Failed to delete", e.to_string());
         }
     });
+}
+
+const MIN_BPS: f32 = 1_000.0;
+const MAX_BPS: f32 = 10_000_000_000.0;
+
+/// Exponential speed map
+pub fn map_speed(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    MIN_BPS * (MAX_BPS / MIN_BPS).powf(t)
+}
+
+pub fn unmap_speed(bps: f32) -> f32 {
+    let bps = bps.clamp(MIN_BPS, MAX_BPS);
+    (bps / MIN_BPS).ln() / (MAX_BPS / MIN_BPS).ln()
+}
+
+pub fn format_speed(bps: f32) -> String {
+    const UNITS: [&str; 4] = ["Bps", "Kbps", "Mbps", "Gbps"];
+    const LAST: usize = UNITS.len() - 1;
+
+    let mut value = bps.max(0.0);
+    let mut unit = 0;
+
+    while unit < LAST && value >= 1000.0 {
+        value /= 1000.0;
+        unit += 1;
+    }
+
+    let rounded = (value * 10.0).round() / 10.0;
+    if rounded >= 1000.0 && unit < LAST {
+        value = rounded / 1000.0;
+        unit += 1;
+    }
+
+    let s = format!("{:.1}", value);
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+
+    format!("{} {}", s, UNITS[unit])
 }

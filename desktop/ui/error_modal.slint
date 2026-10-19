@@ -1,30 +1,31 @@
 import { Theme } from "theme.slint";
 import { PrimaryButton } from "elements.slint";
 
-export component ErrorModal inherits Rectangle {
-    in-out property <bool> open: false;
 
+export global Error {
+
+    in-out property <bool> open: false;
     in-out property <string> title: "";
     in-out property <string> message: "";
 
-    callback closed();
+    callback show-error(string, string);
+    callback close-error();
 
-    visible: root.open;
+    show-error(title, message) => {
+        open = true;
+        root.message = message;
+        root.message = title;
+    }
+}
+
+export component ErrorModal inherits Rectangle {
 
     width: 100%;
     height: 100%;
-
     background: #00000088;
     border-radius: 8px;
 
-    TouchArea {
-        width: 100%;
-        height: 100%;
-
-        clicked => {
-            root.closed();
-        }
-    }
+    TouchArea { }
 
     Rectangle {
         width: 420px;
@@ -47,7 +48,7 @@ export component ErrorModal inherits Rectangle {
             spacing: 12px;
 
             Text {
-                text: root.title;
+                text: Error.title;
                 color: Theme.colors.primary-font;
                 font-size: 20px;
                 font-weight: 600;
@@ -55,7 +56,7 @@ export component ErrorModal inherits Rectangle {
             }
 
             Text {
-                text: root.message;
+                text: Error.message;
                 color: Theme.colors.secondary-font;
                 font-size: 14px;
                 wrap: word-wrap;
@@ -68,9 +69,7 @@ export component ErrorModal inherits Rectangle {
 
                 PrimaryButton {
                     text: @tr("Close");
-                    clicked => {
-                        root.closed();
-                    }
+                    clicked => { Error.open = false; }
                 }
             }
         }

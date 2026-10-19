@@ -68,6 +68,10 @@ pub async fn lookup_code(code: String, state: &NectanState) -> Result<EndpointId
 
                 Ok(body.device_id)
             }
+            StatusCode::REQUEST_TIMEOUT => {
+                info!("Code was found but expired.");
+                Err(CodeLookupError::NotFound)
+            }
             StatusCode::NOT_FOUND => {
                 info!("Code not found");
 
@@ -93,10 +97,7 @@ pub async fn issue_code(state: &NectanState, code: String) -> Result<String> {
         bail!("Connection error. Make sure you are connected to the internet and try again.")
     };
 
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(state.device_id().as_bytes());
-    bytes.extend_from_slice(&seq_n.to_be_bytes());
-    let signature = state.sign(&bytes);
+    let signature = state.sign(&seq_n.to_be_bytes());
 
     let payload = CodeIssueRequest {
         device_id: state.device_id(),
@@ -112,6 +113,7 @@ pub async fn issue_code(state: &NectanState, code: String) -> Result<String> {
 
     for attempt in 1..=max_attempts {
         info!("Attempting to issue code");
+
         match state.http().post(&url).body(payload.clone()).send().await {
             Ok(response) => match response.status() {
                 StatusCode::ACCEPTED => {

@@ -675,15 +675,18 @@ export component IncomingTransferOfferModal inherits GeneralModal {
         IncomingTransferOfferBridge.open = false;
         IncomingTransferOfferBridge.reject();
     }
+
     on-enter => {
         IncomingTransferOfferBridge.accept();
     }
+
+    init => { self.focus() }
 
     Rectangle {
         width: min(820px, parent.width - 40px);
         height: min(560px, parent.height - 40px);
         clip: true;
-        background: Theme.colors.primary-col;
+        background: Theme.colors.secondary-col;
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.colors.border-col;
