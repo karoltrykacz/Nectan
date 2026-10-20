@@ -453,45 +453,54 @@ export component TransferDetails inherits Rectangle {
 }
 
 export component Transfers inherits Rectangle {
-    init => { TransfersBridge.open-transfers(); }
 
-    Timer {
-        interval: 41ms;
-        running: true;
-        triggered() => {
-            TransfersBridge.refresh-transfers();
+    forward-focus: fs;
+
+    init => { fs.focus() };
+
+    fs := FocusScope {
+        key-pressed(event) => {
+            EventResult.reject
         }
-    }
 
-    if TransfersBridge.selected-transfer < 0: VerticalLayout {
-        padding: 8px;
-        ListView {
-            vertical-scrollbar-policy: as-needed;
-            horizontal-scrollbar-policy: always-off;
-            for item[i] in TransfersBridge.transfers: VerticalLayout {
-                TransferTile {
-                    self: item;
-                    clicked => {
-                        TransfersBridge.selected-transfer = i;
-                        TransfersBridge.selected-lazyfiles-source(item.id);
+        Timer {
+            interval: 41ms;
+            running: true;
+            triggered() => {
+                TransfersBridge.refresh-transfers();
+            }
+        }
+
+        if TransfersBridge.selected-transfer < 0: VerticalLayout {
+            padding: 8px;
+            ListView {
+                vertical-scrollbar-policy: as-needed;
+                horizontal-scrollbar-policy: always-off;
+                for item[i] in TransfersBridge.transfers: VerticalLayout {
+                    TransferTile {
+                        self: item;
+                        clicked => {
+                            TransfersBridge.selected-transfer = i;
+                            TransfersBridge.selected-lazyfiles-source(item.id);
+                        }
                     }
-                }
 
-                Rectangle {
-                    height: 10px;
+                    Rectangle {
+                        height: 10px;
+                    }
                 }
             }
         }
-    }
 
-    if TransfersBridge.transfers.length == 0: Text {
-        text: @tr("No ongoing transfers.");
-        font-family: Theme.font-heading;
-        color: Theme.colors.primary-font;
-    }
+        if TransfersBridge.transfers.length == 0: Text {
+            text: @tr("No ongoing transfers.");
+            font-family: Theme.font-heading;
+            color: Theme.colors.primary-font;
+        }
 
-    if TransfersBridge.selected-transfer >= 0: TransferDetails {
-        transfer: TransfersBridge.transfers[TransfersBridge.selected-transfer];
-        back => { TransfersBridge.selected-transfer = -1; }
+        if TransfersBridge.selected-transfer >= 0: TransferDetails {
+            transfer: TransfersBridge.transfers[TransfersBridge.selected-transfer];
+            back => { TransfersBridge.selected-transfer = -1; }
+        }
     }
 }

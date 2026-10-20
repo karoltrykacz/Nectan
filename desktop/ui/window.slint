@@ -12,8 +12,9 @@ export global WindowBridge {
     callback reorder-requested(int, int);
     callback close-requested(int);
 
-    in-out property <bool> welcome-open: true;
+    in-out property <bool> welcome-open;
 
+    in-out property <bool> any-modal-open;
     in-out property <bool> nectan-modal-open: false;
 
     in-out property <bool> topbar-hover: false;

@@ -18,6 +18,7 @@ export struct ResultItem {
 export global SearchBridge {
     in-out property <bool> open;
     in-out property <[ResultItem]> results;
+
     callback query-changed(string);
     callback action(SearchItemKind, string);
 }

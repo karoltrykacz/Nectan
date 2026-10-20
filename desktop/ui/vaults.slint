@@ -9,33 +9,32 @@
 // } from "elements.slint";
 // import { TextPreviewBridge } from "text_preview.slint";
 //
-// export enum EntryType { folder, symlink, file }
+// // export enum EntryType { folder, symlink, file }
+// // export struct Entry { type: EntryType, path: string, name: string, preview: image }
 //
-// export struct Entry { type: EntryType, path: string, name: string, preview: image }
-//
-// export global ExplorerBridge {
-//     in-out property <[Entry]> files;
-//     in-out property <length> entry-size: 32px;
-//     in-out property <string> current;
-//     in-out property <bool> can-paste: false;
-//
-//     callback open(Entry);
-//
-//     callback forward();
-//     callback back();
-//
-//     callback copy(int, int);
-//
-//     callback cut(int, int);
-//     callback paste();
-//     callback delete-items(int, int);
-//     callback rename(int);
-//     callback new-folder();
-//     callback new-file();
-//     callback refresh();
-//     callback properties(int);
-// }
-//
+// // export global VaultsBridge {
+// //     in-out property <[Entry]> files;
+// //     in-out property <length> entry-size: 32px;
+// //     in-out property <string> current;
+// //     in-out property <bool> can-paste: false;
+// //
+// //     callback open(Entry);
+// //
+// //     callback forward();
+// //     callback back();
+// //
+// //     callback copy(int, int);
+// //
+// //     callback cut(int, int);
+// //     callback paste();
+// //     callback delete-items(int, int);
+// //     callback rename(int);
+// //     callback new-folder();
+// //     callback new-file();
+// //     callback refresh();
+// //     callback properties(int);
+// // }
+// //
 // component RenameModal inherits GeneralModal {
 //     in-out property <string> input;
 //

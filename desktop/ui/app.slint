@@ -35,12 +35,18 @@ import { SearchBridge, Search, SearchBar } from "search.slint";
 import { WindowBridge, Window } from "window.slint";
 import { WelcomeScreen } from "welcome.slint";
 import { SidebarBridge, Sidebar, SidebarShower } from "sidebar.slint";
-import { Explorer, ExplorerBridge } from "explorer.slint";
+import {
+    Explorer,
+    ExplorerBridge,
+    DirEntry,
+    SearchExplorer,
+} from "explorer.slint";
 
 export {
     Theme,
     Error,
     Window,
+    DirEntry,
     DeviceItem,
     TransferItem,
     SearchBridge,
@@ -248,6 +254,7 @@ export component NectanWindow inherits Window {
 
     no-frame: true;
     background: transparent;
+    maximized: true;
 
     callback pasted();
 
@@ -265,11 +272,6 @@ export component NectanWindow inherits Window {
         }
 
         KeyBinding {
-            keys: @keys(F11);
-            activated => { root.maximized = !root.maximized; }
-        }
-
-        KeyBinding {
             keys: @keys(Slash);
             activated => { SearchBridge.open = true; }
         }
@@ -279,26 +281,41 @@ export component NectanWindow inherits Window {
             activated => { AddDeviceBridge.open = true; }
         }
 
-        key-pressed(event) => {
+        KeyBinding {
+            keys: @keys(F11);
+            activated => { root.maximized = !root.maximized; }
+        }
 
+        KeyBinding {
+            keys: @keys(E);
+            activated => {
+                sidebar.essentials();
+            }
+        }
+
+        key-pressed(event) => {
             if (event.modifiers.control || event.modifiers.meta) {
                 if (event.text == Key.S) {
                     WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
                     WindowBridge.sidebar-hover = false;
+                    return accept;
                 }
                 if (event.text == Key.V) {
                     pasted();
+                    return accept;
                 }
                 if (event.text == Key.K) {
                     SearchBridge.open = !SearchBridge.open;
+                    return accept;
                 }
                 if (event.text == Key.I) {
                     SettingsBridge.open = true;
+                    return accept;
                 }
                 if (event.text == Key.T) {
                     WindowBridge.current-window = Window.transfers;
+                    return accept;
                 }
-                return accept;
             }
             return reject;
         }
@@ -309,18 +326,17 @@ export component NectanWindow inherits Window {
             width: 100%;
             height: 100%;
             background: Theme.colors.primary-col;
-
+            border-color: Theme.colors.fourth-col;
             border-width: root.maximized ? 0 : 1px;
             border-radius: root.maximized ? 0 : 12px;
 
-            border-color: Theme.colors.fourth-col;
             clip: true;
 
             TopBarShower { }
 
             SidebarShower { }
 
-            Sidebar { }
+            sidebar := Sidebar { }
 
             Topbar { }
 
@@ -363,13 +379,14 @@ export component NectanWindow inherits Window {
             || OutcomingTransferModalBridge.open
             || IncomingTransferOfferBridge.open
             || WindowBridge.welcome-open
-            || Theme.theme-selector
-            || Error.open;
+            || Error.open
+            || Theme.theme-selector;
 
         changed any-modal-open => {
             if !any-modal-open {
                 focus-scope.focus();
             }
+            WindowBridge.any-modal-open = any-modal-open;
         }
 
         if SettingsBridge.open: Settings { }
@@ -383,6 +400,8 @@ export component NectanWindow inherits Window {
         if AddDeviceBridge.open:  AddDeviceModal { }
 
         if SearchBridge.open: Search { }
+
+        if ExplorerBridge.searching: SearchExplorer { }
 
         if Error.open: ErrorModal { }
 

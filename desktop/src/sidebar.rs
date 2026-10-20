@@ -1,9 +1,13 @@
-use crate::{DragGridTileData, ExplorerBridge, NectanWindow, SidebarBridge};
+use crate::{
+    DragGridTileData, ExplorerBridge, NectanWindow, SidebarBridge,
+    WindowBridge, state::ui_state,
+};
 use slint::{
     ComponentHandle, Image, Model, ModelNotify, ModelRc, ModelTracker,
-    ToSharedString,
+    ToSharedString, Window,
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use tracing::info;
 
 #[derive(Clone, Debug)]
 pub enum Builtin {
@@ -16,6 +20,21 @@ pub enum Builtin {
     Recent,
     Home,
     Drives,
+}
+impl From<crate::Builtin> for Builtin {
+    fn from(b: crate::Builtin) -> Self {
+        match b {
+            crate::Builtin::Recent => Builtin::Recent,
+            crate::Builtin::Documents => Builtin::Documents,
+            crate::Builtin::Pictures => Builtin::Images,
+            crate::Builtin::Videos => Builtin::Videos,
+            crate::Builtin::Downloads => Builtin::Downloads,
+            crate::Builtin::Home => Builtin::Home,
+            crate::Builtin::Music => Builtin::Music,
+            crate::Builtin::Trash => Builtin::Trash,
+            crate::Builtin::Drives => Builtin::Drives,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -42,8 +61,13 @@ impl TileAction {
 
         println!("Opening {dir:?}");
 
+        w.global::<WindowBridge>()
+            .set_current_window(crate::Window::Vaults);
+
         w.global::<ExplorerBridge>()
             .set_current_dir(dir.display().to_string().to_shared_string());
+
+        ui_state().explorer().open_dir(w.as_weak(), dir);
     }
 }
 

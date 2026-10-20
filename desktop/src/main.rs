@@ -3,6 +3,7 @@
 slint::include_modules!();
 
 use crate::devices::{handle_devices, update_devices};
+use crate::explorer::handle_explorer;
 use crate::handlers::{
     event_listener, handle_add_device, handle_cancel_walker,
     handle_connection_offer, handle_drag_and_drop_files,
@@ -171,6 +172,8 @@ fn init_state(weak: Weak<NectanWindow>, storage: Arc<Storage>) {
             handle_outcoming_transfer(&w);
             handle_refresh_transfers_list(&w);
             handle_open_transfers(&w);
+
+            handle_explorer(&w);
         });
     });
 }

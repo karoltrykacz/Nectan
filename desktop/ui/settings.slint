@@ -23,11 +23,6 @@ export struct ShortcutGroup {
     category: string,
     items: [ShortcutItem],
 }
-// enum SubSettingsTab {
-//     general,
-//     transfers,
-//     advanced,
-// }
 
 export global SettingsBridge {
 
@@ -789,7 +784,7 @@ export component Settings inherits GeneralModal {
 
         Rectangle {
             width: min(820px, parent.width - 40px);
-            height: min(560px,parent.height - 40px);
+            height: min(520px,parent.height - 40px);
             clip: true;
 
             background: Theme.colors.primary-col;

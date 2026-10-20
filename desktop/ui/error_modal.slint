@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { PrimaryButton } from "elements.slint";
+import { PrimaryButton, GeneralModal } from "elements.slint";
 
 
 export global Error {
@@ -14,62 +14,70 @@ export global Error {
     show-error(title, message) => {
         open = true;
         root.message = message;
-        root.message = title;
+        root.title = title;
     }
 }
 
-export component ErrorModal inherits Rectangle {
+export component ErrorModal inherits GeneralModal {
 
-    width: 100%;
-    height: 100%;
-    background: #00000088;
-    border-radius: 8px;
+    on-close => { Error.open = false; }
+    on-enter => { Error.open = false; }
+
+    init => { fs.focus(); }
 
     TouchArea { }
 
-    Rectangle {
-        width: 420px;
-        height: 196px;
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        background: Theme.colors.primary-col;
-        border-radius: 12px;
-        border-width: 1px;
-        border-color: Theme.colors.border-col;
+    fs := FocusScope {
 
-        TouchArea {
-            width: 100%;
-            height: 100%;
+        key-pressed(event) => {
+            Error.open = false;
+            EventResult.accept
         }
 
-        VerticalLayout {
-            padding: 20px;
-            padding-top: 14px;
-            spacing: 12px;
+        Rectangle {
+            width: 520px;
+            height: 196px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
 
-            Text {
-                text: Error.title;
-                color: Theme.colors.primary-font;
-                font-size: 20px;
-                font-weight: 600;
-                font-family: Theme.font-heading;
+            TouchArea {
+                width: 100%;
+                height: 100%;
             }
 
-            Text {
-                text: Error.message;
-                color: Theme.colors.secondary-font;
-                font-size: 14px;
-                wrap: word-wrap;
-                vertical-stretch: 1;
-            }
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 14px;
+                spacing: 12px;
 
-            HorizontalLayout {
-                horizontal-stretch: 1;
-                alignment: end;
+                Text {
+                    text: Error.title;
+                    color: Theme.colors.primary-font;
+                    font-size: 20px;
+                    font-weight: 600;
+                    font-family: Theme.font-heading;
+                }
 
-                PrimaryButton {
-                    text: @tr("Close");
-                    clicked => { Error.open = false; }
+                Text {
+                    text: Error.message;
+                    color: Theme.colors.secondary-font;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                    vertical-stretch: 1;
+                }
+
+                HorizontalLayout {
+                    horizontal-stretch: 1;
+                    alignment: end;
+
+                    PrimaryButton {
+                        text: @tr("Close");
+                        clicked => { Error.open = false; }
+                    }
                 }
             }
         }

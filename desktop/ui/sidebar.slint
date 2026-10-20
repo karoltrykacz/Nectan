@@ -11,13 +11,19 @@ import { Theme } from "theme.slint";
 import { DevicesBridge } from "devices.slint";
 import { AddDeviceBridge } from "add_remote_modal.slint";
 import { SettingsBridge } from "settings.slint";
+import { ExplorerBridge } from "explorer.slint";
+
 
 export global SidebarBridge {
     in-out property <[DragGridTileData]> essentials;
 
+    in-out property <bool> essentials-select;
+
     callback reorder(int, int);
     pure callback id-at-slot(int) -> int;
     callback clicked(int);
+
+    callback name();
 }
 
 export component SidebarShower inherits Rectangle {
@@ -95,7 +101,7 @@ component SidebarDevice inherits Rectangle {
 export component Sidebar inherits Rectangle {
 
     background: Theme.colors.primary-col;
-    x: WindowBridge.sidebar-visible ? 0 : (WindowBridge.sidebar-hover ? 0 : -WindowBridge.sidebar-width);
+    x: WindowBridge.sidebar-visible ? 0 : ((WindowBridge.sidebar-hover || SidebarBridge.essentials-select) ? 0 : -WindowBridge.sidebar-width);
     width: WindowBridge.sidebar-width;
     z: 2;
     border-radius: 8px;
@@ -107,154 +113,226 @@ export component Sidebar inherits Rectangle {
         easing: ease;
     }
 
-    TouchArea {
-        property <bool> maybe-dragging: false;
-        moved => {
-            if (self.maybe-dragging) {
-                WindowBridge.drag-window();
-            }
-        }
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.down) {
-                self.maybe-dragging = true;
-            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                self.maybe-dragging = false;
-            }
+    callback essentials();
+    callback leave();
+
+    property <int> cursor: -1;
+
+    pure function count() -> int {
+        SidebarBridge.essentials.length
+    }
+
+    function move-to(target: int) {
+        if target >= 0 && target < count() {
+            cursor = target;
         }
     }
 
-    VerticalLayout {
-        padding: 8px;
-        padding-bottom: 4px;
+    essentials => {
+        cursor = 4;
+        fs.focus();
+        SidebarBridge.essentials-select = true;
+    }
 
-        HorizontalLayout {
-            IconButton {
-                width: 28px;
-                height: 28px;
+    leave => {
+        cursor = -1;
+        ExplorerBridge.focus();
+        SidebarBridge.essentials-select = false;
+    }
 
-                Image {
-                    source: @image-url("icons/tray.png");
-                    width: 16px;
-                    height: 16px;
-                }
+    forward-focus: fs;
 
-                clicked => {
-                    WindowBridge.nectan-modal-open = true;
-                }
-            }
-
-            Rectangle { }
-
-            // IconButton {
-            //     width: 28px;
-            //     height: 28px;
-            //
-            //     SvgIcon {
-            //         source: @image-url("icons/bell.svg");
-            //         size: 16px;
-            //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-            //     }
-            //
-            //     clicked => {
-            //         NotificationsBridge.notifications-visible = !NotificationsBridge.notifications-visible;
-            //     }
-            // }
-
-            IconButton {
-                width: 28px;
-                height: 28px;
-                SvgIcon {
-                    source: @image-url("icons/sidebar.svg");
-                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                    size: 16px;
-                }
-
-                clicked => {
-                    WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
-                }
+    fs := FocusScope {
+        changed has-focus => {
+            if !self.has-focus {
+                root.cursor = -1;
             }
         }
 
-        Rectangle {
-            height: 8px;
+        key-pressed(event) => {
+            if root.cursor < 0 && event.text != Key.Escape {
+                return EventResult.accept;
+            }
+            if event.text == "l" || event.text == Key.RightArrow {
+                root.move-to(root.cursor + 1);
+                return EventResult.accept;
+            }
+            if event.text == "h" || event.text == Key.LeftArrow {
+                root.move-to(root.cursor - 1);
+                return EventResult.accept;
+            }
+            if event.text == "j" || event.text == Key.DownArrow {
+                root.move-to(root.cursor + grid.cols);
+                return EventResult.accept;
+            }
+            if event.text == "k" || event.text == Key.UpArrow {
+                root.move-to(root.cursor - grid.cols);
+                return EventResult.accept;
+            }
+            if event.text == Key.Return || event.text == " " {
+                SidebarBridge.clicked(SidebarBridge.id-at-slot(root.cursor));
+                root.leave();
+                return EventResult.accept;
+            }
+            if event.text == Key.Escape || event.text == "s" {
+                root.leave();
+                return EventResult.accept;
+            }
+            root.leave();
+            EventResult.reject
         }
 
-        SearchBar { }
+        TouchArea {
 
-        Rectangle {
-            height: 8px;
+            property <bool> maybe-dragging: false;
+
+            moved => {
+                if (self.maybe-dragging) {
+                    WindowBridge.drag-window();
+                }
+            }
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down) {
+                    self.maybe-dragging = true;
+                } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                    self.maybe-dragging = false;
+                }
+            }
         }
 
-        DragGrid {
-            gap: 8px;
-            min-cell-w: 42px;
-            cell-h: 36px;
-            tiles: SidebarBridge.essentials;
+        VerticalLayout {
+            padding: 8px;
+            padding-bottom: 4px;
 
-            reorder(id, target) => { SidebarBridge.reorder(id, target); }
-            id-at-slot(slot) => { return SidebarBridge.id-at-slot(slot); }
-            clicked(id) => { SidebarBridge.clicked(id) }
-        }
+            HorizontalLayout {
+                IconButton {
+                    width: 28px;
+                    height: 28px;
 
-        Rectangle {
-            height: 8px;
-        }
+                    Image {
+                        source: @image-url("icons/tray.png");
+                        width: 16px;
+                        height: 16px;
+                    }
 
-        GridLayout {
+                    clicked => {
+                        WindowBridge.nectan-modal-open = true;
+                    }
+                }
 
-            spacing: 8px;
-            Row {
+                Rectangle { }
+
+                // IconButton {
+                //     width: 28px;
+                //     height: 28px;
+                //
+                //     SvgIcon {
+                //         source: @image-url("icons/bell.svg");
+                //         size: 16px;
+                //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                //     }
+                //
+                //     clicked => {
+                //         NotificationsBridge.notifications-visible = !NotificationsBridge.notifications-visible;
+                //     }
+                // }
 
                 IconButton {
-                    border-radius: 12px;
-                    height: 36px;
-                    transform-y: 0;
-                    inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-                    inner-border: AddDeviceBridge.open ? Theme.colors.fourth-col : transparent;
-
+                    width: 28px;
+                    height: 28px;
                     SvgIcon {
-                        source: @image-url("icons/link.svg");
+                        source: @image-url("icons/sidebar.svg");
                         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
                         size: 16px;
                     }
 
-                    clicked => { AddDeviceBridge.open = true; }
-                }
-
-                IconButton {
-                    border-radius: 12px;
-                    height: 36px;
-                    inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-                    transform-y: 0;
-                    inner-border: WindowBridge.current-window == Window.transfers ? Theme.colors.fourth-col : transparent;
-
-                    SvgIcon {
-                        source: @image-url("icons/tranfsers.svg");
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 17px;
+                    clicked => {
+                        WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
                     }
-
-                    clicked => { WindowBridge.current-window = Window.transfers; }
-                }
-
-                IconButton {
-                    border-radius: 12px;
-                    height: 36px;
-                    inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-                    transform-y: 0;
-                    inner-border: WindowBridge.current-window == Window.vaults ? Theme.colors.fourth-col : transparent;
-
-                    SvgIcon {
-                        source: @image-url("icons/archive.svg");
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 15px;
-                    }
-
-                    clicked => { WindowBridge.current-window = Window.vaults; }
                 }
             }
 
-            // Row {
+            Rectangle {
+                height: 8px;
+            }
+
+            SearchBar { }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            grid := DragGrid {
+                gap: 8px;
+                min-cell-w: 42px;
+                cell-h: 36px;
+                tiles: SidebarBridge.essentials;
+                highlighted-slot: root.cursor;
+
+                reorder(id, target) => { SidebarBridge.reorder(id, target); }
+                id-at-slot(slot) => { return SidebarBridge.id-at-slot(slot); }
+                clicked(id) => { SidebarBridge.clicked(id) }
+            }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            GridLayout {
+
+                spacing: 8px;
+                Row {
+
+                    IconButton {
+                        border-radius: 12px;
+                        height: 36px;
+                        transform-y: 0;
+                        inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+                        inner-border: AddDeviceBridge.open ? Theme.colors.fourth-col : transparent;
+
+                        SvgIcon {
+                            source: @image-url("icons/link.svg");
+                            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                            size: 16px;
+                        }
+
+                        clicked => { AddDeviceBridge.open = true; }
+                    }
+
+                    IconButton {
+                        border-radius: 12px;
+                        height: 36px;
+                        inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+                        transform-y: 0;
+                        inner-border: WindowBridge.current-window == Window.transfers ? Theme.colors.fourth-col : transparent;
+
+                        SvgIcon {
+                            source: @image-url("icons/tranfsers.svg");
+                            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                            size: 17px;
+                        }
+
+                        clicked => { WindowBridge.current-window = Window.transfers; }
+                    }
+
+                    IconButton {
+                        border-radius: 12px;
+                        height: 36px;
+                        inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+                        transform-y: 0;
+                        inner-border: WindowBridge.current-window == Window.vaults ? Theme.colors.fourth-col : transparent;
+
+                        SvgIcon {
+                            source: @image-url("icons/archive.svg");
+                            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                            size: 15px;
+                        }
+
+                        clicked => { WindowBridge.current-window = Window.vaults; }
+                    }
+                }
+
+                // Row {
                 //
                 //     IconButton {
                 //         border-radius: 12px;
@@ -284,68 +362,69 @@ export component Sidebar inherits Rectangle {
                 //         clicked => { AddDeviceBridge.open = true; }
                 //     }
                 // }
-        }
+            }
 
-        Rectangle {
-            height: 8px;
-        }
+            Rectangle {
+                height: 8px;
+            }
 
-        VerticalLayout {
-            spacing: 8px;
+            VerticalLayout {
+                spacing: 8px;
 
-            for d[i] in DevicesBridge.devices: SidebarDevice {
-                device: d;
-                selected: true;
-                clicked => {
-                    DevicesBridge.device-details-open-idx = i;
-                    WindowBridge.current-window = Window.device;
+                for d[i] in DevicesBridge.devices: SidebarDevice {
+                    device: d;
+                    selected: true;
+                    clicked => {
+                        DevicesBridge.device-details-open-idx = i;
+                        WindowBridge.current-window = Window.device;
+                    }
+                }
+
+                if DevicesBridge.devices.length == 0: Rectangle {
+                    height: 32px;
+
+                    Text {
+                        x: 52px;
+                        y: 12px;
+                        height: root.height;
+                        text: "Add first device";
+                        color: Theme.colors.primary-font;
+                        font-size: 13px;
+                        font-weight: 600;
+                        font-family: Theme.font-heading;
+                    }
+
+                    SvgIcon {
+                        x: 20px;
+                        source: @image-url("icons/corner-left-up.svg");
+                    }
                 }
             }
 
-            if DevicesBridge.devices.length == 0: Rectangle {
-                height: 32px;
+            Rectangle {
+                height: 8px;
+            }
 
-                Text {
-                    x: 52px;
-                    y: 12px;
-                    height: root.height;
-                    text: "Add first device";
-                    color: Theme.colors.primary-font;
-                    font-size: 13px;
-                    font-weight: 600;
-                    font-family: Theme.font-heading;
-                }
+            HorizontalLayout {
+                alignment: space-between;
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: @image-url("icons/settings.svg");
+                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        size: 16px;
+                    }
 
-                SvgIcon {
-                    x: 20px;
-                    source: @image-url("icons/corner-left-up.svg");
+                    clicked => {
+                        SettingsBridge.open = true;
+                    }
                 }
             }
-        }
 
-        Rectangle {
-            height: 8px;
-        }
-
-        HorizontalLayout {
-            alignment: space-between;
-            IconButton {
-                width: 28px;
-                height: 28px;
-                SvgIcon {
-                    source: @image-url("icons/settings.svg");
-                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                    size: 16px;
-                }
-
-                clicked => {
-                    SettingsBridge.open = true;
-                }
+            Rectangle {
+                height: 4px;
             }
-        }
-
-        Rectangle {
-            height: 4px;
         }
     }
 }

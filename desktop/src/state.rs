@@ -1,10 +1,13 @@
 use crate::{
-    DevicesBridge, NectanWindow, TransfersBridge, devices::DevicesModel,
-    explorer::Explorer, sidebar::EssentialsModel, transfers::TransfersModel,
+    DevicesBridge, ExplorerBridge, NectanWindow, TransfersBridge,
+    devices::DevicesModel,
+    explorer::{self, Explorer},
+    sidebar::EssentialsModel,
+    transfers::TransfersModel,
 };
 use ignore::WalkBuilder;
 use nectan_core::{transfers::Transfers, utils::CancelToken, walker::Walker};
-use slint::{Global, ModelRc, Timer};
+use slint::{ComponentHandle, Global, ModelRc, Timer};
 use std::{
     cell::{OnceCell, Ref, RefCell, RefMut},
     collections::HashSet,
@@ -26,7 +29,7 @@ pub struct OutcomingTransfer {
 pub struct UiState {
     paths: RefCell<HashSet<PathBuf>>,
     essentials: Rc<EssentialsModel>,
-    explorer: Explorer,
+    explorer: Rc<Explorer>,
     devices_model: Rc<DevicesModel>,
     transfers_model: OnceCell<Rc<TransfersModel>>,
     outcoming_transfer: Arc<OutcomingTransfer>,
@@ -73,6 +76,10 @@ impl UiState {
         self.paths.replace(HashSet::new()).drain().collect()
     }
 
+    pub fn explorer(&self) -> Rc<Explorer> {
+        self.explorer.clone()
+    }
+
     // pub fn get_clipboard(&self) -> RefMut<'_, Clipboard> {
     //     self.clipboard.borrow_mut()
     // }
@@ -107,12 +114,15 @@ pub fn init_app_state(w: &NectanWindow) {
         match_builder: Mutex::default(),
     };
     let essentials = Rc::new(EssentialsModel::new());
+    let explorer = Explorer::new();
+
+    w.global::<ExplorerBridge>().set_entries(explorer.model());
 
     let ui = Rc::new(UiState {
         paths: RefCell::new(HashSet::new()),
         essentials,
         devices_model,
-        explorer: Explorer::new(),
+        explorer,
         transfers_model: OnceCell::new(),
         // clipboard: RefCell::new(Clipboard::new().expect("Clipboard error.")),
         save_destination: RefCell::new(save_destination),

@@ -114,6 +114,8 @@ export component Carousel {
 export component PlainLineEdit inherits Rectangle {
     in-out property <string> input-text;
     in property <string> placeholder-text;
+    in property <int> start;
+    in property <int> end: input-text.character-count;
 
     callback edited(string);
     callback accepted();
@@ -126,7 +128,7 @@ export component PlainLineEdit inherits Rectangle {
 
     init => {
         text-input.focus();
-        text-input.select-all();
+        text-input.set-selection-offsets(root.start, root.end);
     }
 
     text-input := TextInput {
@@ -193,8 +195,8 @@ export component GeneralModal inherits Rectangle {
         Rectangle {
             width: 100%;
             height: 100%;
-            border-radius: 12px;
             background: #00000088;
+            border-radius: 12px;
         }
 
         TouchArea {
@@ -1194,6 +1196,8 @@ export struct DragGridTileData { id: int, slot: int, emoji: string, icon: image 
 
 export component DragGrid inherits Rectangle {
 
+    in property <int> highlighted-slot: -1;
+
     in property <[DragGridTileData]> tiles;
     in property <length> min-cell-w: 120px;
     in property <length> cell-h: 90px;
@@ -1206,7 +1210,7 @@ export component DragGrid inherits Rectangle {
 
     out property <int> pressed-id: (root-ta.pressed && !root.did-drag) ? root.press-id : -1;
 
-    property <int> cols: Math.max(1, Math.floor((root.width + gap) / (min-cell-w + gap)));
+    out property <int> cols: Math.max(1, Math.floor((root.width + gap) / (min-cell-w + gap)));
     property <length> cell-w: (root.width - gap * (cols - 1)) / cols;
 
     property <int> press-id: -1;
@@ -1228,14 +1232,17 @@ export component DragGrid inherits Rectangle {
     pure function slot-x(slot: int) -> length {
         Math.mod(slot, cols) * (cell-w + gap)
     }
+
     pure function slot-y(slot: int) -> length {
         Math.floor(slot / cols) * (cell-h + gap)
     }
+
     pure function slot-at(px: length, py: length) -> int {
         Math.min(tiles.length - 1,
                 Math.max(0, Math.floor(py / (cell-h + gap))) * cols
             + Math.min(cols - 1, Math.max(0, Math.floor(px / (cell-w + gap)))))
     }
+
     pure function slot-hit(px: length, py: length) -> int {
         let s = slot-at(px, py);
         let ox = px - slot-x(s);
@@ -1306,10 +1313,13 @@ export component DragGrid inherits Rectangle {
     for t in root.tiles: Rectangle {
 
         property <bool> dragged: t.id == root.dragged-id;
-        property <bool> hovered: root.dragged-id >= 0 ? dragged : t.slot == root.hover-slot;
+        property <bool> hovered: root.dragged-id >= 0
+            ? dragged
+            : (t.slot == root.hover-slot || t.slot == root.highlighted-slot);
 
         property <float> grid-col: Math.mod(t.slot, root.cols);
         property <float> grid-row: Math.floor(t.slot / root.cols);
+
         animate grid-col, grid-row {
             duration: 180ms;
             easing: ease-in-out;
@@ -1317,6 +1327,7 @@ export component DragGrid inherits Rectangle {
 
         property <length> off-x: dragged ? root.drag-x - grid-col * (root.cell-w + root.gap) : 0px;
         property <length> off-y: dragged ? root.drag-y - grid-row * (root.cell-h + root.gap) : 0px;
+
         animate off-x, off-y {
             duration: dragged ? 0ms : 100ms;
             easing: ease;
@@ -1336,6 +1347,9 @@ export component DragGrid inherits Rectangle {
         drop-shadow-color: dragged ? #0008 : transparent;
 
         transform-scale: pressed-id == t.id ? 0.97 : 1.0;
+
+        // border-color: hovered ? Theme.colors.fourth-col : transparent;
+        // border-width: 1.5px;
 
         SvgIcon {
             source: t.icon;

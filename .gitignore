@@ -1,4 +1,4 @@
 /target
 /container
 Cargo.lock
-debug.sh
+build.sh
