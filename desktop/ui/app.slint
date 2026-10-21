@@ -41,8 +41,10 @@ import {
     DirEntry,
     SearchExplorer,
 } from "explorer.slint";
+import { Keys, ChangeShortcut } from "keys.slint";
 
 export {
+    Keys,
     Theme,
     Error,
     Window,
@@ -176,7 +178,9 @@ component Topbar inherits Rectangle {
     y: 0;
     z: 10;
     height: 20px;
-    opacity: WindowBridge.topbar-hover ? 1.0 : 0.0;
+    opacity: WindowBridge.native-topbar ? 0.0 :
+        WindowBridge.topbar-always-on ? 1.0 :
+        WindowBridge.topbar-hover ? 1.0 : 0.0;
 
     animate opacity {
         delay: 200ms;
@@ -241,6 +245,74 @@ component Topbar inherits Rectangle {
     }
 }
 
+component MainFocusScope inherits FocusScope {
+    focus-on-click: true;
+    width: 100%;
+    height: 100%;
+
+    init => {
+        self.focus();
+    }
+
+    KeyBinding {
+        keys: @keys(F11);
+        activated => { WindowBridge.maximized = !WindowBridge.maximized; }
+    }
+
+    KeyBinding {
+        keys: Keys.map.essentials.keys;
+        activated => {
+            // sidebar.essentials();
+	    // TODO 
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.essentials.alt-keys;
+        activated => {
+            // sidebar.essentials();
+	    // TODO
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.toggle-sidebar.keys;
+        activated => {
+            WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+            WindowBridge.sidebar-hover = false;
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.toggle-sidebar.alt-keys;
+        activated => {
+            WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+            WindowBridge.sidebar-hover = false;
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.settings.keys;
+        activated => { SettingsBridge.open = true; }
+    }
+
+    KeyBinding {
+        keys: Keys.map.settings.alt-keys;
+        activated => { SettingsBridge.open = true; }
+    }
+
+    KeyBinding {
+        keys: Keys.map.transfers.keys;
+        activated => { WindowBridge.current-window = Window.transfers; }
+    }
+
+    KeyBinding {
+        keys: Keys.map.transfers.alt-keys;
+        activated => { WindowBridge.current-window = Window.transfers; }
+    }
+
+    @children
+}
 
 export component NectanWindow inherits Window {
 
@@ -252,73 +324,20 @@ export component NectanWindow inherits Window {
     default-font-family: Theme.font-body;
     resize-border-width: 8px;
 
-    no-frame: true;
+    no-frame: !WindowBridge.native-topbar;
     background: transparent;
     maximized: true;
 
     callback pasted();
 
+    in-out property <keys> toggle-sidebar: @keys(Control + B);
+
     ThemeAnimator { }
 
     forward-focus: focus-scope;
 
-    focus-scope := FocusScope {
-        focus-on-click: true;
-        width: 100%;
-        height: 100%;
-
-        init => {
-            self.focus();
-        }
-
-        KeyBinding {
-            keys: @keys(Slash);
-            activated => { SearchBridge.open = true; }
-        }
-
-        KeyBinding {
-            keys: @keys(Shift + A);
-            activated => { AddDeviceBridge.open = true; }
-        }
-
-        KeyBinding {
-            keys: @keys(F11);
-            activated => { root.maximized = !root.maximized; }
-        }
-
-        KeyBinding {
-            keys: @keys(E);
-            activated => {
-                sidebar.essentials();
-            }
-        }
-
-        key-pressed(event) => {
-            if (event.modifiers.control || event.modifiers.meta) {
-                if (event.text == Key.S) {
-                    WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
-                    WindowBridge.sidebar-hover = false;
-                    return accept;
-                }
-                if (event.text == Key.V) {
-                    pasted();
-                    return accept;
-                }
-                if (event.text == Key.K) {
-                    SearchBridge.open = !SearchBridge.open;
-                    return accept;
-                }
-                if (event.text == Key.I) {
-                    SettingsBridge.open = true;
-                    return accept;
-                }
-                if (event.text == Key.T) {
-                    WindowBridge.current-window = Window.transfers;
-                    return accept;
-                }
-            }
-            return reject;
-        }
+    focus-scope := MainFocusScope {
+        init => { self.focus(); }
 
         MainWindowTouchArea { }
 
@@ -328,7 +347,7 @@ export component NectanWindow inherits Window {
             background: Theme.colors.primary-col;
             border-color: Theme.colors.fourth-col;
             border-width: root.maximized ? 0 : 1px;
-            border-radius: root.maximized ? 0 : 12px;
+            border-radius: WindowBridge.round-edges ? root.maximized ? 0 : 12px : 0;
 
             clip: true;
 
@@ -343,14 +362,17 @@ export component NectanWindow inherits Window {
             HorizontalLayout {
                 spacing: 8px;
                 padding: 8px;
-                padding-top: WindowBridge.topbar-hover ? 24px : 8px;
                 padding-left: !WindowBridge.sidebar-visible ? 8px : WindowBridge.sidebar-width;
+                padding-top: WindowBridge.native-topbar ? 8px :
+                    WindowBridge.topbar-always-on ? 24px :
+                    WindowBridge.topbar-hover ? 24px : 8px;
 
+                // For sidebar
                 animate x, padding-left {
                     duration: 128ms;
                     easing: ease;
                 }
-
+		// Topbar
                 animate padding-top {
                     delay: 200ms;
                     duration: 128ms;

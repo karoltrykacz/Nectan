@@ -4,6 +4,7 @@ use std::{
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     rc::Rc,
+    time::Instant,
 };
 
 use crate::{
@@ -118,6 +119,17 @@ impl Explorer {
 
         slint::spawn_local(async move {
             let result = tokio::spawn(read_dir(p.clone())).await;
+
+            // let result = tokio::spawn(async move {
+            //     let mut dir = tokio::fs::read_dir(p).await?;
+            //     let mut items = Vec::new();
+            //
+            //     while let Some(e) = dir.next_entry().await? {
+            //         items.push(e.path());
+            //         // if items.len()
+            //     }
+            //     Ok(items)
+            // });
 
             if this.token.get() != token {
                 warn!("Token changed");
@@ -253,11 +265,17 @@ pub fn handle_explorer(w: &NectanWindow) {
 }
 
 async fn read_dir(p: impl AsRef<Path>) -> std::io::Result<Vec<PathBuf>> {
+    let start = Instant::now();
     let mut dir = tokio::fs::read_dir(p).await?;
     let mut items = Vec::new();
+
     while let Some(e) = dir.next_entry().await? {
         items.push(e.path());
+        if items.len() > 1024 {
+            break;
+        }
     }
+    println!("Took {:?}", start.elapsed());
     Ok(items)
 }
 const MAX_HISTORY: usize = 256;

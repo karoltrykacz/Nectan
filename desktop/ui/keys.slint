@@ -1,0 +1,325 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { GeneralModal, PrimaryButton } from "elements.slint";
+// import { GeneralModal, PrimaryButton } from "elements.slint";
+// import { WindowBridge } from "window.slint";
+// import { SidebarBridge } from "sidebar.slint";
+
+export struct Shortcut {
+    keys: keys,
+    alt-keys: keys,
+}
+
+export struct KeyMap {
+    close: Shortcut,
+    confirm: Shortcut,
+    move-down: Shortcut,
+    move-up: Shortcut,
+    essentials: Shortcut,
+    toggle-sidebar: Shortcut,
+    transfers: Shortcut,
+    settings: Shortcut,
+    go-up: Shortcut,
+    go-down: Shortcut,
+    history-forward: Shortcut,
+    history-back: Shortcut,
+    half-page-down: Shortcut,
+    half-page-up: Shortcut,
+    find: Shortcut,
+    ripgrep: Shortcut,
+    copy: Shortcut,
+    cut: Shortcut,
+    trash: Shortcut,
+    delete-permanently: Shortcut,
+    select-all: Shortcut,
+    select-regex: Shortcut,
+    rename: Shortcut,
+    properties: Shortcut,
+    refresh: Shortcut,
+    create: Shortcut,
+    toggle-hidden: Shortcut,
+    list-view: Shortcut,
+    grid-view: Shortcut,
+    zoom-out: Shortcut,
+    zoom-in: Shortcut,
+}
+
+export global Keys {
+    in-out property <bool> change-shortcut;
+    in-out property <bool> change-shortcut-alt;
+    in-out property <string> change-shortcut-id: "";
+
+    public function open-change(id: string, alt: bool) {
+        change-shortcut-id = id;
+        change-shortcut-alt = alt;
+        change-shortcut = true;
+    }
+
+    public function close-change() {
+        change-shortcut = false;
+        change-shortcut-id = "";
+    }
+
+    callback make-keys(KeyEvent) -> keys;
+    callback save-shortcut(string, keys, bool);
+
+    in-out property <KeyMap> map;
+}
+
+export struct ShortcutItem { id: string, title: string, keys: keys, alt_keys: keys }
+
+export struct ShortcutGroup {
+    category: string,
+    items: [ShortcutItem],
+}
+
+export component KeysBadge inherits Rectangle {
+
+    in property <keys> keys;
+    in property <bool> pressed;
+    in property <string> shortcut-id;
+    in property <bool> alt;
+    in property <bool> interactive: true;
+
+    in property <string> placeholder: @tr("None");
+
+    private property <bool> empty: root.keys.to-string() == "";
+
+    width: max(48px, label.preferred-width + 40px);
+    height: 26px;
+    border-radius: 5px;
+    background: Theme.colors.third-font;
+
+    Rectangle {
+        y: (root.pressed || ta.pressed) ? 0 : -1.25px;
+        width: 100%;
+        height: 24px;
+        border-radius: 5px;
+        background: ta.has-hover ? Theme.colors.primary-font.darker(0.1) : Theme.colors.primary-font;
+
+        label := Text {
+            text: root.empty ? root.placeholder : root.keys.to-string();
+            color: root.empty
+                ? Theme.colors.primary-col.with-alpha(0.55)
+                : Theme.colors.primary-col;
+            font-family: Theme.font-heading;
+            font-size: 11px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: root.interactive;
+        mouse-cursor: pointer;
+        clicked => { Keys.open-change(root.shortcut-id, root.alt); }
+    }
+}
+
+export component ShortcutGroupView inherits Rectangle {
+    in property <string> category;
+    in property <[ShortcutItem]> items;
+
+    VerticalLayout {
+        padding: 8px;
+
+        Text {
+            text: root.category;
+            color: Theme.colors.primary-font;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        Rectangle {
+            height: 10px;
+        }
+
+        for item[i] in root.items: Rectangle {
+            height: 48px;
+
+            HorizontalLayout {
+                alignment: space-between;
+
+                Text {
+                    text: item.title;
+                    color: Theme.colors.primary-font;
+                    font-family: Theme.font-heading;
+                    font-size: 13px;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    cross-axis-alignment: center;
+
+                    KeysBadge {
+                        shortcut-id: item.id;
+                        alt: false;
+                        keys: item.keys;
+                    }
+
+                    if item.alt-keys.to-string() != "": Text {
+                        text: @tr(" | ");
+                        color: Theme.colors.third-font;
+                        font-size: 11px;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+
+                    if item.alt-keys.to-string() != "": KeysBadge {
+                        shortcut-id: item.id;
+                        alt: true;
+                        keys: item.alt-keys;
+                    }
+                }
+            }
+
+            if i != root.items.length - 1: Rectangle {
+                y: parent.height - self.height;
+                height: 1px;
+                background: Theme.colors.fourth-col.with-alpha(0.5);
+            }
+        }
+    }
+}
+
+
+export component ChangeShortcut inherits GeneralModal {
+    property <keys> new-keys;
+    property <string> shortcut-id: Keys.change-shortcut-id;
+    property <bool> is-primary: !Keys.change-shortcut-alt;
+    property <bool> pushed-down;
+
+    function save() {
+        root.restore-focus();
+        if new-keys.to-string() != "" {
+            Keys.save-shortcut(shortcut-id, new-keys, is-primary);
+        }
+        Keys.close-change();
+    }
+
+    on-close => {
+        root.restore-focus();
+        Keys.close-change();
+    }
+
+    init => { fs.focus(); }
+
+    forward-focus: fs;
+
+    fs := FocusScope {
+
+        capture-key-pressed(event) => {
+            pushed-down = true;
+            EventResult.reject
+        }
+
+        capture-key-released(event) => {
+            pushed-down = false;
+            EventResult.reject
+        }
+
+        KeyBinding {
+            keys: @keys(Return);
+            activated => { save(); }
+        }
+
+        KeyBinding {
+            keys: @keys(Escape);
+            activated => {
+                root.restore-focus();
+                Keys.close-change();
+            }
+        }
+
+        key-released(event) => {
+            EventResult.accept
+        }
+
+        key-pressed(event) => {
+            root.new-keys = Keys.make-keys(event);
+            EventResult.accept
+        }
+
+        Rectangle {
+
+            width: min(520px, parent.width - 80px);
+            height: min(256px, parent.height - 80px);
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            clip: true;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 14px;
+
+                VerticalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    Text {
+                        text: @tr("Change shortcut");
+                        font-size: 20px;
+                        color: Theme.colors.primary-font;
+                        font-family: Theme.font-heading;
+                        font-weight: 600;
+                    }
+
+                    VerticalLayout {
+                        alignment: start;
+                        Text {
+                            text: @tr("Click enter to confirm.");
+                            font-size: 13px;
+                            color: Theme.colors.secondary-font;
+                        }
+                    }
+                }
+
+                Rectangle { }
+
+                KeysBadge {
+                    interactive: false;
+                    cross-axis-self-alignment: center;
+                    pressed: root.pushed-down;
+                    keys: root.new-keys;
+                }
+
+                Rectangle { }
+
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton {
+                        text: @tr("Cancel");
+                        alt: true;
+                        clicked => {
+                            root.restore-focus();
+                            Keys.close-change();
+                        }
+                    }
+
+                    Rectangle {
+                        width: 12px;
+                    }
+
+                    PrimaryButton {
+                        text: @tr("Save");
+                        image: @image-url("icons/save.svg");
+                        clicked => { save(); }
+                    }
+                }
+            }
+        }
+    }
+}

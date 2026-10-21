@@ -166,6 +166,7 @@ export component GeneralModal inherits Rectangle {
 
     callback on-close();
     callback on-enter();
+    callback restore-focus();
 
     forward-focus: focus-scope;
 
@@ -173,37 +174,39 @@ export component GeneralModal inherits Rectangle {
 
         focus-on-click: true;
 
-        // init => { self.focus(); }
-
         key-pressed(event) => {
             if (event.text == Key.Escape) {
-                on-close();
-                return accept;
+                root.restore-focus();
+                root.on-close();
+                return EventResult.accept;
             }
             if (event.text == "w"
                 && (event.modifiers.control || event.modifiers.meta)) {
-                on-close();
-                return accept;
+                root.restore-focus();
+                root.on-close();
+                return EventResult.accept;
             }
             if (event.text == Key.Return) {
-                on-enter();
-                return accept;
+                root.restore-focus();
+                root.on-enter();
+                return EventResult.accept;
             }
-            return reject;
+            return EventResult.reject;
         }
 
         Rectangle {
             width: 100%;
             height: 100%;
             background: #00000088;
-            border-radius: 12px;
+            border-radius: WindowBridge.round-edges ? 12px : 0;
         }
 
         TouchArea {
             width: 100%;
             height: 100%;
             clicked => {
-                on-close();
+                root.restore-focus();
+                root.on-close();
             }
         }
 

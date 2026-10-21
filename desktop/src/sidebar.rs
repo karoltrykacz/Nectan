@@ -146,7 +146,6 @@ impl EssentialsModel {
             .into_iter()
             .enumerate()
             .map(|(slot, (builtin, icon))| {
-                // tile id == action id
                 let id = actions.add(TileAction::Builtin(builtin));
                 DragGridTileData {
                     id,

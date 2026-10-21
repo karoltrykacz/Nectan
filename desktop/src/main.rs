@@ -12,6 +12,7 @@ use crate::handlers::{
     handle_scan_folders, handle_send, handle_settings, handle_username_change,
     handle_window_controls,
 };
+use crate::keymap::handle_keys;
 use anyhow::Result;
 use nectan_core::common::get_signing_key;
 use nectan_core::storage::Storage;
@@ -30,11 +31,13 @@ use nectan_core::devices::Devices;
 use nectan_core::devices::UserInfo;
 use nectan_core::devices::Username;
 use nectan_core::setup_core;
+use std::any::type_name_of_val;
 use std::sync::Arc;
 
 mod devices;
 mod explorer;
 mod handlers;
+mod keymap;
 mod search;
 mod sidebar;
 mod state;
@@ -109,7 +112,7 @@ fn init_lang(w: &NectanWindow, storage: Arc<Storage>) {
         }
     });
 }
-
+use slint::Keys as SlintKeys;
 fn init_state(weak: Weak<NectanWindow>, storage: Arc<Storage>) {
     tokio::spawn(async move {
         let userinfo = UserInfo::new(Username::new("Desktop User").unwrap());
@@ -184,6 +187,9 @@ async fn main() -> Result<(), slint::PlatformError> {
 
     let w = NectanWindow::new()?;
 
+    // let sidebar = Keys::from_parts(["Control", "T"]).unwrap();
+    // w.set_toggle_sidebar(sidebar);
+
     stateless_handlers(&w);
 
     let storage = Arc::new(Storage::new(Storage::dir()));
@@ -209,6 +215,7 @@ async fn main() -> Result<(), slint::PlatformError> {
             info!("Welcome done.");
         });
 
+    handle_keys(&w, storage.clone());
     handle_sidebar(&w);
 
     if !is_setup {

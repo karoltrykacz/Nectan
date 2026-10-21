@@ -8,9 +8,7 @@ import {
     Spinner,
 } from "elements.slint";
 import { ListView, ScrollView } from "std-widgets.slint";
-import { SettingsBridge } from "settings.slint";
 import { WindowBridge } from "window.slint";
-
 
 export enum View { grid, list }
 
@@ -24,6 +22,8 @@ export global ExplorerBridge {
     in-out property <string> current-dir;
     in-out property <View> view: View.list;
     in-out property <[DirEntry]> entries;
+
+    in-out property <[string]> search-result;
 
     in-out property <length> list-height: 32px;
     in-out property <length> grid-height: 48px;
@@ -201,7 +201,7 @@ export component SearchExplorer inherits GeneralModal {
     property <string> query;
     property <bool> scanning: true;
 
-    in-out property <float> split-ratio: 0.66;
+    in-out property <float> split-ratio: 0.575;
 
     property <length> min-pane-width: 200px;
     property <length> max-content-width: 1070px;
@@ -219,6 +219,13 @@ export component SearchExplorer inherits GeneralModal {
     init => { self.focus(); }
 
     on-close => {
+        close();
+    }
+    on-enter => {
+        close();
+    }
+
+    function close() {
         ExplorerBridge.searching = false;
         ExplorerBridge.focus();
     }
@@ -271,19 +278,20 @@ export component SearchExplorer inherits GeneralModal {
                     if root.scanning: Spinner { }
                 }
 
-                Rectangle { }
+                Text {
+                    cross-axis-self-alignment: end;
+                    width: 60px;
+                    text: "0 / 123 ";
+                }
 
-                HorizontalLayout {
+                Rectangle {
+                    border-radius: 8px;
+                    background: Theme.colors.third-col;
+                    height: 32px;
 
-                    Rectangle {
-                        border-radius: 8px;
-                        background: Theme.colors.third-col;
-                        height: 32px;
-
-                        le := PlainLineEdit {
-                            input-text <=> query;
-                            accepted => {}
-                        }
+                    le := PlainLineEdit {
+                        input-text <=> query;
+                        accepted => { close(); }
                     }
                 }
             }
@@ -350,6 +358,7 @@ component RenameModal inherits GeneralModal {
 
     in-out property <string> new-name;
     callback save();
+    callback close();
 
     on-enter => { root.save(); }
 
@@ -412,7 +421,7 @@ component RenameModal inherits GeneralModal {
                     text: @tr("Cancel");
                     alt: true;
                     clicked => {
-                        SettingsBridge.username-modal = false;
+                        root.close();
                     }
                 }
 
@@ -451,10 +460,27 @@ export component Explorer {
     property <int> cursor-hover;
 
     property <Drag> drag;
+
+    property <bool> selecting;
+    property <bool> did-select;
+    property <length> sel-x0;
+    property <length> sel-y0;
+    property <length> sel-x1;
+    property <length> sel-y1;
+
     property <int> anchor: -1;
 
     property <length> target-y: 0px;
     property <bool> pending-g;
+
+    function update-selection() {
+        let h = ExplorerBridge.item-height();
+        let n = ExplorerBridge.entries.length;
+        if n > 0 {
+            root.anchor = Math.min(Math.max(Math.floor(root.sel-y0 / h), 0), n - 1);
+            root.cursor = Math.min(Math.max(Math.floor(root.sel-y1 / h), 0), n - 1);
+        }
+    }
 
     function move-cursor(delta: int) {
         let max-index = ExplorerBridge.entries.length - 1;
@@ -511,6 +537,7 @@ export component Explorer {
 
     height: 100%;
     width: 100%;
+
     VerticalLayout {
 
         padding-left: 8px;
@@ -641,25 +668,50 @@ export component Explorer {
 
             ta := TouchArea {
                 pointer-event(event) => {
-                    let at = Math.floor((- list.content-y + self.mouse-y) / ExplorerBridge.item-height());
+                    let at = Math.floor((-list.content-y + self.mouse-y) / ExplorerBridge.item-height());
+
                     if event.kind == PointerEventKind.move {
                         cursor-hover = at;
+
+                        if self.pressed {
+                            root.sel-x1 = Math.min(Math.max(self.mouse-x, 0px), self.width);
+                            root.sel-y1 = Math.min(Math.max(self.mouse-y - list.content-y, 0px), list.content-height);
+
+                            if !root.selecting
+                                && (Math.abs((root.sel-x1 - root.sel-x0) / 1px) > 4
+                                || Math.abs((root.sel-y1 - root.sel-y0) / 1px) > 4) {
+                                root.selecting = true;
+                                root.did-select = true;
+                            }
+                            if root.selecting {
+                                update-selection();
+                            }
+                        }
+                    }
+                    if event.kind == PointerEventKind.cancel {
+                        root.selecting = false;
                     }
                     if event.button == PointerEventButton.right {
                         debug("right click");
                     }
                     if event.button == PointerEventButton.left {
                         if event.kind == PointerEventKind.down {
-                            root.drag = { x: self.mouse-x, y: self.mouse-y };
-                            debug("Drag start", at, root.drag);
+                            root.sel-x0 = self.mouse-x;
+                            root.sel-y0 = self.mouse-y - list.content-y;
+                            root.sel-x1 = root.sel-x0;
+                            root.sel-y1 = root.sel-y0;
+                            root.selecting = false;
+                            root.did-select = false;
                         }
                         if event.kind == PointerEventKind.up {
-                            debug("Drag end", at);
+                            root.selecting = false;
                         }
                     }
                 }
                 clicked => {
-                    root.open-at(Math.floor((-list.content-y + self.mouse-y) / ExplorerBridge.item-height()));
+                    if !root.did-select {
+                        root.open-at(Math.floor((-list.content-y + self.mouse-y) / ExplorerBridge.item-height()));
+                    }
                     fs.focus();
                 }
             }
@@ -669,6 +721,7 @@ export component Explorer {
                 list := ListView {
 
                     for entry[i] in ExplorerBridge.entries: Rectangle {
+                        z: 0;
                         height: ExplorerBridge.view == View.grid ? ExplorerBridge.grid-height : ExplorerBridge.list-height;
                         background: is-selected(i) ? Theme.colors.fourth-col :
                             cursor-hover == i ? Theme.colors.third-col : transparent;
@@ -699,6 +752,18 @@ export component Explorer {
                         }
                     }
                 }
+            }
+
+            if root.selecting: Rectangle {
+                z: 1;
+                x: Math.min(root.sel-x0, root.sel-x1);
+                y: Math.min(root.sel-y0, root.sel-y1) + list.content-y;
+                width: Math.max(root.sel-x0, root.sel-x1) - Math.min(root.sel-x0, root.sel-x1);
+                height: Math.max(root.sel-y0, root.sel-y1) - Math.min(root.sel-y0, root.sel-y1);
+                background: Theme.colors.fourth-col.brighter(1.0).with-alpha(0.5);
+                border-color: Theme.colors.fourth-font;
+                border-width: 1px;
+                border-radius: 8px;
             }
         }
     }

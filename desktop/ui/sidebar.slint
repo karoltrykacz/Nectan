@@ -10,8 +10,8 @@ import { Window, WindowBridge } from "window.slint";
 import { Theme } from "theme.slint";
 import { DevicesBridge } from "devices.slint";
 import { AddDeviceBridge } from "add_remote_modal.slint";
-import { SettingsBridge } from "settings.slint";
 import { ExplorerBridge } from "explorer.slint";
+import { SettingsBridge } from "settings.slint";
 
 
 export global SidebarBridge {
@@ -113,10 +113,17 @@ export component Sidebar inherits Rectangle {
         easing: ease;
     }
 
-    callback essentials();
     callback leave();
 
     property <int> cursor: -1;
+
+    callback essentials();
+
+    essentials => {
+        cursor = 4;
+        fs.focus();
+        SidebarBridge.essentials-select = true;
+    }
 
     pure function count() -> int {
         SidebarBridge.essentials.length
@@ -126,12 +133,6 @@ export component Sidebar inherits Rectangle {
         if target >= 0 && target < count() {
             cursor = target;
         }
-    }
-
-    essentials => {
-        cursor = 4;
-        fs.focus();
-        SidebarBridge.essentials-select = true;
     }
 
     leave => {

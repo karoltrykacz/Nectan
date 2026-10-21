@@ -12,17 +12,14 @@ import {
     Slider,
 } from "elements.slint";
 import { WindowBridge } from "window.slint";
+import {
+    Keys,
+    ShortcutGroup,
+    ShortcutGroupView,
+    KeyMap,
+    ChangeShortcut,
+} from "keys.slint";
 
-export struct ShortcutItem {
-    title: string,
-    keys: [string],
-    show_border: bool,
-}
-
-export struct ShortcutGroup {
-    category: string,
-    items: [ShortcutItem],
-}
 
 export global SettingsBridge {
 
@@ -34,8 +31,8 @@ export global SettingsBridge {
 
     pure callback format-speed(float) -> string;
 
-    in-out property <bool> open;
-    in-out property <int> active-tab: 1;
+    in-out property <bool> open: true;
+    in-out property <int> active-tab: 4;
     in-out property <int> selected-row: -1;
 
     in-out property <bool> autostart;
@@ -47,10 +44,8 @@ export global SettingsBridge {
     callback toggle_autostart();
     callback change-default-dir();
 
-    // (Enabled, Upload, download)
     callback confirm-limits(bool, float, float);
 
-    // Transfer settings
     in-out property <bool> self-accept-nearby;
     in-out property <bool> self-accept-favourites;
     in-out property <bool> speed-limits-on;
@@ -61,8 +56,9 @@ export global SettingsBridge {
 
     callback toggle_accept_nearby();
     callback toggle_accept_favourites();
+    callback save_hotkeys();
 
-    property <int> tab-count: 3;
+    property <int> tab-count: 5;
 
     public function next-tab() {
         active-tab = Math.mod(active-tab + 1, tab-count);
@@ -116,7 +112,7 @@ component SettingsPage inherits FocusScope {
 
             padding: 20px;
             padding-top: 16px;
-            spacing: 12px;
+            spacing: 8px;
             alignment: start;
 
             Text {
@@ -135,35 +131,6 @@ component SettingsPage inherits FocusScope {
     }
 }
 
-export component KeyBadge {
-    in property <string> key-name;
-
-    Rectangle {
-        height: 26px;
-        min-width: 36px;
-        border-radius: 5px;
-        background: Theme.colors.third-font;
-
-        Rectangle {
-            y: -1.25px;
-            width: 100%;
-            height: 24px;
-            border-radius: 5px;
-            background: Theme.colors.primary-font;
-
-            Text {
-                text: root.key-name;
-                color: Theme.colors.primary-col;
-                font-family: Theme.font-heading;
-
-                font-size: 11px;
-                font-weight: 600;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-        }
-    }
-}
 
 
 export component SettingsRow {
@@ -246,9 +213,7 @@ component SettingsTab inherits Rectangle {
         duration: 20ms;
         easing: ease;
     }
-    // background: ta.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
-                    // inner-border: AddDeviceBridge.open ? Theme.colors.fourth-col : transparent;
-                    //
+
     Text {
         x: 12px;
         y: (parent.height - self.height) / 2;
@@ -272,7 +237,7 @@ component SettingsTab inherits Rectangle {
 component General inherits SettingsPage {
 
     title: @tr("General");
-    row-count: 7;
+    row-count: 6;
 
     SettingsRow {
         idx: 0;
@@ -372,25 +337,6 @@ component General inherits SettingsPage {
             clicked => { SettingsBridge.change-default-dir(); }
         }
     }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 6;
-        z: 1;
-        title: @tr("Theme");
-        subtitle: Theme.themes[Theme.mode].name;
-        PrimaryButton {
-            text: @tr("Change");
-            clicked => {
-                Theme.theme-selector = true;
-                SettingsBridge.open = false;
-            }
-        }
-    }
 }
 
 component Transfers inherits SettingsPage {
@@ -455,11 +401,11 @@ component Transfers inherits SettingsPage {
 
             Switch {
                 checked <=> SettingsBridge.speed-limits-on;
-                toggled(are_enabled) => {
+                toggled(are-enabled) => {
                     SettingsBridge.confirm-limits(
-			are-enabled, 
-		    	SettingsBridge.upload-limit, 
-		    	SettingsBridge.download-limit);
+                        are-enabled,
+                        SettingsBridge.upload-limit,
+                        SettingsBridge.download-limit);
                 }
             }
         }
@@ -469,12 +415,17 @@ component Transfers inherits SettingsPage {
 component SpeedLimitsConfig inherits GeneralModal {
 
     on-close => {
+        root.restore-focus();
         SettingsBridge.speed-limits-config = false;
     }
+
     on-enter => {
+        root.restore-focus();
         SettingsBridge.speed-limits-config = false;
         SettingsBridge.confirm-limits(true, SettingsBridge.upload-limit, SettingsBridge.download-limit);
     }
+
+    init => { self.focus(); }
 
     Rectangle {
 
@@ -598,6 +549,7 @@ component SpeedLimitsConfig inherits GeneralModal {
                 text: @tr("Save");
                 image: @image-url("icons/save.svg");
                 clicked => {
+                    root.restore-focus();
                     SettingsBridge.speed-limits-config = false;
                     SettingsBridge.confirm-limits(true, SettingsBridge.upload-limit, SettingsBridge.download-limit);
                 }
@@ -606,8 +558,8 @@ component SpeedLimitsConfig inherits GeneralModal {
     }
 }
 
-component ChangeUsernameModal inherits Rectangle {
-    property <string> new-username;
+component ChangeUsernameModal inherits GeneralModal {
+    property <string> new-username: WindowBridge.username;
 
     function save() {
         WindowBridge.change-username(new-username);
@@ -615,91 +567,89 @@ component ChangeUsernameModal inherits Rectangle {
         SettingsBridge.username-modal = false;
     }
 
-    GeneralModal {
+    on-close => {
+        SettingsBridge.username-modal = false;
+    }
 
-        on-close => {
-            SettingsBridge.username-modal = false;
+    on-enter => { save(); }
+
+    Rectangle {
+
+        width: min(520px, parent.width - 80px);
+        height: min(256px, parent.height - 80px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {}
         }
-        on-enter => { save(); }
 
-        Rectangle {
-
-            width: min(520px, parent.width - 80px);
-            height: min(256px, parent.height - 80px);
-            drop-shadow-color: #00000099;
-            drop-shadow-blur: 28px;
-            background: Theme.colors.primary-col;
-            border-radius: 12px;
-            border-width: 1px;
-            border-color: Theme.colors.border-col;
-            clip: true;
-
-            TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => {}
-            }
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 14px;
 
             VerticalLayout {
-                padding: 20px;
-                padding-top: 14px;
+                spacing: 4px;
+                alignment: start;
+                Text {
+                    text: @tr("Change username");
+                    font-size: 20px;
+                    color: Theme.colors.primary-font;
+                    font-family: Theme.font-heading;
+                    font-weight: 600;
+                }
 
                 VerticalLayout {
-                    spacing: 4px;
                     alignment: start;
                     Text {
-                        text: @tr("Change username");
-                        font-size: 20px;
-                        color: Theme.colors.primary-font;
-                        font-family: Theme.font-heading;
-                        font-weight: 600;
-                    }
-
-                    VerticalLayout {
-                        alignment: start;
-                        Text {
-                            text: @tr("New username will be visible to other devices after app restart.");
-                            font-size: 13px;
-                            color: Theme.colors.secondary-font;
-                        }
+                        text: @tr("New username will be visible to other devices after app restart.");
+                        font-size: 13px;
+                        color: Theme.colors.secondary-font;
                     }
                 }
+            }
 
-                Rectangle { }
+            Rectangle { }
+
+            Rectangle {
+                border-radius: 8px;
+                background: Theme.colors.third-col;
+                VerticalLayout {
+                    PlainLineEdit {
+                        placeholder-text: @tr("Enter username");
+                        input-text <=> new-username;
+                        accepted => { root.restore-focus(); save(); }
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton {
+                    text: @tr("Cancel");
+                    alt: true;
+                    clicked => {
+                        SettingsBridge.username-modal = false;
+                    }
+                }
 
                 Rectangle {
-                    border-radius: 8px;
-                    background: Theme.colors.third-col;
-                    VerticalLayout {
-                        PlainLineEdit {
-                            placeholder-text: @tr("Enter username");
-                            input-text <=> new-username;
-                            accepted => { save(); }
-                        }
-                    }
+                    width: 12px;
                 }
 
-                Rectangle { }
-
-                HorizontalLayout {
-                    alignment: end;
-                    PrimaryButton {
-                        text: @tr("Cancel");
-                        alt: true;
-                        clicked => {
-                            SettingsBridge.username-modal = false;
-                        }
-                    }
-
-                    Rectangle {
-                        width: 12px;
-                    }
-
-                    PrimaryButton {
-                        text: @tr("Save");
-                        image: @image-url("icons/save.svg");
-                        clicked => { save(); }
-                    }
+                PrimaryButton {
+                    text: @tr("Save");
+                    image: @image-url("icons/save.svg");
+                    clicked => { save(); }
                 }
             }
         }
@@ -749,11 +699,182 @@ component Notifications inherits SettingsPage {
     }
 }
 
+component Appearance inherits SettingsPage {
+    title: @tr("Appearance");
+    row-count: 5;
+
+    SettingsRow {
+        idx: 0;
+        title: @tr("Theme");
+        subtitle: Theme.themes[Theme.mode].name;
+        PrimaryButton {
+            text: @tr("Change");
+            clicked => {
+                Theme.theme-selector = true;
+                SettingsBridge.open = false;
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 1;
+        title: @tr("Rounded edges");
+        subtitle: @tr("Round window edges");
+
+        Switch {
+            checked <=> WindowBridge.round-edges;
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Native topbar");
+        subtitle: @tr("Use native window decorations.");
+        Switch {
+            checked <=> WindowBridge.native-topbar;
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 3;
+        title: @tr("Topbar always on");
+        subtitle: @tr("Don't hide topbar");
+
+        Switch {
+            checked <=> WindowBridge.topbar-always-on;
+        }
+    }
+}
+
+component Shortcuts inherits SettingsPage {
+    title: @tr("Keyboard shortcuts");
+
+    private property <KeyMap> m: Keys.map;
+
+    private property <[ShortcutGroup]> shortcut-groups: [
+        {
+            category: @tr("General"),
+            items: [
+                { id: "close", title: @tr("Close"), keys: m.close.keys },
+                { id: "confirm", title: @tr("Confirm"), keys: m.confirm.keys },
+                {
+                    id: "move-down",
+                    title: @tr("Move down"),
+                    keys: m.move-down.keys,
+                    alt_keys: m.move-down.alt-keys
+                },
+                {
+                    id: "move-up",
+                    title: @tr("Move up"),
+                    keys: m.move-up.keys,
+                    alt_keys: m.move-up.alt-keys
+                },
+            ]
+        },
+        {
+            category: @tr("Window"),
+            items: [
+                { id: "essentials", title: @tr("Essentials"), keys: m.essentials.keys },
+                { id: "toggle-sidebar", title: @tr("Toggle sidebar"), keys: m.toggle-sidebar.keys },
+                { id: "transfers", title: @tr("Transfers"), keys: m.transfers.keys },
+                { id: "settings", title: @tr("Settings"), keys: m.settings.keys },
+            ]
+        },
+        {
+            category: @tr("File explorer"),
+            items: [
+                { id: "go-up", title: @tr("Go up"), keys: m.go-up.keys, alt_keys: m.go-up.alt-keys },
+                {
+                    id: "go-down",
+                    title: @tr("Go down"),
+                    keys: m.go-down.keys,
+                    alt_keys: m.go-down.alt-keys
+                },
+                {
+                    id: "history-forward",
+                    title: @tr("Forward (History)"),
+                    keys: m.history-forward.keys,
+                    alt_keys: m.history-forward.alt-keys
+                },
+                {
+                    id: "history-back",
+                    title: @tr("Back (History)"),
+                    keys: m.history-back.keys,
+                    alt_keys: m.history-back.alt-keys
+                },
+                {
+                    id: "half-page-down",
+                    title: @tr("Move down half a page"),
+                    keys: m.half-page-down.keys,
+                    alt_keys: m.half-page-down.alt-keys
+                },
+                {
+                    id: "half-page-up",
+                    title: @tr("Move up half a page"),
+                    keys: m.half-page-up.keys,
+                    alt_keys: m.half-page-up.alt-keys
+                },
+                { id: "find", title: @tr("Find"), keys: m.find.keys, alt_keys: m.find.alt-keys },
+                { id: "ripgrep", title: "Ripgrep", keys: m.ripgrep.keys, alt_keys: m.ripgrep.alt-keys },
+                { id: "copy", title: @tr("Copy"), keys: m.copy.keys, alt_keys: m.copy.alt-keys },
+                { id: "cut", title: @tr("Cut"), keys: m.cut.keys, alt_keys: m.cut.alt-keys },
+                {
+                    id: "trash",
+                    title: @tr("Delete (Move to trash)"),
+                    keys: m.trash.keys,
+                    alt_keys: m.trash.alt-keys
+                },
+                {
+                    id: "delete-permanently",
+                    title: @tr("Delete (Permanently)"),
+                    keys: m.delete-permanently.keys
+                },
+                { id: "select-all", title: @tr("Select all"), keys: m.select-all.keys },
+                { id: "select-regex", title: @tr("Select matching (Regex)"), keys: m.select-regex.keys },
+                { id: "rename", title: @tr("Rename"), keys: m.rename.keys, alt_keys: m.rename.alt-keys },
+                { id: "properties", title: @tr("Show properties"), keys: m.properties.keys },
+                {
+                    id: "refresh",
+                    title: @tr("Refresh"),
+                    keys: m.refresh.keys,
+                    alt_keys: m.refresh.alt-keys
+                },
+                { id: "create", title: @tr("Create"), keys: m.create.keys },
+                { id: "toggle-hidden", title: @tr("Show/hide hidden"), keys: m.toggle-hidden.keys },
+                { id: "list-view", title: @tr("List view"), keys: m.list-view.keys },
+                { id: "grid-view", title: @tr("Grid view"), keys: m.grid-view.keys },
+                { id: "zoom-out", title: @tr("Zoom out"), keys: m.zoom-out.keys },
+                { id: "zoom-in", title: @tr("Zoom in"), keys: m.zoom-in.keys },
+            ]
+        },
+    ];
+
+    for group in shortcut-groups: ShortcutGroupView {
+        category: group.category;
+        items: group.items;
+    }
+}
+
 export component Settings inherits GeneralModal {
 
     on-close => { SettingsBridge.open = false; }
 
-    init => { debug("Focused"); fs.focus(); }
+    init => { fs.focus(); }
 
     fs := FocusScope {
 
@@ -783,14 +904,17 @@ export component Settings inherits GeneralModal {
         }
 
         Rectangle {
-            width: min(820px, parent.width - 40px);
-            height: min(520px,parent.height - 40px);
+            width: min(920px, parent.width - 40px);
+            height: min(620px, parent.height - 40px);
             clip: true;
 
             background: Theme.colors.primary-col;
             border-radius: 12px;
             border-width: 1px;
             border-color: Theme.colors.fourth-col.with-alpha(0.5);
+
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 50px;
 
             TouchArea {
                 height: 100%;
@@ -820,10 +944,15 @@ export component Settings inherits GeneralModal {
                         tab-name: @tr("Notifications");
                     }
 
-                    // SettingsTab {
-                    //     tab-idx: 3;
-                    //     tab-name: @tr("Advanced");
-                    // }
+                    SettingsTab {
+                        tab-idx: 3;
+                        tab-name: @tr("Appearance");
+                    }
+
+                    SettingsTab {
+                        tab-idx: 4;
+                        tab-name: @tr("Shortcuts");
+                    }
                 }
 
                 Rectangle {
@@ -836,146 +965,23 @@ export component Settings inherits GeneralModal {
                 if SettingsBridge.active-tab == 1: Transfers { }
 
                 if SettingsBridge.active-tab == 2: Notifications { }
+
+                if SettingsBridge.active-tab == 3: Appearance { }
+
+                if SettingsBridge.active-tab == 4: Shortcuts { }
             }
         }
 
-        if SettingsBridge.username-modal: ChangeUsernameModal { }
+        if SettingsBridge.username-modal: ChangeUsernameModal {
+            restore-focus => { fs.focus(); }
+        }
 
-        if SettingsBridge.speed-limits-config: SpeedLimitsConfig { }
+        if Keys.change-shortcut: ChangeShortcut {
+            restore-focus => { fs.focus(); }
+        }
+
+        if SettingsBridge.speed-limits-config: SpeedLimitsConfig {
+            restore-focus => { fs.focus(); }
+        }
     }
 }
-
-    // component ShortcutKeys {
-//     in property <[string]> keys;
-//
-//     HorizontalLayout {
-//         spacing: 8px;
-//         alignment: center;
-//
-//         for key[idx] in root.keys: HorizontalLayout {
-//             spacing: 8px;
-//
-//             if idx > 0: Text {
-//                 text: "+";
-//                 color: Theme.colors.primary-font;
-//                 font-size: 12px;
-//                 font-weight: 600;
-//                 width: 8px;
-//                 horizontal-alignment: center;
-//                 vertical-alignment: center;
-//             }
-//
-//             KeyBadge {
-//                 key-name: key;
-//             }
-//         }
-//     }
-// }
-// component ShortcutGroupView {
-//     in property <string> category;
-//     in property <[ShortcutItem]> items;
-//
-//     Rectangle {
-//         border-radius: 8px;
-//         border-width: 1px;
-//         border-color: Theme.colors.fourth-col.with-alpha(0.5);
-//
-//         VerticalLayout {
-//             padding: 16px;
-//             spacing: 0px;
-//
-//             Text {
-//                 text: root.category;
-//                 color: Theme.colors.third-font;
-//                 font-size: 11px;
-//                 font-weight: 600;
-//             }
-//
-//             Rectangle {
-//                 height: 10px;
-//             }
-//
-//             for item in root.items: Rectangle {
-//                 height: 42px;
-//
-//                 VerticalLayout {
-//                     HorizontalLayout {
-//                         alignment: space-between;
-//
-//                         Text {
-//                             text: item.title;
-//                             color: Theme.colors.primary-font;
-//                             font-size: 13px;
-//                             font-weight: 600;
-//                             vertical-alignment: center;
-//                         }
-//
-//                         ShortcutKeys {
-//                             keys: item.keys;
-//                         }
-//                     }
-//
-//                     if item.show_border: Rectangle {
-//                         height: 1px;
-//                         background: Theme.colors.fourth-col.with-alpha(0.5);
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-
-// component SettingShortcutsTab inherits Rectangle {
-//
-//     private property <[ShortcutGroup]> shortcut-groups: [
-//         {
-//             category: "NAVIGATION",
-//             items: [
-//                 { title: "Go to search", keys: ["Ctrl", "K"], show_border: true },
-//                 { title: "Open next tab", keys: ["Ctrl", "Tab"], show_border: true },
-//                 { title: "Open previous tab", keys: ["Ctrl", "Shift", "Tab"], show_border: true },
-//                 { title: "Go back", keys: ["Alt", "←"], show_border: true },
-//                 { title: "Go forward", keys: ["Alt", "→"], show_border: false }
-//             ]
-//         },
-//         {
-//             category: "EDITING",
-//             items: [
-//                 { title: "Undo", keys: ["Ctrl", "Z"], show_border: true },
-//                 { title: "Redo", keys: ["Ctrl", "Shift", "Z"], show_border: true },
-//                 { title: "Duplicate line", keys: ["Ctrl", "D"], show_border: true },
-//                 { title: "Delete line", keys: ["Ctrl", "Shift", "K"], show_border: true },
-//                 { title: "Comment line", keys: ["Ctrl", "/"], show_border: false }
-//             ]
-//         }
-//     ];
-//
-//     width: 100%;
-//     height: 100%;
-//     // opacity: SettingsBridge.active-tab == 1 ? 1.0 : 0.0;
-//
-//     ScrollView {
-//         width: 100%;
-//         height: 100%;
-//         enabled: SettingsBridge.open;
-//
-//         VerticalLayout {
-//             padding: 20px;
-//             padding-top: 16px;
-//             spacing: 20px;
-//
-//             Text {
-//                 text: @tr("Keyboard shortcuts");
-//                 color: Theme.colors.primary-font;
-//                 font-size: 20px;
-//                 font-weight: 700;
-//             }
-//
-//             for group in shortcut-groups: ShortcutGroupView {
-//                 category: group.category;
-//                 items: group.items;
-//             }
-//         }
-//     }
-// }
-
