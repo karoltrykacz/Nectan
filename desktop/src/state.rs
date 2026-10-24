@@ -1,12 +1,11 @@
 use crate::{
     DevicesBridge, ExplorerBridge, NectanWindow, TransfersBridge,
-    devices::DevicesModel,
-    explorer::{self, Explorer},
-    sidebar::EssentialsModel,
+    devices::DevicesModel, explorer::Explorer, sidebar::EssentialsModel,
     transfers::TransfersModel,
 };
+use clipboard_rs::{Clipboard, ClipboardContent, ClipboardContext};
 use ignore::WalkBuilder;
-use nectan_core::{transfers::Transfers, utils::CancelToken, walker::Walker};
+use nectan_core::{transfers::Transfers, walker::Walker};
 use slint::{ComponentHandle, Global, ModelRc, Timer};
 use std::{
     cell::{OnceCell, Ref, RefCell, RefMut},
@@ -33,9 +32,11 @@ pub struct UiState {
     devices_model: Rc<DevicesModel>,
     transfers_model: OnceCell<Rc<TransfersModel>>,
     outcoming_transfer: Arc<OutcomingTransfer>,
-    // clipboard: RefCell<Clipboard>,
+    clipboard: ClipboardContext,
     save_destination: RefCell<PathBuf>,
     code_timer: RefCell<Timer>,
+    pub dnd_init_timer: RefCell<Timer>,
+    pub dnd_pump_timer: RefCell<Timer>,
 }
 
 impl UiState {
@@ -80,9 +81,9 @@ impl UiState {
         self.explorer.clone()
     }
 
-    // pub fn get_clipboard(&self) -> RefMut<'_, Clipboard> {
-    //     self.clipboard.borrow_mut()
-    // }
+    pub fn clipboard(&self) -> &ClipboardContext {
+        &self.clipboard
+    }
 }
 
 thread_local! {
@@ -124,10 +125,12 @@ pub fn init_app_state(w: &NectanWindow) {
         devices_model,
         explorer,
         transfers_model: OnceCell::new(),
-        // clipboard: RefCell::new(Clipboard::new().expect("Clipboard error.")),
+        clipboard: ClipboardContext::new().expect("Clipboard error."),
         save_destination: RefCell::new(save_destination),
         outcoming_transfer: Arc::new(out_t),
         code_timer: RefCell::new(Timer::default()),
+        dnd_init_timer: RefCell::new(Timer::default()),
+        dnd_pump_timer: RefCell::new(Timer::default()),
     });
 
     UI.with(|c| c.set(ui).ok().expect("UiState already initialized."));

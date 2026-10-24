@@ -29,6 +29,7 @@ export component ErrorModal inherits GeneralModal {
 
     fs := FocusScope {
 
+        // Close on any key
         key-pressed(event) => {
             Error.open = false;
             EventResult.accept
@@ -59,7 +60,6 @@ export component ErrorModal inherits GeneralModal {
                     color: Theme.colors.primary-font;
                     font-size: 20px;
                     font-weight: 600;
-                    font-family: Theme.font-heading;
                 }
 
                 Text {

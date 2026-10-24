@@ -1,11 +1,10 @@
 import { Theme } from "theme.slint";
 import {
     PrimaryButton,
-    IconButton,
-    SvgIcon,
 } from "elements.slint";
 import { ScrollView, ListView } from "std-widgets.slint";
 import { GeneralModal } from "elements.slint";
+import { IconButton, SvgIcon } from "elements/pure.slint";
 
 export struct TransferItem {
     name: string,
@@ -88,7 +87,6 @@ export component TransferTile inherits Rectangle {
 
             Text {
                 text: root.self.title;
-                font-family: Theme.font-heading;
                 font-weight: 700;
                 font-size: 16px;
                 color: Theme.colors.primary-font;
@@ -155,7 +153,6 @@ export component TransferTile inherits Rectangle {
                 text: root.self.percent-text;
                 font-weight: 600;
                 color: Theme.colors.primary-font;
-                font-family: Theme.font-heading;
                 font-size: 13px;
             }
         }
@@ -236,7 +233,6 @@ component FileRow inherits Rectangle {
         Text {
             text: percent-text;
             color: Theme.colors.primary-font;
-            font-family: Theme.font-heading;
             font-weight: 600;
             font-size: 14px;
             vertical-alignment: center;
@@ -288,7 +284,6 @@ export component TransferDetails inherits Rectangle {
 
                 Text {
                     text: transfer.title;
-                    font-family: Theme.font-heading;
                     font-weight: 700;
                     font-size: 22px;
                     color: Theme.colors.primary-font;
@@ -297,7 +292,6 @@ export component TransferDetails inherits Rectangle {
 
             Text {
                 text: transfer.percent-text;
-                font-family: Theme.font-heading;
                 color: Theme.colors.primary-font;
                 font-weight: 700;
                 font-size: 20px;
@@ -367,7 +361,6 @@ export component TransferDetails inherits Rectangle {
                 color: Theme.colors.secondary-font;
                 font-size: 13px;
                 horizontal-stretch: 1;
-                font-family: Theme.font-heading;
                 font-weight: 500;
             }
 
@@ -375,7 +368,6 @@ export component TransferDetails inherits Rectangle {
                 text: transfer.speed-text;
                 color: Theme.colors.secondary-font;
                 font-size: 13px;
-                font-family: Theme.font-heading;
                 font-weight: 500;
             }
         }
@@ -401,7 +393,6 @@ export component TransferDetails inherits Rectangle {
                             color: Theme.colors.primary-font;
                             font-size: 13px;
                             font-weight: 500;
-                            font-family: Theme.font-heading;
                         }
 
                         // IconButton {
@@ -494,7 +485,6 @@ export component Transfers inherits Rectangle {
 
         if TransfersBridge.transfers.length == 0: Text {
             text: @tr("No ongoing transfers.");
-            font-family: Theme.font-heading;
             color: Theme.colors.primary-font;
         }
 

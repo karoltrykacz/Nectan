@@ -2,7 +2,7 @@ use crate::{
     devices::{DeviceId, Devices, UserInfo},
     messages::AppEvent,
     protocol::{
-        ALPN, NectanProtocol, NectanState, announce_endpoint, resolve_devices,
+        ALPN, NectanProtocol, NectanState, announce_endpoint,
         start_mdns_discovery, start_registration_loop,
     },
     storage::Storage,

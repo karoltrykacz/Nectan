@@ -1,8 +1,10 @@
 import { Theme } from "theme.slint";
 import { VerticalBox, ScrollView } from "std-widgets.slint";
 import { DropDownOption } from "dropdown.slint";
-import { WindowBridge } from "window.slint";
-
+import { Window, WindowBridge } from "window.slint";
+import { Keys } from "keys.slint";
+import { SvgIcon, IconButton } from "elements/pure.slint";
+import { HoverBridge } from "hover.slint";
 
 export component Carousel {
     in-out property <int> selected-index;
@@ -116,14 +118,16 @@ export component PlainLineEdit inherits Rectangle {
     in property <string> placeholder-text;
     in property <int> start;
     in property <int> end: input-text.character-count;
+    in property <bool> hide-input;
 
     callback edited(string);
     callback accepted();
+    callback focus-input();
 
-    vertical-stretch: 1;
-    horizontal-stretch: 1;
-    width: 100%;
-    height: 100%;
+    focus-input => {
+        text-input.focus();
+    }
+
     clip: true;
 
     init => {
@@ -134,11 +138,11 @@ export component PlainLineEdit inherits Rectangle {
     text-input := TextInput {
         text <=> input-text;
         x: 12px;
+        input-type: hide-input ? InputType.password : InputType.text;
         vertical-alignment: center;
         selection-background-color: Theme.colors.third-font;
         selection-foreground-color: Theme.colors.primary-font;
         color: Theme.colors.primary-font;
-        font-family: Theme.font-heading;
         edited => { root.edited(self.text); }
         accepted => {
             root.accepted();
@@ -152,8 +156,7 @@ export component PlainLineEdit inherits Rectangle {
     }
 
     TouchArea {
-        width: 100%;
-        height: 100%;
+        width: parent.width - 24px;
         mouse-cursor: text;
         clicked => {
             text-input.focus();
@@ -172,26 +175,31 @@ export component GeneralModal inherits Rectangle {
 
     focus-scope := FocusScope {
 
-        focus-on-click: true;
+        focus-gained(reason) => {
+            debug("Modal gained focus");
+        }
+        focus-lost(reason) => {
+            debug("Modal gained focus");
+        }
 
-        key-pressed(event) => {
-            if (event.text == Key.Escape) {
-                root.restore-focus();
-                root.on-close();
-                return EventResult.accept;
-            }
-            if (event.text == "w"
-                && (event.modifiers.control || event.modifiers.meta)) {
-                root.restore-focus();
-                root.on-close();
-                return EventResult.accept;
-            }
-            if (event.text == Key.Return) {
-                root.restore-focus();
-                root.on-enter();
-                return EventResult.accept;
-            }
-            return EventResult.reject;
+        KeyBinding {
+            keys: Keys.map.close.keys;
+            activated => { root.restore-focus(); root.on-close(); }
+        }
+
+        KeyBinding {
+            keys: Keys.map.close.alt-keys;
+            activated => { root.restore-focus(); root.on-close(); }
+        }
+
+        KeyBinding {
+            keys: Keys.map.confirm.keys;
+            activated => { root.restore-focus(); root.on-enter(); }
+        }
+
+        KeyBinding {
+            keys: Keys.map.confirm.alt-keys;
+            activated => { root.restore-focus(); root.on-enter(); }
         }
 
         Rectangle {
@@ -199,15 +207,7 @@ export component GeneralModal inherits Rectangle {
             height: 100%;
             background: #00000088;
             border-radius: WindowBridge.round-edges ? 12px : 0;
-        }
-
-        TouchArea {
-            width: 100%;
-            height: 100%;
-            clicked => {
-                root.restore-focus();
-                root.on-close();
-            }
+            border-corner-shape: superellipse(WindowBridge.edges-shape);
         }
 
         @children
@@ -283,7 +283,7 @@ export component GeneralFocusScope inherits FocusScope {
     @children
 }
 
-export component Switch {
+export component Switch inherits Rectangle {
     in-out property <bool> checked: false;
     callback toggled(bool);
 
@@ -296,6 +296,8 @@ export component Switch {
         border-radius: 12px;
         border-color: Theme.colors.border-col.with-alpha(0.5);
         border-width: 1px;
+
+        // border-corner-shape: superellipse(WindowBridge.edges-shape);
 
         background: root.checked ? Theme.colors.primary-font : Theme.colors.secondary-col;
 
@@ -316,6 +318,7 @@ export component Switch {
             width: 18px;
             height: 18px;
             border-radius: 9px;
+            // border-corner-shape: superellipse(WindowBridge.edges-shape);
             background: (root.checked ? Theme.colors.secondary-col : Theme.colors.fourth-font);
 
             transform-scale: ta.pressed ? 0.9 : 1.0;
@@ -382,7 +385,6 @@ export component PrimarySmallButton {
 
             Text {
                 text: root.text;
-                font-family: "Inter";
                 font-weight: 500;
                 font-size: 12px;
                 color: Theme.colors.primary-col;
@@ -413,7 +415,8 @@ export component PrimaryButton {
     Rectangle {
         height: 100%;
         width: 100%;
-        border-radius: 6px;
+        border-radius: 12px;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
         background: root.alt
             ? (touch.pressed
             ? Theme.colors.third-col
@@ -498,63 +501,6 @@ export component PrimaryButton {
     }
 }
 
-export component SvgIcon inherits Image {
-    in property <color> fg: Theme.colors.primary-font;
-    in property <length> size: 20px;
-    colorize: root.fg;
-    width: root.size;
-    height: root.size;
-}
-
-export component IconButton inherits Rectangle {
-    in property <color> fg: Theme.colors.third-font;
-    in property <bool> round: true;
-    in property <bool> transform: true;
-    in property <length> transform-y: 1px;
-    in property <color> inner-bg: red;
-    in property <bool> enabled: true;
-    out property <bool> hovered: area.has-hover;
-    out property <bool> pressed: area.pressed;
-    in property <color> inner-border;
-    border-radius: 4px;
-
-    callback clicked <=> area.clicked;
-
-    inner := Rectangle {
-        width: root.width;
-        height: root.height;
-        border-radius: root.border-radius;
-        transform-origin: { x: self.width / 2, y: self.height / 2 };
-        // background: root.inner-bg != red ? root.inner-bg : (area.pressed ? Theme.colors.hover-col : (area.has-hover ? Theme.colors.hover-col : transparent));
-	background: inner-bg != red ? inner-bg : area.has-hover ? Theme.colors.fourth-col : transparent;
-        border-color: inner-border;
-        border-width: 1.5px;
-
-        animate width, height, y {
-            duration: 50ms;
-            easing: ease;
-        }
-
-        transform-scale: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
-
-        y: root.transform ? area.pressed ? root.transform-y : 0 : 0;
-
-        content := Rectangle {
-
-            @children
-
-            animate width, height {
-                duration: 50ms;
-                easing: ease;
-            }
-        }
-    }
-
-    area := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-    }
-}
 
 export component StyledInput inherits Rectangle {
     in property <string> placeholder-text: "";
@@ -664,7 +610,6 @@ export component SelectionOverlay inherits Rectangle {
 }
 
     export component HeaderText inherits Text {
-    font-family: Theme.font-heading;
     font-size: 20px;
     font-weight: 600;
 }
@@ -672,7 +617,6 @@ export component SelectionOverlay inherits Rectangle {
     export component LinkButton inherits Text {
     callback clicked;
 
-    font-family: Theme.font-body;
     color: touch.has-hover ? Theme.colors.primary-font : Theme.colors.secondary-font;
     font-size: 14px;
     font-weight: 500;
@@ -813,7 +757,8 @@ export component Dropdown inherits Rectangle {
         y: 0;
         height: 32px;
         width: parent.width;
-        border-radius: 8px;
+        border-radius: 24px;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
         background: header-area.has-hover
             ? Theme.colors.fourth-col
             : Theme.colors.third-col;
@@ -839,7 +784,6 @@ export component Dropdown inherits Rectangle {
                 color: Theme.colors.primary-font;
                 font-size: 13px;
                 font-weight: 600;
-                font-family: Theme.font-heading;
                 vertical-alignment: center;
                 overflow: elide;
             }
@@ -908,7 +852,6 @@ export component Dropdown inherits Rectangle {
                             : Theme.colors.secondary-font;
                         font-size: 13px;
                         font-weight: 600;
-                        font-family: Theme.font-heading;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -953,7 +896,6 @@ component ThemeRow inherits Rectangle {
         x: 12px;
         text: root.text;
         color: Theme.colors.primary-font;
-        font-family: Theme.font-heading;
         font-size: 14px;
         font-weight: 400;
         vertical-alignment: center;
@@ -998,7 +940,6 @@ export component ThemeSelector inherits Rectangle {
     //             Text {
     //                 text: Theme.themes[index].name;
     //                 color: Theme.themes[index].colors.primary-font;
-    //                 font-family: Theme.font-heading;
     //                 font-size: 18px;
     //                 font-weight: 600;
     //             }
@@ -1084,7 +1025,6 @@ export component ThemeSelector inherits Rectangle {
             Text {
                 text: "Select theme";
                 color: Theme.colors.primary-font;
-                font-family: Theme.font-heading;
                 font-size: 18px;
                 font-weight: 600;
             }
@@ -1132,6 +1072,8 @@ export component Slider inherits Rectangle {
     in property <length> track-height: 3px;
     in property <length> knob-size: 12px;
 
+    in property <float> scroll-step: (maximum - minimum) / 1000;
+
     callback changed(float);
     callback released(float);
 
@@ -1145,6 +1087,13 @@ export component Slider inherits Rectangle {
         if (root.usable <= 0) { return; }
         root.value = Math.clamp(
             root.minimum + (x - root.knob-size / 2) / root.usable * (root.maximum - root.minimum),
+            root.minimum, root.maximum);
+        root.changed(root.value);
+    }
+
+    function scroll-by(delta: length) {
+        root.value = Math.clamp(
+            root.value + (delta / 1px) * root.scroll-step,
             root.minimum, root.maximum);
         root.changed(root.value);
     }
@@ -1178,6 +1127,7 @@ export component Slider inherits Rectangle {
     TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
+
         pointer-event(e) => {
             if (e.button == PointerEventButton.left) {
                 if (e.kind == PointerEventKind.down) {
@@ -1187,6 +1137,20 @@ export component Slider inherits Rectangle {
                 }
             }
         }
+
+        scroll-event(event) => {
+            if (!root.enabled) { return reject; }
+
+            // Use the dominant axis so both a mouse wheel and a horizontal
+            // touchpad swipe work. Scroll up/right increases the value.
+            if (Math.abs(event.delta-y / 1px) >= Math.abs(event.delta-x / 1px)) {
+                root.scroll-by(event.delta-y);
+            } else {
+                root.scroll-by(event.delta-x);
+            }
+            return accept;
+        }
+
         moved => {
             if (self.pressed) {
                 root.set-from-x(self.mouse-x);
@@ -1314,10 +1278,18 @@ export component DragGrid inherits Rectangle {
     }
 
     for t in root.tiles: Rectangle {
+        background: hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+        init => { debug("Drag grid abs pos", self.absolute-position, t.emoji); }
 
         property <bool> dragged: t.id == root.dragged-id;
-        property <bool> hovered: root.dragged-id >= 0
-            ? dragged
+
+        function drop-hovered() -> bool {
+            HoverBridge.hovering ? HoverBridge.is-hovered(self.absolute-position, self.width, self.height) : false
+        }
+
+        property <bool> hovered: drop-hovered() ? true :
+            root.dragged-id >= 0 ?
+            dragged
             : (t.slot == root.hover-slot || t.slot == root.highlighted-slot);
 
         property <float> grid-col: Math.mod(t.slot, root.cols);
@@ -1342,8 +1314,9 @@ export component DragGrid inherits Rectangle {
         height: root.cell-h;
         z: dragged ? 10 : 0;
         opacity: dragged ? 0.85 : 1.0;
-        background: hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
-        border-radius: 10px;
+        border-radius: 12px;
+
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
 
         drop-shadow-spread: 2px;
         drop-shadow-blur: dragged ? 4px : 0px;
@@ -1351,8 +1324,11 @@ export component DragGrid inherits Rectangle {
 
         transform-scale: pressed-id == t.id ? 0.97 : 1.0;
 
-        // border-color: hovered ? Theme.colors.fourth-col : transparent;
-        // border-width: 1.5px;
+        Text {
+            text: t.emoji;
+            font-family: Theme.emoji-font;
+            font-size: 20px;
+        }
 
         SvgIcon {
             source: t.icon;

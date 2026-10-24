@@ -9,13 +9,19 @@ use nectan_core::{
         AppEvent::{self},
         ConnectionOffer, UiResponse,
     },
-    protocol::{ConnectStatus, NectanState, TransferOffer, TransferOfferRequest, connect},
+    protocol::{
+        ConnectStatus, NectanState, TransferOffer, TransferOfferRequest,
+        connect,
+    },
     storage::SpeedLimits,
     transfers::{TransferOfferError, send_contents},
     walker::Walker,
 };
 use rfd::FileHandle;
-use slint::{ComponentHandle, Model, ModelRc, TimerMode, VecModel, Weak, invoke_from_event_loop};
+use slint::{
+    ComponentHandle, Model, ModelRc, TimerMode, VecModel, Weak,
+    invoke_from_event_loop,
+};
 use slint::{
     ToSharedString,
     winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent},
@@ -34,8 +40,8 @@ use uuid::Uuid;
 use crate::{
     AddDeviceBridge, ConnectionOfferBridge, Error, IncomingTransferOffer,
     IncomingTransferOfferBridge, LookupState, NectanWindow, OfferEntry,
-    OutcomingTransferModalBridge, SendModalState, SettingsBridge, TransfersBridge, TreeNode,
-    WindowBridge,
+    OutcomingTransferModalBridge, SendModalState, SettingsBridge,
+    TransfersBridge, TreeNode, WindowBridge,
     devices::update_devices,
     state::ui_state,
     transfers::{format_speed, map_speed, unmap_speed, update_transfers},
@@ -168,7 +174,10 @@ fn transfer_offer_delivered(w: &Weak<NectanWindow>) {
     });
 }
 
-pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>) {
+pub fn handle_incoming_transfer_offer(
+    w: &NectanWindow,
+    state: Arc<NectanState>,
+) {
     let b = w.global::<IncomingTransferOfferBridge>();
 
     let save_to = ui_state().save_to();
@@ -179,7 +188,8 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
         let weak = weak.clone();
         let fut = async move {
             let weak = weak.clone();
-            let Some(h) = rfd::AsyncFileDialog::new().pick_folder().await else {
+            let Some(h) = rfd::AsyncFileDialog::new().pick_folder().await
+            else {
                 return;
             };
 
@@ -229,7 +239,10 @@ pub fn handle_incoming_transfer_offer(w: &NectanWindow, state: Arc<NectanState>)
     });
 }
 
-pub fn show_transfer_offer(w: &Weak<NectanWindow>, offer: TransferOfferRequest) {
+pub fn show_transfer_offer(
+    w: &Weak<NectanWindow>,
+    offer: TransferOfferRequest,
+) {
     let _ = w.upgrade_in_event_loop(move |w| {
         let b = w.global::<IncomingTransferOfferBridge>();
         let nodes: Vec<_> = offer
@@ -315,7 +328,8 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
     });
 
     bridge.on_format_code(|s| {
-        let digits: String = s.chars().filter(|c| c.is_ascii_digit()).take(6).collect();
+        let digits: String =
+            s.chars().filter(|c| c.is_ascii_digit()).take(6).collect();
         if digits.len() > 3 {
             format!("{} {}", &digits[..3], &digits[3..]).into()
         } else {
@@ -362,12 +376,15 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                     let bridge = ui.global::<AddDeviceBridge>();
                     match result {
                         Ok(code) => {
-                            let code_split = format!("{} {}", &code[0..3], &code[3..6]);
+                            let code_split =
+                                format!("{} {}", &code[0..3], &code[3..6]);
                             bridge.set_our_code(code_split.into());
                         }
                         Err(e) => {
-                            ui.global::<Error>()
-                                .invoke_show_error("Error".into(), e.to_string().into());
+                            ui.global::<Error>().invoke_show_error(
+                                "Error".into(),
+                                e.to_string().into(),
+                            );
                             // bridge.invoke_reset_add_remote();
                             bridge.set_open(false);
                             error!("Failed to issue code {e:?}");
@@ -404,8 +421,9 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                     }
                     CodeLookupError::ConnectionFailed => {
                         ui_weak.upgrade_in_event_loop(|ui| {
-                            ui.global::<AddDeviceBridge>()
-                                .set_lookup_state(LookupState::ConnectionFailed);
+                            ui.global::<AddDeviceBridge>().set_lookup_state(
+                                LookupState::ConnectionFailed,
+                            );
                         })?;
                     }
                     CodeLookupError::NectanService => {
@@ -433,8 +451,9 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
             if let ConnectStatus::RequestDelivered = result {
                 println!("Request delivered");
                 ui_weak.upgrade_in_event_loop(move |ui| {
-                    ui.global::<AddDeviceBridge>()
-                        .set_lookup_state(LookupState::WaitingForRemoteApproval);
+                    ui.global::<AddDeviceBridge>().set_lookup_state(
+                        LookupState::WaitingForRemoteApproval,
+                    );
                 })?;
                 let result = rx.recv().await.unwrap();
                 match result {
@@ -462,11 +481,13 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                     ConnectStatus::ConnectionFailed => {
                         println!("Conn failed");
                         ui_weak.upgrade_in_event_loop(move |ui| {
-                            ui.global::<AddDeviceBridge>()
-                                .set_lookup_state(LookupState::ConnectionFailed);
+                            ui.global::<AddDeviceBridge>().set_lookup_state(
+                                LookupState::ConnectionFailed,
+                            );
                         })?;
                     }
-                    ConnectStatus::RequestDelivered | ConnectStatus::AlreadyConnected => {
+                    ConnectStatus::RequestDelivered
+                    | ConnectStatus::AlreadyConnected => {
                         panic!("Impossible state")
                     }
                 }
@@ -518,7 +539,8 @@ pub fn handle_scan_folders(w: &NectanWindow) {
         .on_select_folders(move || {
             let weak = weak.clone();
             tokio::spawn(async move {
-                let Some(h) = rfd::AsyncFileDialog::new().pick_folders().await else {
+                let Some(h) = rfd::AsyncFileDialog::new().pick_folders().await
+                else {
                     return;
                 };
                 if h.is_empty() {
@@ -558,7 +580,8 @@ pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
     let _ = w.upgrade_in_event_loop(move |w| {
         {
             let state = ui_state();
-            *state.outcoming_transfer().match_builder.lock().unwrap() = Some(builder);
+            *state.outcoming_transfer().match_builder.lock().unwrap() =
+                Some(builder);
 
             let mut walker_lock = state.walker();
             if let Some(old_walker) = &*walker_lock {
@@ -797,7 +820,8 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
                 let children: Vec<DirEntry> = dir.flatten().collect();
                 let mut result = Vec::new();
                 'outer: for entry in &children {
-                    let Ok(is_dir) = entry.file_type().map(|t| t.is_dir()) else {
+                    let Ok(is_dir) = entry.file_type().map(|t| t.is_dir())
+                    else {
                         continue;
                     };
                     for matcher in &mut matchers {
@@ -810,7 +834,10 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
                         depth: parent_depth + 1,
                         expanded: false,
                         is_file: !is_dir,
-                        filename: entry.file_name().to_string_lossy().to_shared_string(),
+                        filename: entry
+                            .file_name()
+                            .to_string_lossy()
+                            .to_shared_string(),
                         path: entry.path().to_string_lossy().to_shared_string(),
                     };
                     result.push(node);
@@ -912,12 +939,15 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
         let weak = weak.clone();
         let s = state.clone();
         tokio::spawn(async move {
-            let Some(h) = rfd::AsyncFileDialog::new().pick_folder().await else {
+            let Some(h) = rfd::AsyncFileDialog::new().pick_folder().await
+            else {
                 return;
             };
             let path = h.path();
             // Ensure if has writing permission
-            if let Err(e) = std::fs::write(path.join("test.txt"), b"Permission check") {
+            if let Err(e) =
+                std::fs::write(path.join("test.txt"), b"Permission check")
+            {
                 show_error(&weak, "Error", e.to_string());
                 return;
             }
@@ -939,9 +969,9 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
 
     let state = s.clone();
     b.on_toggle_accept_favourites(move || {
-        let _ = state
-            .storage
-            .update(|s| s.autoaccept_from_favourites = !s.autoaccept_from_favourites);
+        let _ = state.storage.update(|s| {
+            s.autoaccept_from_favourites = !s.autoaccept_from_favourites
+        });
     });
 
     b.on_open_github(move || {

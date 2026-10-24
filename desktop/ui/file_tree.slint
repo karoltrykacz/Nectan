@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { ListView } from "std-widgets.slint";
-import { SvgIcon } from "elements.slint";
+import { SvgIcon } from "elements/pure.slint";
 
 export struct TreeNode {
     filename: string,
@@ -57,7 +57,6 @@ export component TreeList {
                 Text {
                     text: node.filename;
                     vertical-alignment: center;
-                    font-family: Theme.font-body;
                     font-size: 14px;
                     color: Theme.colors.primary-font;
                 }

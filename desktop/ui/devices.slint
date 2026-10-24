@@ -1,12 +1,10 @@
 import { Theme } from "theme.slint";
 import {
-    IconButton,
-    SvgIcon,
     PrimaryButton,
-    SvgIcon,
     GeneralModal,
 } from "elements.slint";
 import { OutcomingTransferModalBridge } from "transfer_offer_modal.slint";
+import { SvgIcon, IconButton } from "elements/pure.slint";
 
 export enum DeviceStatus {
     online,
@@ -37,7 +35,6 @@ export component DeviceStatusText inherits Text {
     text: status == DeviceStatus.online ? "Online" : status == DeviceStatus.nearby ? @tr("Nearby") : "Offline";
     color: Theme.colors.secondary-font;
     font-size: 12px;
-    font-family: Theme.font-heading;
     font-weight: 500;
 }
 
@@ -52,7 +49,6 @@ component Offline inherits VerticalLayout {
 
     Text {
         text: @tr("{} is offline", name);
-        font-family: Theme.font-heading;
         color: Theme.colors.primary-font;
     }
 
@@ -93,7 +89,6 @@ export component DeviceRow inherits Rectangle {
             color: Theme.colors.primary-font;
             font-size: 13px;
             font-weight: 600;
-            font-family: Theme.font-heading;
         }
 
         DeviceStatusText {
@@ -147,7 +142,6 @@ export component DeviceScreen inherits Rectangle {
                     alignment: center;
                     horizontal-stretch: 1;
                     Text {
-                        font-family: Theme.font-heading;
                         font-size: 20px;
                         font-weight: 600;
                         color: Theme.colors.primary-font;
@@ -277,7 +271,6 @@ export component DeviceOptionsModal inherits Rectangle {
                     VerticalLayout {
                         alignment: center;
                         Text {
-                            font-family: Theme.font-heading;
                             font-size: 20px;
                             font-weight: 600;
                             color: Theme.colors.primary-font;
@@ -306,7 +299,6 @@ export component DeviceOptionsModal inherits Rectangle {
                         text: device.completed-transfers;
                         font-size: 14px;
                         font-weight: 600;
-                        font-family: Theme.font-heading;
                         color: Theme.colors.primary-font;
                     }
                 }
@@ -323,7 +315,6 @@ export component DeviceOptionsModal inherits Rectangle {
                         text: device.total-exchanged-data;
                         font-size: 14px;
                         font-weight: 600;
-                        font-family: Theme.font-heading;
                         color: Theme.colors.primary-font;
                     }
                 }

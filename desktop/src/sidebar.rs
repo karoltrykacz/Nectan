@@ -4,10 +4,9 @@ use crate::{
 };
 use slint::{
     ComponentHandle, Image, Model, ModelNotify, ModelRc, ModelTracker,
-    ToSharedString, Window,
+    ToSharedString,
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use tracing::info;
 
 #[derive(Clone, Debug)]
 pub enum Builtin {
@@ -63,10 +62,8 @@ impl TileAction {
 
         w.global::<WindowBridge>()
             .set_current_window(crate::Window::Vaults);
-
         w.global::<ExplorerBridge>()
             .set_current_dir(dir.display().to_string().to_shared_string());
-
         ui_state().explorer().open_dir(w.as_weak(), dir);
     }
 }
@@ -105,39 +102,51 @@ impl EssentialsModel {
         let load = |svg: &'static [u8]| Image::load_from_svg_data(svg).unwrap();
 
         // Order here = initial slot order.
-        let defaults: Vec<(Builtin, Image)> = vec![
+        let defaults: Vec<(Builtin, Image, &'static str)> = vec![
             (
                 Builtin::Recent,
                 load(include_bytes!("../ui/icons/clock.svg")),
+                "⏰",
             ),
-            (Builtin::Home, load(include_bytes!("../ui/icons/home.svg"))),
+            (
+                Builtin::Home,
+                load(include_bytes!("../ui/icons/home.svg")),
+                "🏠",
+            ),
             (
                 Builtin::Documents,
                 load(include_bytes!("../ui/icons/file-nofill.svg")),
+                "🏠",
             ),
             (
                 Builtin::Images,
                 load(include_bytes!("../ui/icons/image.svg")),
+                "🏠",
             ),
             (
                 Builtin::Videos,
                 load(include_bytes!("../ui/icons/film.svg")),
+                "🏠",
             ),
             (
                 Builtin::Music,
                 load(include_bytes!("../ui/icons/music.svg")),
+                "🏠",
             ),
             (
                 Builtin::Downloads,
                 load(include_bytes!("../ui/icons/download.svg")),
+                "🏠",
             ),
             (
                 Builtin::Drives,
                 load(include_bytes!("../ui/icons/hard-drive.svg")),
+                "🏠",
             ),
             (
                 Builtin::Trash,
                 load(include_bytes!("../ui/icons/trash.svg")),
+                "🏠",
             ),
         ];
 
@@ -145,12 +154,12 @@ impl EssentialsModel {
         let tiles: Vec<DragGridTileData> = defaults
             .into_iter()
             .enumerate()
-            .map(|(slot, (builtin, icon))| {
+            .map(|(slot, (builtin, icon, emoji))| {
                 let id = actions.add(TileAction::Builtin(builtin));
                 DragGridTileData {
                     id,
                     slot: slot as i32,
-                    emoji: "".into(),
+                    emoji: emoji.into(),
                     icon,
                 }
             })
@@ -226,7 +235,7 @@ pub fn handle_sidebar(w: &NectanWindow) {
     let b = w.global::<SidebarBridge>();
     let model = Rc::new(EssentialsModel::new());
 
-    b.set_essentials(ModelRc::from(model.clone()));
+    b.set_essentials_data(ModelRc::from(model.clone()));
 
     let m = model.clone();
     b.on_id_at_slot(move |slot| m.id_at_slot(slot));

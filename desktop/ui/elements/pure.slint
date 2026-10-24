@@ -1,0 +1,61 @@
+import { Theme } from "../theme.slint";
+
+export component SvgIcon inherits Image {
+    in property <color> fg: Theme.colors.primary-font;
+    in property <length> size: 20px;
+    colorize: root.fg;
+    width: root.size;
+    height: root.size;
+}
+
+export component IconButton inherits Rectangle {
+
+    in property <color> fg: Theme.colors.third-font;
+    in property <bool> round: true;
+    in property <bool> transform: true;
+    in property <length> transform-y: 1px;
+    in property <color> inner-bg: red;
+    in property <bool> enabled: true;
+    out property <bool> hovered: area.has-hover;
+    out property <bool> pressed: area.pressed;
+    in property <color> inner-border;
+
+    border-radius: 4px;
+    border-corner-shape: squircle;
+
+    callback clicked <=> area.clicked;
+
+    inner := Rectangle {
+        width: root.width;
+        height: root.height;
+        border-radius: root.border-radius;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        background: inner-bg != red ? inner-bg : area.has-hover ? Theme.colors.fourth-col : transparent;
+        border-color: inner-border;
+        border-width: 1.5px;
+
+        animate width, height, y {
+            duration: 50ms;
+            easing: ease;
+        }
+
+        transform-scale: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
+
+        y: root.transform ? area.pressed ? root.transform-y : 0 : 0;
+
+        content := Rectangle {
+
+            @children
+
+            animate width, height {
+                duration: 50ms;
+                easing: ease;
+            }
+        }
+    }
+
+    area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+    }
+}

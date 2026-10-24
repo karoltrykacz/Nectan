@@ -1,14 +1,16 @@
 import { Theme } from "theme.slint";
 import {
-    SvgIcon,
-    IconButton,
     GeneralModal,
     PlainLineEdit,
     PrimaryButton,
     Spinner,
+    Switch,
 } from "elements.slint";
 import { ListView, ScrollView } from "std-widgets.slint";
 import { WindowBridge } from "window.slint";
+import { IconButton, SvgIcon } from "elements/pure.slint";
+import { Keys } from "keys.slint";
+import { SettingsRow } from "settings.slint";
 
 export enum View { grid, list }
 
@@ -29,6 +31,8 @@ export global ExplorerBridge {
     in-out property <length> grid-height: 48px;
 
     in-out property <bool> searching;
+    in-out property <bool> ripgrepping;
+    in-out property <bool> compressing;
 
     // Dir navigation
     callback open(DirEntry, int);
@@ -43,11 +47,13 @@ export global ExplorerBridge {
     callback cut(int, int);
     callback paste();
     callback delete-items(int, int);
+    callback trash-items(int, int);
     callback rename(int, string);
     callback new-folder();
     callback new-file();
     callback refresh();
     callback properties(int);
+    callback compress-items(int, int, string, string);
 
     callback builtin(Builtin);
     pure callback get-dot-pos(int) -> int;
@@ -59,6 +65,23 @@ export global ExplorerBridge {
             root.grid-height
         }
     }
+
+    public function zoom-in() {
+        if root.view == View.list {
+            root.list-height += 2px;
+        } else {
+            root.grid-height += 2px;
+        }
+    }
+
+    public function zoom-out() {
+        if root.view == View.list {
+            root.list-height -= 2px;
+        } else {
+            root.grid-height -= 2px;
+        }
+    }
+
     in-out property <int> focus-tick;
     public function focus() {
         root.focus-tick += 1;
@@ -69,7 +92,7 @@ export global ExplorerBridge {
 component TopBar inherits HorizontalLayout {
     padding: 12px;
     padding-left: 4px;
-    padding-right: 4px;
+    padding-right: 12px;
     cross-axis-alignment: center;
 
     IconButton {
@@ -85,6 +108,7 @@ component TopBar inherits HorizontalLayout {
 
         clicked => {
             ExplorerBridge.back();
+            EventResult.accept
         }
     }
 
@@ -114,7 +138,6 @@ component TopBar inherits HorizontalLayout {
 
     TextInput {
         text: ExplorerBridge.current-dir;
-        font-family: Theme.font-heading;
         selection-background-color: Theme.colors.secondary-font;
         selection-foreground-color: Theme.colors.fourth-col;
         color: Theme.colors.primary-font;
@@ -240,7 +263,6 @@ export component SearchExplorer inherits GeneralModal {
 
     row := HorizontalLayout {
         spacing: 0px;
-        width: 100%;
         alignment: center;
         cross-axis-alignment: center;
 
@@ -270,7 +292,6 @@ export component SearchExplorer inherits GeneralModal {
                         text: @tr("Searching in {}", ExplorerBridge.current-dir);
                         font-size: 16px;
                         color: Theme.colors.primary-font;
-                        font-family: Theme.font-heading;
                         font-weight: 500;
                         overflow: elide;
                     }
@@ -312,8 +333,6 @@ export component SearchExplorer inherits GeneralModal {
             }
 
             handle-area := TouchArea {
-                width: 100%;
-                height: 100%;
                 mouse-cursor: MouseCursor.col-resize;
 
                 property <length> start-x;
@@ -375,8 +394,6 @@ component RenameModal inherits GeneralModal {
         clip: true;
 
         TouchArea {
-            width: 100%;
-            height: 100%;
             clicked => {}
         }
 
@@ -388,7 +405,6 @@ component RenameModal inherits GeneralModal {
                 text: @tr("Rename");
                 font-size: 20px;
                 color: Theme.colors.primary-font;
-                font-family: Theme.font-heading;
                 font-weight: 600;
             }
 
@@ -398,17 +414,15 @@ component RenameModal inherits GeneralModal {
 
                 border-radius: 8px;
                 background: Theme.colors.third-col;
+                border-corner-shape: superellipse(WindowBridge.edges-shape);
 
-                VerticalLayout {
+                le := PlainLineEdit {
+                    input-text <=> new-name;
+                    start: 0;
+                    end: root.selection-end;
 
-                    le := PlainLineEdit {
-                        input-text <=> new-name;
-                        start: 0;
-                        end: root.selection-end;
-
-                        accepted => {
-                            root.save();
-                        }
+                    accepted => {
+                        root.save();
                     }
                 }
             }
@@ -439,10 +453,205 @@ component RenameModal inherits GeneralModal {
     }
 }
 
+component CompressModal inherits GeneralModal {
+    in property <int> selection-start;
+    in property <int> selection-end;
+    in-out property <string> archive-name;
+
+    property <bool> encrypt;
+    property <string> password;
+    property <string> confirm-password;
+    property <bool> passwords-match: !encrypt || (password != "" && password == confirm-password);
+
+    callback compress();
+
+    compress => {
+    }
+
+    Rectangle {
+
+        height: min( encrypt ? 360px : 256px, parent.height - 80px);
+        width: min(512px, parent.width - 80px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 14px;
+
+            Text {
+                text: @tr("Compress");
+                font-size: 20px;
+                color: Theme.colors.primary-font;
+                font-weight: 600;
+            }
+
+            Rectangle { }
+
+            Text {
+                text: @tr("Archive name");
+                font-size: 12px;
+                color: Theme.colors.secondary-font;
+                font-weight: 500;
+            }
+
+            Rectangle {
+                height: 2px;
+            }
+
+            Rectangle {
+                height: 32px;
+                border-radius: 12px;
+                border-corner-shape: superellipse(WindowBridge.edges-shape);
+                background: Theme.colors.third-col;
+
+                name := PlainLineEdit {
+                    input-text <=> root.archive-name;
+                    end: root.selection-end;
+
+                    accepted => {
+                        // password.focus-input();
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 24px;
+            }
+
+            HorizontalLayout {
+                height: 42px;
+
+                Text {
+                    text: @tr("Encrypt archive (AES-256)");
+                    color: Theme.colors.primary-font;
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+
+                Switch {
+                    cross-axis-self-alignment: start;
+                    checked <=> encrypt;
+                }
+            }
+
+            if encrypt: VerticalLayout {
+
+                alignment: start;
+
+                Text {
+                    text: @tr("Password");
+                    font-size: 12px;
+                    color: Theme.colors.secondary-font;
+                    font-weight: 500;
+                }
+
+                Rectangle {
+                    height: 2px;
+                }
+
+                Rectangle {
+                    height: 32px;
+                    width: parent.width - 28px;
+                    border-radius: 8px;
+                    border-corner-shape: superellipse(WindowBridge.edges-shape);
+                    background: Theme.colors.third-col;
+                    property <bool> hide:true;
+
+                    PlainLineEdit {
+                        hide-input: hide;
+                        edited(t) => {
+                            root.password = t;
+                        }
+                        accepted => {
+                            root.compress();
+                        }
+                    }
+
+                    if hide: IconButton {
+                        width: 28px;
+                        height: 28px;
+                        x: parent.width + 8px;
+                        SvgIcon {
+                            size: 20px;
+                            source: hide ? @image-url("icons/eye.svg") : @image-url("icons/eye.svg");
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 12px;
+                }
+
+                Text {
+                    text: @tr("Confirm password");
+                    font-size: 12px;
+                    color: Theme.colors.secondary-font;
+                    font-weight: 500;
+                }
+
+                Rectangle {
+                    height: 2px;
+                }
+
+                Rectangle {
+                    height: 32px;
+                    border-radius: 8px;
+                    border-corner-shape: superellipse(WindowBridge.edges-shape);
+                    background: Theme.colors.third-col;
+
+                    PlainLineEdit {
+                        hide-input: true;
+                        edited(t) => {
+                            root.confirm-password = t;
+                        }
+                        accepted => {
+                            root.compress();
+                        }
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton {
+                    text: @tr("Cancel");
+                    alt: true;
+                    clicked => {
+                        root.on-close();
+                    }
+                }
+
+                Rectangle {
+                    width: 12px;
+                }
+
+                PrimaryButton {
+                    text: @tr("Compress");
+                    image: @image-url("icons/cpu.svg");
+                    button-enabled: root.passwords-match;
+                    clicked => { root.compress(); }
+                }
+            }
+        }
+    }
+}
 
 export component Explorer {
 
     property <bool> renaming;
+
     property <string> new-name;
 
     property <int> focus-tick <=> ExplorerBridge.focus-tick;
@@ -521,6 +730,7 @@ export component Explorer {
             ExplorerBridge.open(ExplorerBridge.entries[i], i);
             root.cursor = 0;
         }
+        clear-selection();
     }
 
     function is-selected(idx: int) -> bool {
@@ -535,13 +745,37 @@ export component Explorer {
         root.renaming = true;
     }
 
+    function clear-selection() {
+        root.anchor = -1;
+    }
+
+    function delete-permanently() {
+        ExplorerBridge.delete-items(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
+        clear-selection();
+    }
+
+    function trash() {
+        ExplorerBridge.trash-items(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
+        clear-selection();
+    }
+
+    function copy() {
+        ExplorerBridge.copy(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
+        clear-selection();
+    }
+
+    function paste() {
+        ExplorerBridge.paste();
+        clear-selection();
+    }
+
     height: 100%;
     width: 100%;
 
     VerticalLayout {
 
         padding-left: 8px;
-        padding-right: 8px;
+        padding-right: 0px;
         padding-bottom: 8px;
 
         TopBar { }
@@ -549,77 +783,349 @@ export component Explorer {
         forward-focus: fs;
 
         fs := FocusScope {
-            focus-on-click: true;
 
             init => { self.focus(); }
 
-            key-pressed(event) => {
-                let was-pending-g = root.pending-g;
-                root.pending-g = false;
+            KeyBinding {
+                keys: Keys.map.delete-permanently.keys;
+                activated => { delete-permanently(); }
+            }
 
-                if event.text == Key.Escape {
-                    debug("Escape");
+            KeyBinding {
+                keys: Keys.map.delete-permanently.alt-keys;
+                activated => { delete-permanently(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.trash.keys;
+                activated => { trash(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.trash.alt-keys;
+                activated => { trash(); }
+            }
+
+            KeyBinding {
+                keys: @keys(Shift + V);
+                activated => { anchor = root.cursor; }
+            }
+
+            KeyBinding {
+                keys: @keys(V);
+                activated => { anchor = root.cursor; }
+            }
+
+            KeyBinding {
+                keys: Keys.map.close.keys;
+                activated => {
                     root.anchor = -1;
                 }
-                if was-pending-g {
-                    if event.text == "h" {
-                        ExplorerBridge.builtin(Builtin.home);
-                        return EventResult.accept;
-                    }
-                    if event.text == "d" {
-                        ExplorerBridge.builtin(Builtin.downloads);
-                        return EventResult.accept;
-                    }
-                    if event.text == "t" {
-                        ExplorerBridge.builtin(Builtin.documents);
-                        return EventResult.accept;
-                    }
-                    if event.text == "m" {
-                        ExplorerBridge.builtin(Builtin.music);
-                        return EventResult.accept;
-                    }
-                    if event.text == "v" {
-                        ExplorerBridge.builtin(Builtin.videos);
-                        return EventResult.accept;
-                    }
-                    if event.text == "o" {
-                        ExplorerBridge.builtin(Builtin.drives);
-                        return EventResult.accept;
-                    }
-                    if event.text == "p" {
-                        ExplorerBridge.builtin(Builtin.pictures);
-                        return EventResult.accept;
-                    }
-                    if event.text == "r" {
-                        ExplorerBridge.builtin(Builtin.recent);
-                        return EventResult.accept;
-                    }
+            }
+
+            KeyBinding {
+                keys: Keys.map.close.alt-keys;
+                activated => {
+                    root.anchor = -1;
                 }
-                if event.text == "v" || event.text == "V" {
-                    anchor = root.cursor;
-                    return EventResult.accept;
+            }
+
+            KeyBinding {
+                keys: Keys.map.history-back.keys;
+                activated => {
+                    ExplorerBridge.back();
                 }
-                if event.modifiers.alt {
-                    if event.text == Key.LeftArrow {
-                        ExplorerBridge.back();
-                        return EventResult.accept;
-                    }
-                    if event.text == Key.RightArrow {
-                        ExplorerBridge.forward();
-                        return EventResult.accept;
-                    }
-                    return EventResult.reject;
+            }
+
+            KeyBinding {
+                keys: Keys.map.history-back.alt-keys;
+                activated => {
+                    ExplorerBridge.back();
                 }
-                if event.modifiers.control {
-                    if event.text == Key.D {
-                        move-cursor(visible-rows() / 2);
-                        return EventResult.accept;
-                    }
-                    if event.text == Key.U {
-                        move-cursor(-(visible-rows() / 2));
-                        return EventResult.accept;
-                    }
+            }
+
+            KeyBinding {
+                keys: Keys.map.history-forward.keys;
+                activated => {
+                    ExplorerBridge.forward();
                 }
+            }
+
+            KeyBinding {
+                keys: Keys.map.history-forward.alt-keys;
+                activated => {
+                    ExplorerBridge.forward();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.half-page-down.keys;
+                activated => {
+                    move-cursor(visible-rows() / 2);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.half-page-down.alt-keys;
+                activated => {
+                    move-cursor(visible-rows() / 2);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.half-page-up.keys;
+                activated => {
+                    move-cursor(-(visible-rows() / 2));
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.half-page-up.alt-keys;
+                activated => {
+                    move-cursor(-(visible-rows() / 2));
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.refresh.keys;
+                activated => {
+                    ExplorerBridge.refresh();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.refresh.alt-keys;
+                activated => {
+                    ExplorerBridge.refresh();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.rename.keys;
+                activated => { rename(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.rename.alt-keys;
+                activated => { rename(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.move-down.keys;
+                activated => {
+                    move-cursor(1);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.move-down.alt-keys;
+                activated => {
+                    move-cursor(1);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.move-up.keys;
+                activated => {
+                    move-cursor(-1);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.move-up.alt-keys;
+                activated => {
+                    move-cursor(-1);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.go-inside.keys;
+                activated => {
+                    root.open-at(root.cursor);
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.go-inside.alt-keys;
+                activated => {
+                    root.open-at(root.cursor);
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.go-parent.keys;
+                activated => {
+                    ExplorerBridge.up();
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.go-parent.alt-keys;
+                activated => {
+                    ExplorerBridge.up();
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.find.keys;
+                activated => {
+                    ExplorerBridge.searching = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.find.alt-keys;
+                activated => {
+                    ExplorerBridge.searching = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.ripgrep.keys;
+                activated => {
+                    ExplorerBridge.ripgrepping = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.ripgrep.alt-keys;
+                activated => {
+                    ExplorerBridge.ripgrepping = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.confirm.keys;
+                activated => {
+                    root.open-at(root.cursor);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.confirm.alt-keys;
+                activated => {
+                    root.open-at(root.cursor);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.zoom-in.keys;
+                activated => { ExplorerBridge.zoom-in(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.zoom-in.alt-keys;
+                activated => { ExplorerBridge.zoom-in(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.zoom-out.keys;
+                activated => { ExplorerBridge.zoom-out(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.zoom-out.alt-keys;
+                activated => { ExplorerBridge.zoom-out(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.copy.keys;
+                activated => { copy(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.copy.alt-keys;
+                activated => { copy(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.cut.keys;
+                activated => {
+                    debug("Cut");
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.cut.alt-keys;
+                activated => {
+                    debug("Cut");
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.paste.keys;
+                activated => {
+                    clear-selection();
+                    ExplorerBridge.paste();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.paste.alt-keys;
+                activated => {
+                    clear-selection();
+                    ExplorerBridge.paste();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.undo.keys;
+                activated => {
+                    debug("Undo");
+                    clear-selection();
+                    // ExplorerBridge.undo(); // or fucking window brdige???
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.undo.alt-keys;
+                activated => {
+                    debug("Undo");
+                    clear-selection();
+                    // ExplorerBridge.paste();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.redo.keys;
+                activated => {
+                    debug("Redo");
+                    // ExplorerBridge.undo(); // or fucking window brdige???
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.redo.alt-keys;
+                activated => {
+                    debug("Redo");
+                    // ExplorerBridge.paste();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.compress.keys;
+                activated => {
+                    ExplorerBridge.compressing = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.compress.alt-keys;
+                activated => {
+                    ExplorerBridge.compressing = true;
+                }
+            }
+
+            key-pressed(event) => {
+                debug("Explorer event");
+                let was-pending-g = root.pending-g;
+                root.pending-g = false;
                 if event.text == Key.G {
                     if was-pending-g {
                         move-start();
@@ -630,37 +1136,6 @@ export component Explorer {
                 }
                 if event.text == "G" {
                     move-end();
-                    return EventResult.accept;
-                }
-                if event.text == "j" {
-                    move-cursor(1);
-                    return EventResult.accept;
-                }
-                if event.text == "k" {
-                    move-cursor(-1);
-                    return EventResult.accept;
-                }
-                if event.text == "h" {
-                    ExplorerBridge.up();
-                    return EventResult.accept;
-                }
-                if event.text == "l" {
-                    root.open-at(root.cursor);
-                    return EventResult.accept;
-                }
-                if event.text == Key.Return {
-                    root.open-at(root.cursor);
-                    return EventResult.accept;
-                }
-                if event.text == "r" || event.text == Key.F2 {
-                    rename();
-                    return EventResult.accept;
-                }
-                if event.text == Key.F5 {
-                    ExplorerBridge.refresh();
-                }
-                if event.text == "/" {
-                    ExplorerBridge.searching = true;
                     return EventResult.accept;
                 }
                 EventResult.reject
@@ -716,39 +1191,56 @@ export component Explorer {
                 }
             }
 
-            VerticalLayout {
+            list := ListView {
 
-                list := ListView {
+                for entry[i] in ExplorerBridge.entries: Rectangle {
+                    z: 0;
+		    // Space for scrollbar
+                    width: parent.width - 12px;
+                    height: ExplorerBridge.view == View.grid ? ExplorerBridge.grid-height : ExplorerBridge.list-height;
+                    background: is-selected(i) ? Theme.colors.fourth-col :
+                        cursor-hover == i ? Theme.colors.third-col : transparent;
 
-                    for entry[i] in ExplorerBridge.entries: Rectangle {
-                        z: 0;
-                        height: ExplorerBridge.view == View.grid ? ExplorerBridge.grid-height : ExplorerBridge.list-height;
-                        background: is-selected(i) ? Theme.colors.fourth-col :
-                            cursor-hover == i ? Theme.colors.third-col : transparent;
+                    border-radius: 12px;
+                    border-corner-shape: superellipse(WindowBridge.edges-shape);
 
-                        border-radius: 12px;
-                        transform-scale-y: (ta.pressed && root.cursor-hover == i) ? 0.99 : 1.0;
-                        transform-scale-x: (ta.pressed && root.cursor-hover == i) ? 0.998 : 1.0;
+                    transform-scale-y: (ta.pressed && root.cursor-hover == i) ? 0.99 : 1.0;
+                    transform-scale-x: (ta.pressed && root.cursor-hover == i) ? 0.998 : 1.0;
 
-                        HorizontalLayout {
-                            padding-left: 12px;
-                            alignment: start;
-                            cross-axis-alignment: center;
-                            spacing: 8px;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        cross-axis-alignment: center;
+                        spacing: 8px;
 
-                            if entry.type == EntryType.directory: DirectoryIcon { }
+                        if entry.type == EntryType.directory: Image {
+                            source: @image-url("icons/folder.svg");
+                            height: ExplorerBridge.item-height() - 12px;
+                            width: ExplorerBridge.item-height() - 12px;
+                            colorize: Theme.colors.fourth-font;
+                        }
 
-                            if entry.type == EntryType.file: Image {
-                                source: @image-url("icons/file.svg");
-                                colorize: Theme.colors.fourth-font;
-                            }
+                        if entry.type == EntryType.file: Image {
+                            source: @image-url("icons/file.svg");
+                            height: ExplorerBridge.item-height() - 12px;
+                            width: ExplorerBridge.item-height() - 12px;
+                            colorize: Theme.colors.fourth-font;
+                        }
 
-                            Text {
-                                text: entry.name;
-                                font-size: 13px;
-                                color: Theme.colors.primary-font;
-                                font-family: Theme.font-heading;
-                            }
+                        Text {
+                            text: entry.name;
+                            font-size: 11px;
+                            color: Theme.colors.primary-font;
+                            font-weight: 400;
+                        }
+
+                        Rectangle { }
+
+                        if entry.type == EntryType.file: Text {
+                            text: entry.size;
+                            font-size: 11px;
+                            color: Theme.colors.third-font;
+                            font-weight: 400;
                         }
                     }
                 }
@@ -781,6 +1273,13 @@ export component Explorer {
             ExplorerBridge.rename(root.cursor, new-name);
             renaming = false;
             fs.focus();
+        }
+    }
+
+    if ExplorerBridge.compressing: CompressModal {
+        on-close => {
+            fs.focus();
+            ExplorerBridge.compressing = false;
         }
     }
 }

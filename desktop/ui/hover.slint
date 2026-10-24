@@ -1,0 +1,15 @@
+
+export global HoverBridge {
+    in property <bool> hovering;
+    in property <length> hover-x;
+    in property <length> hover-y;
+
+    // Absolute pos!
+    public pure function is-hovered(pos: Point, width: length, height: length) -> bool {
+        hovering
+            && hover-x >= pos.x && hover-x <= pos.x + width
+            && hover-y >= pos.y && hover-y <= pos.y + height
+    }
+
+    callback dropped();
+}

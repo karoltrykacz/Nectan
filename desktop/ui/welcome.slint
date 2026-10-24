@@ -2,8 +2,6 @@ import { Theme, ThemeColors } from "theme.slint";
 import {
     PrimaryButton,
     PlainLineEdit,
-    SvgIcon,
-    IconButton,
     LangSelection,
 } from "elements.slint";
 import { ScrollView } from "std-widgets.slint";
@@ -38,7 +36,6 @@ component StepProgress inherits HorizontalLayout {
 component StepHeader inherits Text {
     horizontal-alignment: center;
     color: Theme.colors.primary-font;
-    font-family: Theme.font-heading;
     font-size: 28px;
     font-weight: 700;
     wrap: word-wrap;
@@ -48,12 +45,12 @@ component StepHeader inherits Text {
 
 export component WelcomeScreen inherits Rectangle {
 
-    property <int> step: 0;
-
     background: Theme.colors.primary-col;
-
     width: 100%;
     height: 100%;
+    border-radius: WindowBridge.maximized ? 12px : 0;
+
+    property <int> step: 0;
 
     function next() {
         if step == 0 {

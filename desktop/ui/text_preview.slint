@@ -60,7 +60,6 @@ export component TextPreview inherits GeneralModal {
 
                 Text {
                     text: @tr("Loading {} document.txt", TextPreviewBridge.doc-name);
-                    font-family: Theme.font-heading;
                     color: Theme.colors.primary-font;
                     font-size: 16px;
                     font-weight: 500;
@@ -84,7 +83,6 @@ export component TextPreview inherits GeneralModal {
 
                         Text {
                             text: TextPreviewBridge.doc-name;
-                            font-family: Theme.font-heading;
                             color: Theme.colors.primary-font;
                             font-size: 16px;
                             font-weight: 500;
@@ -97,7 +95,6 @@ export component TextPreview inherits GeneralModal {
                             text: "\{TextPreviewBridge.doc-modified} | \{TextPreviewBridge.doc-size}";
                             font-size: 13px;
                             color: Theme.colors.third-font;
-                            font-family: Theme.font-heading;
                             font-weight: 400;
                         }
                     }

@@ -2,23 +2,22 @@ import { ScrollView, TextEdit, VerticalBox, LineEdit } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import {
     PrimaryButton,
-    GeneralModal,
     PlainLineEdit,
     Switch,
     Dropdown,
     LangSelection,
-    IconButton,
-    SvgIcon,
     Slider,
+    GeneralModal,
 } from "elements.slint";
 import { WindowBridge } from "window.slint";
 import {
     Keys,
     ShortcutGroup,
-    ShortcutGroupView,
     KeyMap,
-    ChangeShortcut,
+    KeysBadge,
+    ShortcutItem,
 } from "keys.slint";
+import { IconButton, SvgIcon } from "elements/pure.slint";
 
 
 export global SettingsBridge {
@@ -31,8 +30,8 @@ export global SettingsBridge {
 
     pure callback format-speed(float) -> string;
 
-    in-out property <bool> open: true;
-    in-out property <int> active-tab: 4;
+    in-out property <bool> open;
+    in-out property <int> active-tab: 0;
     in-out property <int> selected-row: -1;
 
     in-out property <bool> autostart;
@@ -66,6 +65,142 @@ export global SettingsBridge {
 
     public function previous-tab() {
         active-tab = Math.mod(active-tab + tab-count - 1, tab-count);
+    }
+}
+
+component ChangeShortcut inherits GeneralModal {
+    property <keys> new-keys;
+    property <string> shortcut-id: Keys.change-shortcut-id;
+    property <bool> is-primary: !Keys.change-shortcut-alt;
+    property <bool> pushed-down;
+
+    function save() {
+        root.restore-focus();
+        if new-keys.to-string() != "" {
+            Keys.save-shortcut(shortcut-id, new-keys, is-primary);
+        }
+        Keys.close-change();
+    }
+
+    on-close => {
+        root.restore-focus();
+        Keys.close-change();
+    }
+
+    init => { fs.focus(); }
+
+    forward-focus: fs;
+
+    fs := FocusScope {
+
+        capture-key-pressed(event) => {
+            pushed-down = true;
+            EventResult.reject
+        }
+
+        capture-key-released(event) => {
+            pushed-down = false;
+            EventResult.reject
+        }
+
+        KeyBinding {
+            keys: @keys(Return);
+            activated => { save(); }
+        }
+
+        KeyBinding {
+            keys: @keys(Escape);
+            activated => {
+                root.restore-focus();
+                Keys.close-change();
+            }
+        }
+
+        key-released(event) => {
+            EventResult.accept
+        }
+
+        key-pressed(event) => {
+            root.new-keys = Keys.make-keys(event);
+            EventResult.accept
+        }
+
+        Rectangle {
+
+            width: min(520px, parent.width - 80px);
+            height: min(256px, parent.height - 80px);
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            clip: true;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 14px;
+
+                VerticalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    Text {
+                        text: @tr("Change shortcut");
+                        font-size: 20px;
+                        color: Theme.colors.primary-font;
+                        font-weight: 600;
+                    }
+
+                    VerticalLayout {
+                        alignment: start;
+                        Text {
+                            text: @tr("Click enter to confirm.");
+                            font-size: 13px;
+                            color: Theme.colors.secondary-font;
+                        }
+                    }
+                }
+
+                Rectangle { }
+
+                KeysBadge {
+                    interactive: false;
+                    cross-axis-self-alignment: center;
+                    pressed: root.pushed-down;
+                    keys: root.new-keys;
+                }
+
+                Rectangle { }
+
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton {
+                        text: @tr("Cancel");
+                        alt: true;
+                        clicked => {
+                            root.restore-focus();
+                            Keys.close-change();
+                        }
+                    }
+
+                    Rectangle {
+                        width: 12px;
+                    }
+
+                    PrimaryButton {
+                        text: @tr("Save");
+                        image: @image-url("icons/save.svg");
+                        clicked => { save(); }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -189,6 +324,7 @@ export component SettingsRow {
 
             VerticalLayout {
                 alignment: center;
+                cross-axis-alignment: center;
                 @children
             }
         }
@@ -197,12 +333,16 @@ export component SettingsRow {
 
 
 
+
 component SettingsTab inherits Rectangle {
     in property <string> tab-name;
     in property <int> tab-idx;
+    in property <image> icon;
+    in property <length> icon-size;
 
     height: 28px;
-    border-radius: 8px;
+    border-radius: 12px;
+    border-corner-shape: superellipse(WindowBridge.edges-shape);
     background: SettingsBridge.active-tab == tab-idx ? Theme.colors.secondary-col
         : (ta.has-hover ? Theme.colors.secondary-col : transparent);
     border-width: 1px;
@@ -214,15 +354,25 @@ component SettingsTab inherits Rectangle {
         easing: ease;
     }
 
-    Text {
-        x: 12px;
-        y: (parent.height - self.height) / 2;
-        text: tab-name;
-        color: SettingsBridge.active-tab == tab-idx
-            ? Theme.colors.primary-font
-            : (ta.has-hover ? Theme.colors.primary-font : Theme.colors.third-font);
-        font-size: 13px;
-        font-weight: 500;
+    HorizontalLayout {
+        cross-axis-alignment: center;
+        alignment: start;
+        padding-left: 12px;
+        spacing: 8px;
+
+        SvgIcon {
+            source: root.icon;
+            size: root.icon-size;
+        }
+
+        Text {
+            text: tab-name;
+            color: SettingsBridge.active-tab == tab-idx
+                ? Theme.colors.primary-font
+                : (ta.has-hover ? Theme.colors.primary-font : Theme.colors.secondary-font);
+            font-size: 12.5px;
+            font-weight: 400;
+        }
     }
 
     ta := TouchArea {
@@ -322,21 +472,6 @@ component General inherits SettingsPage {
             }
         }
     }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 5;
-        title: @tr("Default download destination");
-        subtitle: SettingsBridge.default-download-dir;
-        PrimaryButton {
-            text: @tr("Change");
-            clicked => { SettingsBridge.change-default-dir(); }
-        }
-    }
 }
 
 component Transfers inherits SettingsPage {
@@ -410,6 +545,21 @@ component Transfers inherits SettingsPage {
             }
         }
     }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 5;
+        title: @tr("Default download destination");
+        subtitle: SettingsBridge.default-download-dir;
+        PrimaryButton {
+            text: @tr("Change");
+            clicked => { SettingsBridge.change-default-dir(); }
+        }
+    }
 }
 
 component SpeedLimitsConfig inherits GeneralModal {
@@ -434,6 +584,7 @@ component SpeedLimitsConfig inherits GeneralModal {
         drop-shadow-color: #00000099;
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.colors.border-col;
@@ -453,7 +604,6 @@ component SpeedLimitsConfig inherits GeneralModal {
                 text: @tr("Change limits");
                 font-size: 20px;
                 color: Theme.colors.primary-font;
-                font-family: Theme.font-heading;
                 font-weight: 600;
             }
 
@@ -479,7 +629,6 @@ component SpeedLimitsConfig inherits GeneralModal {
                     Text {
                         text: @tr("Upload");
                         color: Theme.colors.primary-font;
-                        font-family: Theme.font-heading;
                         font-size: 13px;
                         font-weight: 600;
                     }
@@ -488,7 +637,6 @@ component SpeedLimitsConfig inherits GeneralModal {
                         text: SettingsBridge.format-speed(SettingsBridge.upload-limit);
                         color: Theme.colors.primary-font;
                         horizontal-alignment: end;
-                        font-family: Theme.font-heading;
                         font-size: 13px;
                         font-weight: 500;
                     }
@@ -520,7 +668,6 @@ component SpeedLimitsConfig inherits GeneralModal {
                     Text {
                         text: @tr("Download");
                         color: Theme.colors.primary-font;
-                        font-family: Theme.font-heading;
                         font-size: 13px;
                         font-weight: 600;
                     }
@@ -529,7 +676,6 @@ component SpeedLimitsConfig inherits GeneralModal {
                         text: SettingsBridge.format-speed(SettingsBridge.download-limit);
                         color: Theme.colors.primary-font;
                         horizontal-alignment: end;
-                        font-family: Theme.font-heading;
                         font-size: 13px;
                         font-weight: 500;
                     }
@@ -580,7 +726,8 @@ component ChangeUsernameModal inherits GeneralModal {
         drop-shadow-color: #00000099;
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
-        border-radius: 12px;
+        border-radius: 24px;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
         border-width: 1px;
         border-color: Theme.colors.border-col;
         clip: true;
@@ -602,7 +749,6 @@ component ChangeUsernameModal inherits GeneralModal {
                     text: @tr("Change username");
                     font-size: 20px;
                     color: Theme.colors.primary-font;
-                    font-family: Theme.font-heading;
                     font-weight: 600;
                 }
 
@@ -726,8 +872,12 @@ component Appearance inherits SettingsPage {
         title: @tr("Rounded edges");
         subtitle: @tr("Round window edges");
 
-        Switch {
-            checked <=> WindowBridge.round-edges;
+        HorizontalLayout {
+            spacing: 24px;
+            cross-axis-alignment: center;
+            Switch {
+                checked <=> WindowBridge.round-edges;
+            }
         }
     }
 
@@ -738,6 +888,23 @@ component Appearance inherits SettingsPage {
 
     SettingsRow {
         idx: 2;
+        title: @tr("Edges shape");
+        subtitle: @tr("Change edges shape");
+        Slider {
+            width: 100px;
+            value <=> WindowBridge.edges-shape;
+            minimum: 1.0;
+            maximum: 5.0;
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 3;
         title: @tr("Native topbar");
         subtitle: @tr("Use native window decorations.");
         Switch {
@@ -751,12 +918,86 @@ component Appearance inherits SettingsPage {
     }
 
     SettingsRow {
-        idx: 3;
+        idx: 4;
         title: @tr("Topbar always on");
         subtitle: @tr("Don't hide topbar");
 
         Switch {
             checked <=> WindowBridge.topbar-always-on;
+        }
+    }
+}
+
+component ShortcutGroupView inherits Rectangle {
+    in property <string> category;
+    in property <[ShortcutItem]> items;
+
+    background: Theme.colors.secondary-col;
+    border-radius: 12px;
+    border-corner-shape: superellipse(WindowBridge.edges-shape);
+
+    VerticalLayout {
+        padding: 20px;
+        padding-bottom: 0;
+        padding-top: 16px;
+
+        Text {
+            text: root.category;
+            color: Theme.colors.primary-font;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        Rectangle {
+            height: 10px;
+        }
+
+        for item[i] in root.items: Rectangle {
+            height: 48px;
+
+            HorizontalLayout {
+                alignment: space-between;
+
+                Text {
+                    text: item.title;
+                    color: Theme.colors.primary-font;
+                    font-size: 13px;
+                    font-weight: 400;
+                    vertical-alignment: center;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    cross-axis-alignment: center;
+
+                    KeysBadge {
+                        shortcut-id: item.id;
+                        alt: false;
+                        keys: item.keys;
+                    }
+
+                    if item.alt-keys.to-string() != "": Text {
+                        text: @tr(" | ");
+                        color: Theme.colors.third-font;
+                        font-size: 11px;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+
+                    if item.alt-keys.to-string() != "": KeysBadge {
+                        shortcut-id: item.id;
+                        alt: true;
+                        keys: item.alt-keys;
+                    }
+                }
+            }
+
+            if i != root.items.length - 1: Rectangle {
+                y: parent.height - self.height;
+                height: 1px;
+                background: Theme.colors.fourth-col.with-alpha(0.5);
+            }
         }
     }
 }
@@ -770,8 +1011,13 @@ component Shortcuts inherits SettingsPage {
         {
             category: @tr("General"),
             items: [
-                { id: "close", title: @tr("Close"), keys: m.close.keys },
-                { id: "confirm", title: @tr("Confirm"), keys: m.confirm.keys },
+                { id: "close", title: @tr("Close"), keys: m.close.keys, alt_keys: m.close.alt-keys },
+                {
+                    id: "confirm",
+                    title: @tr("Confirm"),
+                    keys: m.confirm.keys,
+                    alt_keys: m.confirm.alt-keys
+                },
                 {
                     id: "move-down",
                     title: @tr("Move down"),
@@ -784,26 +1030,53 @@ component Shortcuts inherits SettingsPage {
                     keys: m.move-up.keys,
                     alt_keys: m.move-up.alt-keys
                 },
+                { id: "undo", title: @tr("Undo"), keys: m.undo.keys, alt_keys: m.undo.alt-keys },
+                { id: "redo", title: @tr("Redo"), keys: m.redo.keys, alt_keys: m.redo.alt-keys },
             ]
         },
         {
             category: @tr("Window"),
             items: [
-                { id: "essentials", title: @tr("Essentials"), keys: m.essentials.keys },
-                { id: "toggle-sidebar", title: @tr("Toggle sidebar"), keys: m.toggle-sidebar.keys },
-                { id: "transfers", title: @tr("Transfers"), keys: m.transfers.keys },
-                { id: "settings", title: @tr("Settings"), keys: m.settings.keys },
+                {
+                    id: "essentials",
+                    title: @tr("Focus on essentials"),
+                    keys: m.essentials.keys,
+                    alt_keys: m.essentials.alt-keys
+                },
+                {
+                    id: "toggle-sidebar",
+                    title: @tr("Toggle sidebar"),
+                    keys: m.toggle-sidebar.keys,
+                    alt_keys: m.toggle-sidebar.alt-keys
+                },
+                {
+                    id: "transfers",
+                    title: @tr("Transfers"),
+                    keys: m.transfers.keys,
+                    alt_keys: m.transfers.alt-keys
+                },
+                {
+                    id: "settings",
+                    title: @tr("Settings"),
+                    keys: m.settings.keys,
+                    alt_keys: m.settings.alt-keys
+                },
             ]
         },
         {
             category: @tr("File explorer"),
             items: [
-                { id: "go-up", title: @tr("Go up"), keys: m.go-up.keys, alt_keys: m.go-up.alt-keys },
+                {
+                    id: "go-parent",
+                    title: @tr("Go to parent directory"),
+                    keys: m.go-parent.keys,
+                    alt_keys: m.go-parent.alt-keys
+                },
                 {
                     id: "go-down",
-                    title: @tr("Go down"),
-                    keys: m.go-down.keys,
-                    alt_keys: m.go-down.alt-keys
+                    title: @tr("Go inside "),
+                    keys: m.go-inside.keys,
+                    alt_keys: m.go-inside.alt-keys
                 },
                 {
                     id: "history-forward",
@@ -832,6 +1105,7 @@ component Shortcuts inherits SettingsPage {
                 { id: "find", title: @tr("Find"), keys: m.find.keys, alt_keys: m.find.alt-keys },
                 { id: "ripgrep", title: "Ripgrep", keys: m.ripgrep.keys, alt_keys: m.ripgrep.alt-keys },
                 { id: "copy", title: @tr("Copy"), keys: m.copy.keys, alt_keys: m.copy.alt-keys },
+                { id: "paste", title: @tr("Paste"), keys: m.paste.keys, alt_keys: m.paste.alt-keys },
                 { id: "cut", title: @tr("Cut"), keys: m.cut.keys, alt_keys: m.cut.alt-keys },
                 {
                     id: "trash",
@@ -842,24 +1116,71 @@ component Shortcuts inherits SettingsPage {
                 {
                     id: "delete-permanently",
                     title: @tr("Delete (Permanently)"),
-                    keys: m.delete-permanently.keys
+                    keys: m.delete-permanently.keys,
+                    alt_keys: m.delete-permanently.alt-keys
                 },
-                { id: "select-all", title: @tr("Select all"), keys: m.select-all.keys },
-                { id: "select-regex", title: @tr("Select matching (Regex)"), keys: m.select-regex.keys },
+                {
+                    id: "select-all",
+                    title: @tr("Select all"),
+                    keys: m.select-all.keys,
+                    alt_keys: m.select-all.alt-keys
+                },
+                {
+                    id: "select-regex",
+                    title: @tr("Select matching (Regex)"),
+                    keys: m.select-regex.keys,
+                    alt_keys: m.select-regex.alt-keys
+                },
+                {
+                    id: "compress",
+                    title: @tr("compress"),
+                    keys: m.compress.keys,
+                    alt_keys: m.compress.alt-keys
+                },
                 { id: "rename", title: @tr("Rename"), keys: m.rename.keys, alt_keys: m.rename.alt-keys },
-                { id: "properties", title: @tr("Show properties"), keys: m.properties.keys },
+                {
+                    id: "properties",
+                    title: @tr("Show properties"),
+                    keys: m.properties.keys,
+                    alt_keys: m.properties.alt-keys
+                },
                 {
                     id: "refresh",
                     title: @tr("Refresh"),
                     keys: m.refresh.keys,
                     alt_keys: m.refresh.alt-keys
                 },
-                { id: "create", title: @tr("Create"), keys: m.create.keys },
-                { id: "toggle-hidden", title: @tr("Show/hide hidden"), keys: m.toggle-hidden.keys },
-                { id: "list-view", title: @tr("List view"), keys: m.list-view.keys },
-                { id: "grid-view", title: @tr("Grid view"), keys: m.grid-view.keys },
-                { id: "zoom-out", title: @tr("Zoom out"), keys: m.zoom-out.keys },
-                { id: "zoom-in", title: @tr("Zoom in"), keys: m.zoom-in.keys },
+                { id: "create", title: @tr("Create"), keys: m.create.keys, alt_keys: m.create.alt-keys },
+                {
+                    id: "toggle-hidden",
+                    title: @tr("Show/hide hidden"),
+                    keys: m.toggle-hidden.keys,
+                    alt_keys: m.toggle-hidden.alt-keys
+                },
+                {
+                    id: "list-view",
+                    title: @tr("List view"),
+                    keys: m.list-view.keys,
+                    alt_keys: m.list-view.alt-keys
+                },
+                {
+                    id: "grid-view",
+                    title: @tr("Grid view"),
+                    keys: m.grid-view.keys,
+                    alt_keys: m.grid-view.alt-keys
+                },
+                {
+                    id: "zoom-out",
+                    title: @tr("Zoom out"),
+                    keys: m.zoom-out.keys,
+                    alt_keys: m.zoom-out.alt-keys
+                },
+                {
+                    id: "zoom-in",
+                    title: @tr("Zoom in"),
+                    keys: m.zoom-in.keys,
+                    alt_keys: m.zoom-in.alt-keys
+                },
             ]
         },
     ];
@@ -870,13 +1191,15 @@ component Shortcuts inherits SettingsPage {
     }
 }
 
+
 export component Settings inherits GeneralModal {
 
     on-close => { SettingsBridge.open = false; }
 
-    init => { fs.focus(); }
+    forward-focus: fs;
 
     fs := FocusScope {
+        init => { self.focus(); }
 
         KeyBinding {
             keys: @keys(H);
@@ -903,6 +1226,10 @@ export component Settings inherits GeneralModal {
             activated => { SettingsBridge.previous-tab() }
         }
 
+        TouchArea {
+            clicked => { SettingsBridge.open = false; }
+        }
+
         Rectangle {
             width: min(920px, parent.width - 40px);
             height: min(620px, parent.height - 40px);
@@ -910,17 +1237,12 @@ export component Settings inherits GeneralModal {
 
             background: Theme.colors.primary-col;
             border-radius: 12px;
+            border-corner-shape: superellipse(WindowBridge.edges-shape);
             border-width: 1px;
             border-color: Theme.colors.fourth-col.with-alpha(0.5);
 
             drop-shadow-color: #00000099;
             drop-shadow-blur: 50px;
-
-            TouchArea {
-                height: 100%;
-                width: 100%;
-                clicked => {}
-            }
 
             HorizontalLayout {
 
@@ -932,26 +1254,36 @@ export component Settings inherits GeneralModal {
                     SettingsTab {
                         tab-idx: 0;
                         tab-name: @tr("General");
+                        icon-size: 14px;
+                        icon: @image-url("icons/settings.svg");
                     }
 
                     SettingsTab {
                         tab-idx: 1;
                         tab-name: @tr("Transfers");
+                        icon-size: 14px;
+                        icon: @image-url("icons/tranfsers.svg");
                     }
 
                     SettingsTab {
                         tab-idx: 2;
                         tab-name: @tr("Notifications");
+                        icon-size: 14px;
+                        icon: @image-url("icons/bell.svg");
                     }
 
                     SettingsTab {
                         tab-idx: 3;
                         tab-name: @tr("Appearance");
+                        icon-size: 14px;
+                        icon: @image-url("icons/palette.svg");
                     }
 
                     SettingsTab {
                         tab-idx: 4;
                         tab-name: @tr("Shortcuts");
+                        icon-size: 14px;
+                        icon: @image-url("icons/key.svg");
                     }
                 }
 

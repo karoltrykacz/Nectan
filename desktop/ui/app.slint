@@ -1,7 +1,5 @@
 import { Theme, ThemeAnimator } from "theme.slint";
 import {
-    IconButton,
-    SvgIcon,
     PrimaryButton,
     GeneralModal,
     ThemeSelector,
@@ -32,7 +30,13 @@ import {
     OutcomingTransferModalBridge,
 } from "transfer_offer_modal.slint";
 import { SearchBridge, Search, SearchBar } from "search.slint";
-import { WindowBridge, Window } from "window.slint";
+import {
+    WindowBridge,
+    Window,
+    MainWindowTouchArea,
+    TopBarShower,
+    Topbar,
+} from "window.slint";
 import { WelcomeScreen } from "welcome.slint";
 import { SidebarBridge, Sidebar, SidebarShower } from "sidebar.slint";
 import {
@@ -41,7 +45,8 @@ import {
     DirEntry,
     SearchExplorer,
 } from "explorer.slint";
-import { Keys, ChangeShortcut } from "keys.slint";
+import { Keys } from "keys.slint";
+import { HoverBridge } from "hover.slint";
 
 export {
     Keys,
@@ -50,6 +55,7 @@ export {
     Window,
     DirEntry,
     DeviceItem,
+    HoverBridge,
     TransferItem,
     SearchBridge,
     WindowBridge,
@@ -64,14 +70,14 @@ export {
     IncomingTransferOfferBridge,
     OutcomingTransferModalBridge,
 }
-export global NotificationsBridge {
-    in-out property <bool> notifications-visible: false;
-}
-
 component NectanModal inherits GeneralModal {
 
     on-close => { WindowBridge.nectan-modal-open = false; }
-    init => { self.focus(); }
+
+    init => { root.focus(); }
+    TouchArea {
+        clicked => { WindowBridge.nectan-modal-open = false; }
+    }
 
     Rectangle {
         width: min(620px, parent.width * 0.8);
@@ -99,7 +105,6 @@ component NectanModal inherits GeneralModal {
 
             Text {
                 text: "Nectan";
-                font-family: "Montserrat";
                 color: Theme.colors.primary-font;
                 font-size: 42px;
                 font-weight: 700;
@@ -107,7 +112,6 @@ component NectanModal inherits GeneralModal {
 
             Text {
                 text: "1.0.0";
-                font-family: Theme.font-body;
                 font-size: 13px;
                 font-weight: 500;
                 color: Theme.colors.third-font;
@@ -121,128 +125,6 @@ export global Api {
     pure callback make-data() -> data-transfer;
     pure callback can-drop() -> DragAction;
     callback dropped();
-}
-
-component TopBarShower inherits Rectangle {
-    x: WindowBridge.sidebar-hover || WindowBridge.sidebar-visible ? WindowBridge.sidebar-width + 20px : 0;
-    z: 3;
-    y: 0;
-    width: 100%;
-    height: 25px;
-
-    TouchArea {
-        property <bool> maybe-dragging: false;
-        moved => {
-            if (self.maybe-dragging) {
-                WindowBridge.drag-window();
-            }
-        }
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.down) {
-                self.maybe-dragging = true;
-            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                self.maybe-dragging = false;
-            }
-            if self.mouse-y > 20px {
-                WindowBridge.topbar-hover = false;
-            }
-            if self.mouse-y < 20px {
-                WindowBridge.topbar-hover = true;
-            }
-        }
-    }
-}
-
-component MainWindowTouchArea inherits TouchArea {
-    width: 100%;
-    height: 100%;
-    pointer-event(event) => {
-        if self.mouse-y > 40px {
-            WindowBridge.topbar-hover = false;
-        }
-    }
-    scroll-event(event) => {
-        if event.delta-x > 10px {
-            WindowBridge.sidebar-visible = true;
-        }
-        if event.delta-x < -10px {
-            WindowBridge.sidebar-visible = false;
-        }
-        return accept;
-    }
-}
-
-
-component Topbar inherits Rectangle {
-    x: 0;
-    y: 0;
-    z: 10;
-    height: 20px;
-    opacity: WindowBridge.native-topbar ? 0.0 :
-        WindowBridge.topbar-always-on ? 1.0 :
-        WindowBridge.topbar-hover ? 1.0 : 0.0;
-
-    animate opacity {
-        delay: 200ms;
-        duration: 200ms;
-        easing: ease;
-    }
-
-    HorizontalLayout {
-        padding-top: 7px;
-        padding-right: 8px;
-        height: 28px;
-        alignment: end;
-        spacing: 12px;
-
-        IconButton {
-            width: 20px;
-            height: 20px;
-            inner-bg: transparent;
-            enabled: WindowBridge.topbar-hover;
-            SvgIcon {
-                source: @image-url("icons/minimize.svg");
-                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
-                size: 16px;
-            }
-
-            clicked => {
-                WindowBridge.minimize-window();
-            }
-        }
-
-        IconButton {
-            width: 20px;
-            height: 20px;
-            inner-bg: transparent;
-            enabled: WindowBridge.topbar-hover;
-            SvgIcon {
-                source: @image-url("icons/maximize.svg");
-                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
-                size: 16px;
-            }
-
-            clicked => {
-                WindowBridge.maximize-window();
-            }
-        }
-
-        IconButton {
-            width: 20px;
-            height: 20px;
-            inner-bg: transparent;
-            enabled: WindowBridge.topbar-hover;
-            SvgIcon {
-                source: @image-url("icons/close.svg");
-                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
-                size: 16px;
-            }
-
-            clicked => {
-                WindowBridge.close-window();
-            }
-        }
-    }
 }
 
 component MainFocusScope inherits FocusScope {
@@ -262,16 +144,14 @@ component MainFocusScope inherits FocusScope {
     KeyBinding {
         keys: Keys.map.essentials.keys;
         activated => {
-            // sidebar.essentials();
-	    // TODO 
+            SidebarBridge.essentials();
         }
     }
 
     KeyBinding {
         keys: Keys.map.essentials.alt-keys;
         activated => {
-            // sidebar.essentials();
-	    // TODO
+            SidebarBridge.essentials();
         }
     }
 
@@ -293,12 +173,16 @@ component MainFocusScope inherits FocusScope {
 
     KeyBinding {
         keys: Keys.map.settings.keys;
-        activated => { SettingsBridge.open = true; }
+        activated => {
+            SettingsBridge.open = !SettingsBridge.open;
+        }
     }
 
     KeyBinding {
         keys: Keys.map.settings.alt-keys;
-        activated => { SettingsBridge.open = true; }
+        activated => {
+            SettingsBridge.open = !SettingsBridge.open;
+        }
     }
 
     KeyBinding {
@@ -311,6 +195,18 @@ component MainFocusScope inherits FocusScope {
         activated => { WindowBridge.current-window = Window.transfers; }
     }
 
+    KeyBinding {
+        keys: @keys(Shift + A);
+        activated => {
+            AddDeviceBridge.open = !AddDeviceBridge.open;
+        }
+    }
+
+    key-pressed(event) => {
+        debug("Main focus scope key event", event);
+        EventResult.reject
+    }
+
     @children
 }
 
@@ -321,43 +217,45 @@ export component NectanWindow inherits Window {
     preferred-height: 720px;
     min-width: 400px;
     min-height: 200px;
-    default-font-family: Theme.font-body;
-    resize-border-width: 8px;
-
+    resize-border-width: 6px;
     no-frame: !WindowBridge.native-topbar;
     background: transparent;
-    maximized: true;
+    maximized: WindowBridge.maximized;
+    default-font-family: Theme.font;
+    z: 0;
 
     callback pasted();
-
     in-out property <keys> toggle-sidebar: @keys(Control + B);
 
     ThemeAnimator { }
 
-    forward-focus: focus-scope;
+    forward-focus: main-fs;
 
-    focus-scope := MainFocusScope {
+    main-fs := MainFocusScope {
+
         init => { self.focus(); }
 
-        MainWindowTouchArea { }
+        // MainWindowTouchArea { }
+	WindowMoveArea { }
 
         Rectangle {
-            width: 100%;
-            height: 100%;
+            z: 1;
             background: Theme.colors.primary-col;
             border-color: Theme.colors.fourth-col;
             border-width: root.maximized ? 0 : 1px;
             border-radius: WindowBridge.round-edges ? root.maximized ? 0 : 12px : 0;
-
+            border-corner-shape: superellipse(WindowBridge.edges-shape);
             clip: true;
 
             TopBarShower { }
 
-            SidebarShower { }
-
-            sidebar := Sidebar { }
+            SidebarShower {
+                z: 1;
+            }
 
             Topbar { }
+
+            Sidebar { }
 
             HorizontalLayout {
                 spacing: 8px;
@@ -370,18 +268,19 @@ export component NectanWindow inherits Window {
                 // For sidebar
                 animate x, padding-left {
                     duration: 128ms;
-                    easing: ease;
+                    easing: Theme.easing;
                 }
 		// Topbar
                 animate padding-top {
                     delay: 200ms;
                     duration: 128ms;
-                    easing: ease;
+                    easing: Theme.easing;
                 }
 
                 Rectangle {
                     background: Theme.colors.secondary-col;
-                    border-radius: 8px;
+                    border-radius: 12px;
+                    border-corner-shape: superellipse(WindowBridge.edges-shape);
 
                     if WindowBridge.current-window == Window.device: DeviceScreen { }
 
@@ -406,29 +305,31 @@ export component NectanWindow inherits Window {
 
         changed any-modal-open => {
             if !any-modal-open {
-                focus-scope.focus();
+                main-fs.focus();
             }
             WindowBridge.any-modal-open = any-modal-open;
         }
 
-        if SettingsBridge.open: Settings { }
+        Rectangle {
+            z: 1;
 
-        if WindowBridge.nectan-modal-open: NectanModal { }
+            if SettingsBridge.open: Settings { }
 
-        if OutcomingTransferModalBridge.open: OutcomingTransferModal { }
+            if WindowBridge.nectan-modal-open: NectanModal { }
 
-        if IncomingTransferOfferBridge.open: IncomingTransferOfferModal { }
+            if OutcomingTransferModalBridge.open: OutcomingTransferModal { }
 
-        if AddDeviceBridge.open:  AddDeviceModal { }
+            if IncomingTransferOfferBridge.open: IncomingTransferOfferModal { }
 
-        if SearchBridge.open: Search { }
+            if AddDeviceBridge.open:  AddDeviceModal { }
 
-        if ExplorerBridge.searching: SearchExplorer { }
+            if SearchBridge.open: Search { }
 
-        if Error.open: ErrorModal { }
+            if ExplorerBridge.searching: SearchExplorer { }
 
-        if WindowBridge.welcome-open: WelcomeScreen {
-            border-radius: root.maximized ? 0 : 12px;
+            if Error.open: ErrorModal { }
+
+            if WindowBridge.welcome-open: WelcomeScreen { }
         }
     }
 }

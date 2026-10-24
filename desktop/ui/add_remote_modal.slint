@@ -4,10 +4,9 @@ import {
     PrimaryButton,
     Spinner,
     LinkButton,
-    IconButton,
-    SvgIcon,
 } from "elements.slint";
 import { DeviceOptionsModal } from "devices.slint";
+import { IconButton, SvgIcon } from "elements/pure.slint";
 
 export enum LookupState {
     connection-failed,
@@ -80,7 +79,6 @@ component DisplayMode {
             Text {
                 text: "Copied";
                 color: Theme.colors.primary-col;
-                font-family: Theme.font-heading;
                 font-weight: 500;
                 vertical-alignment: center;
             }
@@ -88,7 +86,6 @@ component DisplayMode {
             for i in copied: Text {
                 text: "!";
                 color: Theme.colors.primary-col;
-                font-family: Theme.font-heading;
                 font-weight: 500;
                 vertical-alignment: center;
             }
@@ -123,7 +120,6 @@ component DisplayMode {
                         width: 100%;
                         height: 100%;
                         text: AddDeviceBridge.our-code;
-                        font-family: Theme.font-heading;
                         color: Theme.colors.primary-font;
                         font-size: 36px;
                         font-weight: 600;
@@ -157,7 +153,6 @@ component DisplayMode {
                     text: AddDeviceBridge.time-left <= 0
                         ? @tr("Expired")
                         : root.timer-display;
-                    font-family: Theme.font-body;
                     color: Theme.colors.primary-font;
                     font-size: 14px;
                     horizontal-alignment: center;
@@ -190,7 +185,6 @@ component Status inherits VerticalLayout {
     Text {
         text: title;
         color: Theme.colors.primary-font;
-        font-family: Theme.font-heading;
         font-size: 16px;
         font-weight: 500;
         horizontal-alignment: center;
@@ -408,7 +402,6 @@ component InputMode inherits VerticalLayout {
             text: "123 456";
             font-size: 36px;
             font-weight: 600;
-            font-family: Theme.font-heading;
             color: Theme.colors.fourth-font.with-alpha(0.5);
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -425,7 +418,6 @@ component InputMode inherits VerticalLayout {
             horizontal-alignment: center;
             vertical-alignment: center;
             input-type: InputType.number;
-            font-family: Theme.font-heading;
             single-line: true;
 
             init => {
@@ -468,7 +460,6 @@ component AddRemoteHelp inherits GeneralModal {
 
             Text {
                 text: @tr("Help");
-                font-family: Theme.font-heading;
                 color: Theme.colors.primary-font;
                 font-size: 20px;
                 font-weight: 600;
@@ -549,6 +540,7 @@ export component AddDeviceModal inherits GeneralModal {
     on-close => { AddDeviceBridge.open = false; }
 
     fs := FocusScope {
+
         KeyBinding {
             keys: @keys(Tab);
             activated => {
@@ -561,6 +553,10 @@ export component AddDeviceModal inherits GeneralModal {
                     fs.focus();
                 }
             }
+        }
+
+        TouchArea {
+            clicked => { AddDeviceBridge.open = false; }
         }
 
         Rectangle {
@@ -585,7 +581,6 @@ export component AddDeviceModal inherits GeneralModal {
 
                     Text {
                         text: @tr("Add device");
-                        font-family: Theme.font-heading;
                         color: Theme.colors.primary-font;
                         font-size: 20px;
                         font-weight: 600;
@@ -710,7 +705,6 @@ export component ConnectionOfferModal inherits GeneralModal {
                         text: @tr("Accept connection");
                         font-size: 20px;
                         color: Theme.colors.primary-font;
-                        font-family: Theme.font-heading;
                         font-weight: 600;
                     }
 

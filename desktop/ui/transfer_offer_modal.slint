@@ -1,6 +1,4 @@
 import {
-    IconButton,
-    SvgIcon,
     PrimaryButton,
     Switch,
     GeneralFocusScope,
@@ -12,6 +10,7 @@ import { Theme } from "theme.slint";
 import { ListView } from "std-widgets.slint";
 import { Window, WindowBridge } from "window.slint";
 import { SettingsRow } from "settings.slint";
+import { IconButton, SvgIcon } from "elements/pure.slint";
 
 export struct OfferEntry { filename: string, is-dir: bool, size: string }
 
@@ -45,7 +44,6 @@ export component EntryRow inherits Rectangle {
         Text {
             text: entry.filename;
             color: Theme.colors.primary-font;
-            font-family: Theme.font-heading;
             font-size: 14px;
             vertical-alignment: center;
             horizontal-stretch: 1;
@@ -61,7 +59,6 @@ export component EntryRow inherits Rectangle {
             text: entry.is-dir ? "-" : entry.size;
             color: Theme.colors.secondary-font;
             font-size: 13px;
-            font-family: Theme.font-heading;
             vertical-alignment: center;
         }
     }
@@ -87,7 +84,6 @@ component TransferSizeEntriesInfoHeader inherits Rectangle {
             text: total-size;
             font-size: 14px;
             color: Theme.colors.primary-font;
-            font-family: Theme.font-heading;
             font-weight: 600;
         }
 
@@ -96,7 +92,6 @@ component TransferSizeEntriesInfoHeader inherits Rectangle {
                 text: total-entries;
                 font-size: 14px;
                 color: Theme.colors.primary-font;
-                font-family: Theme.font-heading;
                 font-weight: 600;
             }
 
@@ -214,7 +209,6 @@ export component OutcomingTransferModal inherits Rectangle {
                                     : @tr("Error occured");
                                 font-size: 20px;
                                 color: Theme.colors.primary-font;
-                                font-family: Theme.font-heading;
                                 font-weight: 600;
                             }
 
@@ -310,7 +304,6 @@ export component OutcomingTransferModal inherits Rectangle {
                                 text: @tr("Advanced settings");
                                 font-size: 20px;
                                 color: Theme.colors.primary-font;
-                                font-family: Theme.font-heading;
                                 font-weight: 600;
                             }
 
@@ -439,7 +432,6 @@ export component OutcomingTransferModal inherits Rectangle {
                         name-input := TextInput {
                             selection-background-color: Theme.colors.third-font;
                             selection-foreground-color: Theme.colors.primary-font;
-                            font-family: Theme.font-heading;
                             font-size: 20px;
                             font-weight: 600;
                             color: Theme.colors.primary-font;
@@ -538,7 +530,6 @@ export component OutcomingTransferModal inherits Rectangle {
                             color: Theme.colors.primary-font;
                             font-size: 13px;
                             font-weight: 500;
-                            font-family: Theme.font-heading;
                         }
 
                         Rectangle {
@@ -572,7 +563,6 @@ export component OutcomingTransferModal inherits Rectangle {
                                 font-size: 13px;
                                 text: @tr("Advanced");
                                 color: advanced-button.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                                font-family: Theme.font-heading;
                                 font-weight: 600;
                             }
                         }
@@ -714,7 +704,6 @@ export component IncomingTransferOfferModal inherits GeneralModal {
                             text: IncomingTransferOfferBridge.offer.transfer-name;
                             font-size: 20px;
                             color: Theme.colors.primary-font;
-                            font-family: Theme.font-heading;
                             font-weight: 600;
                         }
 
@@ -757,7 +746,6 @@ export component IncomingTransferOfferModal inherits GeneralModal {
                             color: Theme.colors.primary-font;
                             font-size: 13px;
                             font-weight: 500;
-                            font-family: Theme.font-heading;
                         }
 
                         Rectangle {

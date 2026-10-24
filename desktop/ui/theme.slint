@@ -1,12 +1,12 @@
-import "./fonts/Inter_18pt-Black.ttf";
-import "./fonts/Inter_18pt-Bold.ttf";
-import "./fonts/Inter_18pt-ExtraBold.ttf";
-import "./fonts/Inter_18pt-ExtraLight.ttf";
-import "./fonts/Inter_18pt-Light.ttf";
-import "./fonts/Inter_18pt-Medium.ttf";
-import "./fonts/Inter_18pt-Regular.ttf";
-import "./fonts/Inter_18pt-SemiBold.ttf";
-import "./fonts/Inter_18pt-Thin.ttf";
+// import "./fonts/Inter_18pt-Black.ttf";
+// import "./fonts/Inter_18pt-Bold.ttf";
+// import "./fonts/Inter_18pt-ExtraBold.ttf";
+// import "./fonts/Inter_18pt-ExtraLight.ttf";
+// import "./fonts/Inter_18pt-Light.ttf";
+// import "./fonts/Inter_18pt-Medium.ttf";
+// import "./fonts/Inter_18pt-Regular.ttf";
+// import "./fonts/Inter_18pt-SemiBold.ttf";
+// import "./fonts/Inter_18pt-Thin.ttf";
 import "./fonts/Rubik-Black.ttf";
 import "./fonts/Rubik-Bold.ttf";
 import "./fonts/Rubik-ExtraBold.ttf";
@@ -15,15 +15,16 @@ import "./fonts/Rubik-Medium.ttf";
 import "./fonts/Rubik-Regular.ttf";
 import "./fonts/Rubik-SemiBold.ttf";
 import "./fonts/RubikMono.ttf";
-import "./fonts/Montserrat-Black.ttf";
-import "./fonts/Montserrat-ExtraBold.ttf";
-import "./fonts/Montserrat-Bold.ttf";
-import "./fonts/Montserrat-ExtraLight.ttf";
-import "./fonts/Montserrat-Light.ttf";
-import "./fonts/Montserrat-Medium.ttf";
-import "./fonts/Montserrat-Regular.ttf";
-import "./fonts/Montserrat-SemiBold.ttf";
-import "./fonts/Montserrat-Thin.ttf";
+// import "./fonts/Montserrat-Black.ttf";
+// import "./fonts/Montserrat-ExtraBold.ttf";
+// import "./fonts/Montserrat-Bold.ttf";
+// import "./fonts/Montserrat-ExtraLight.ttf";
+// import "./fonts/Montserrat-Light.ttf";
+// import "./fonts/Montserrat-Medium.ttf";
+// import "./fonts/Montserrat-Regular.ttf";
+// import "./fonts/Montserrat-SemiBold.ttf";
+// import "./fonts/Montserrat-Thin.ttf";
+// import "./fonts/NotoColorEmoji-Regular.ttf";
 
 export struct ThemeColors {
     primary-col: color,
@@ -45,11 +46,12 @@ export struct ThemeDef {
 }
 
 export global Theme {
-    in-out property <int> mode: 0;
+    in-out property <int> mode: 1;
     in-out property <bool> theme-selector;
+    out property <easing> easing: cubic-bezier(0.25,0.96, 0.43, 0.98);
 
-    out property <string> font-heading: "Rubik";
-    out property <string> font-body: "Inter";
+    out property <string> font: "Rubik";
+    out property <string> emoji-font: "Noto Color Emoji";
 
     out property <length> font-header: 20px;
 
@@ -278,7 +280,7 @@ export global Theme {
                 primary-col: #5b0619,
                 secondary-col:#710d23,
                 third-col: #8b1a29,
-                fourth-col: #a7252c,
+                fourth-col: #a7252c.darker(0.05),
                 primary-font: #f1f1f1,
                 secondary-font: #e1e1e1,
                 third-font: #d1d1d1,
@@ -310,7 +312,7 @@ export global Theme {
                 primary-col:#225d91.darker(0.3),
                 secondary-col:#30b6f4.darker(0.4),
                 third-col: #44d4f9.darker(0.5),
-                fourth-col: #59f4ff.darker(0.2),
+                fourth-col: #44d4f9,
                 primary-font: #f1f1f1,
                 secondary-font:#e1e1e1,
                 third-font: #d1d1d1,

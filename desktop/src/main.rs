@@ -3,6 +3,7 @@
 slint::include_modules!();
 
 use crate::devices::{handle_devices, update_devices};
+
 use crate::explorer::handle_explorer;
 use crate::handlers::{
     event_listener, handle_add_device, handle_cancel_walker,
@@ -16,6 +17,7 @@ use crate::keymap::handle_keys;
 use anyhow::Result;
 use nectan_core::common::get_signing_key;
 use nectan_core::storage::Storage;
+use std::time::{Duration, Instant};
 // use search::handle_search;
 use slint::{Model, ModelRc, VecModel, Weak};
 use tracing::info;
@@ -36,12 +38,23 @@ use std::sync::Arc;
 
 mod devices;
 mod explorer;
+mod file_picker;
 mod handlers;
 mod keymap;
 mod search;
 mod sidebar;
 mod state;
 mod transfers;
+mod uri;
+
+#[cfg(target_os = "linux")]
+use crate::drag_and_drop_handler::handle_drag_drop;
+#[cfg(target_os = "linux")]
+mod drag_and_drop_handler;
+#[cfg(target_os = "linux")]
+mod wayland;
+#[cfg(target_os = "linux")]
+mod x11;
 
 pub fn theme_code(theme: &Theme<'_>, idx: i32) -> String {
     theme
@@ -61,14 +74,18 @@ pub fn theme_index(theme: &Theme<'_>, code: &str) -> i32 {
 
 fn stateless_handlers(w: &NectanWindow) {
     init_app_state(&w);
+    handle_sidebar(&w);
     // handle_search(&w);
     handle_paste(&w);
     handle_scan_files(&w);
     handle_scan_folders(&w);
-    handle_drag_and_drop_files(&w);
+    // handle_drag_and_drop_files(&w);
     handle_lazyfiles_source(&w);
     handle_refresh_items_list(&w);
     handle_window_controls(&w);
+
+    #[cfg(target_os = "linux")]
+    handle_drag_drop(&w);
 }
 
 pub const LANGUAGES: [(&str, &str); 2] = [("English", "en"), ("Polish", "pl")];
@@ -113,79 +130,76 @@ fn init_lang(w: &NectanWindow, storage: Arc<Storage>) {
     });
 }
 use slint::Keys as SlintKeys;
-fn init_state(weak: Weak<NectanWindow>, storage: Arc<Storage>) {
-    tokio::spawn(async move {
-        let userinfo = UserInfo::new(Username::new("Desktop User").unwrap());
-        let devices =
-            Devices::new(None).expect("Failed to create devices pool.");
-        let key = get_signing_key(&storage);
-        let device_id = key.verifying_key();
+async fn init_state(weak: Weak<NectanWindow>, storage: Arc<Storage>) {
+    let userinfo = UserInfo::new(Username::new("Desktop User").unwrap());
+    let devices = Devices::new(None).expect("Failed to create devices pool.");
+    let key = get_signing_key(&storage);
+    let device_id = key.verifying_key();
 
-        let (tx, rx) = tokio::sync::mpsc::channel(16);
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-        let state =
-            match setup_core(tx, device_id, userinfo, key, devices, storage)
-                .await
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!("setup_core failed: {e:?}");
-                    return;
-                }
-            };
+    let state = match setup_core(tx, device_id, userinfo, key, devices, storage)
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("setup_core failed: {e:?}");
+            return;
+        }
+    };
 
-        tokio::spawn(event_listener(weak.clone(), rx, Arc::clone(&state)));
+    tokio::spawn(event_listener(weak.clone(), rx, Arc::clone(&state)));
 
-        let _ = weak.upgrade_in_event_loop(move |w| {
-            handle_username_change(&w, state.clone());
+    let _ = weak.upgrade_in_event_loop(move |w| {
+        handle_username_change(&w, state.clone());
 
-            // Theme
-            let theme = w.global::<Theme>();
-            let s = state.clone();
-            let weak = w.as_weak();
-            theme.on_mode_changed(move |idx| {
-                let ui = weak.unwrap();
-                let code = theme_code(&ui.global::<Theme>(), idx);
-                let _ = s.storage.update(|s| s.theme = code);
-            });
-
-            w.global::<SettingsBridge>().set_default_download_dir(
-                state
-                    .storage
-                    .default_dir()
-                    .to_string_lossy()
-                    .to_string()
-                    .into(),
-            );
-
-            init_transfers(&w, Arc::clone(&state.transfers));
-            handle_settings(&w, Arc::clone(&state));
-            handle_send(&w, Arc::clone(&state));
-            handle_transfer_controls(&w, Arc::clone(&state));
-            handle_incoming_transfer_offer(&w, Arc::clone(&state));
-            handle_connection_offer(&w, Arc::clone(&state));
-            handle_add_device(&w, Arc::clone(&state));
-            handle_devices(&w, Arc::clone(&state));
-
-            update_devices(&w.as_weak(), &state);
-            set_transfers(&w.as_weak(), &state);
-
-            init_models(&w);
-            handle_cancel_walker(&w);
-            handle_outcoming_transfer(&w);
-            handle_refresh_transfers_list(&w);
-            handle_open_transfers(&w);
-
-            handle_explorer(&w);
+        // Theme
+        let theme = w.global::<Theme>();
+        let s = state.clone();
+        let weak = w.as_weak();
+        theme.on_mode_changed(move |idx| {
+            let ui = weak.unwrap();
+            let code = theme_code(&ui.global::<Theme>(), idx);
+            let _ = s.storage.update(|s| s.theme = code);
         });
+
+        w.global::<SettingsBridge>().set_default_download_dir(
+            state
+                .storage
+                .default_dir()
+                .to_string_lossy()
+                .to_string()
+                .into(),
+        );
+
+        init_transfers(&w, Arc::clone(&state.transfers));
+        handle_settings(&w, Arc::clone(&state));
+        handle_send(&w, Arc::clone(&state));
+        handle_transfer_controls(&w, Arc::clone(&state));
+        handle_incoming_transfer_offer(&w, Arc::clone(&state));
+        handle_connection_offer(&w, Arc::clone(&state));
+        handle_add_device(&w, Arc::clone(&state));
+        handle_devices(&w, Arc::clone(&state));
+
+        update_devices(&w.as_weak(), &state);
+        set_transfers(&w.as_weak(), &state);
+
+        init_models(&w);
+        handle_cancel_walker(&w);
+        handle_outcoming_transfer(&w);
+        handle_refresh_transfers_list(&w);
+        handle_open_transfers(&w);
+
+        handle_explorer(&w);
     });
 }
 
 #[tokio::main]
 async fn main() -> Result<(), slint::PlatformError> {
-    tracing_subscriber::fmt::init();
-
+    let s = Instant::now();
     let w = NectanWindow::new()?;
+    let ws = s.elapsed();
+    tracing_subscriber::fmt::init();
 
     // let sidebar = Keys::from_parts(["Control", "T"]).unwrap();
     // w.set_toggle_sidebar(sidebar);
@@ -207,21 +221,22 @@ async fn main() -> Result<(), slint::PlatformError> {
     let weak = w.as_weak();
     w.global::<WindowBridge>()
         .on_close_welcome(move |username| {
-            info!("Welcome done. {username}");
-            // ok to unwrap beacuse input check is on slint side
-            let username = Username::new(username).expect("Invalid username.");
+            let username = Username::new(username).unwrap();
             let _ = st.update(|s| s.username = Some(username));
-            init_state(weak.clone(), st.clone());
-            info!("Welcome done.");
+            tokio::spawn(init_state(weak.clone(), st.clone()));
         });
 
     handle_keys(&w, storage.clone());
-    handle_sidebar(&w);
 
     if !is_setup {
-        init_state(w.as_weak(), storage);
+        tokio::spawn(init_state(w.as_weak(), storage));
     }
 
+    println!(
+        "Initialization took {:?}, window_init {:?}",
+        s.elapsed(),
+        ws
+    );
     w.run()
 }
 

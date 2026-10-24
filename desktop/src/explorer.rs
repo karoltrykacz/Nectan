@@ -1,22 +1,31 @@
+use std::io::Write;
 use std::{
     borrow::BorrowMut,
     cell::{Cell, Ref, RefCell},
-    os::unix::fs::MetadataExt,
+    io::Cursor,
     path::{Path, PathBuf},
     rc::Rc,
     time::Instant,
 };
 
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
+#[cfg(windows)]
+use std::os::windows::fs::MetadataExt as WindowsMetadataExt;
+
 use crate::{
     DirEntry, EntryType, ExplorerBridge, NectanWindow, handlers::show_error,
     sidebar::TileAction, state::ui_state,
 };
+use clipboard_rs::Clipboard;
 use nectan_core::format::BinaryBytes;
 use slint::{
     ComponentHandle, Model, ModelNotify, ModelRc, SharedString, ToSharedString,
     Weak,
 };
 use tracing::{Instrument, info, warn};
+use url::Url;
+use zip::{AesMode, ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 pub struct Items {
     paths: RefCell<Vec<PathBuf>>,
@@ -58,6 +67,12 @@ impl Model for Items {
             EntryType::Symlink
         };
 
+        #[cfg(target_family = "unix")]
+        let size = meta.size();
+
+        #[cfg(not(target_family = "unix"))]
+        let size = meta.len();
+
         Some(DirEntry {
             name: SharedString::from(
                 path.file_name()
@@ -65,7 +80,7 @@ impl Model for Items {
                     .to_string_lossy()
                     .as_ref(),
             ),
-            size: BinaryBytes(meta.size()).to_string().to_shared_string(),
+            size: BinaryBytes(size).to_string().to_shared_string(),
             r#type,
             ..Default::default()
         })
@@ -168,99 +183,309 @@ impl Explorer {
 
 pub fn handle_explorer(w: &NectanWindow) {
     let b = w.global::<ExplorerBridge>();
+    let explorer = ui_state().explorer();
     let weak = w.as_weak();
-    b.on_open(move |entry, id| {
-        let e = ui_state().explorer();
-        if entry.r#type == EntryType::Directory {
-            let path = e.paths().get(id as usize).unwrap().to_owned();
+
+    fn sel_range(start: i32, end: i32) -> std::ops::RangeInclusive<usize> {
+        let start = if start == -1 { end } else { start };
+        start as usize..=end as usize
+    }
+
+    b.on_open({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move |entry, id| {
+            if entry.r#type == EntryType::Directory {
+                let path = e.paths().get(id as usize).unwrap().to_owned();
+                e.open_dir(weak.clone(), path);
+            }
+        }
+    });
+
+    b.on_back({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move || {
+            let target = e.history.borrow_mut().back();
+            if let Some(p) = target {
+                e.open_dir(weak.clone(), p);
+            }
+        }
+    });
+
+    b.on_forward({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move || {
+            let target = e.history.borrow_mut().forward();
+            if let Some(p) = target {
+                e.open_dir(weak.clone(), p);
+            }
+        }
+    });
+
+    b.on_up({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move || {
+            let path = {
+                let mut current = e.current.borrow_mut();
+                current.pop();
+                current.clone()
+            };
             e.open_dir(weak.clone(), path);
         }
     });
 
-    let weak = w.as_weak();
-    b.on_back(move || {
-        let e = ui_state().explorer();
-        if let Some(p) = e.history.borrow_mut().back() {
-            e.open_dir(weak.clone(), p);
+    b.on_builtin({
+        let weak = weak.clone();
+        move |builtin| {
+            let Some(w) = weak.upgrade() else { return };
+            TileAction::Builtin(builtin.into()).execute(&w);
         }
     });
 
-    let weak = w.as_weak();
-    b.on_forward(move || {
-        let e = ui_state().explorer();
-        if let Some(p) = e.history.borrow_mut().forward() {
-            e.open_dir(weak.clone(), p);
-        }
-    });
+    b.on_rename({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move |idx, new_name| {
+            let path = e.paths().get(idx as usize).unwrap().to_owned();
+            let new_path = path.with_file_name(new_name.as_str());
 
-    let weak = w.as_weak();
-    b.on_up(move || {
-        let e = ui_state().explorer();
-        let path = {
-            let mut current = e.current.borrow_mut();
-            current.pop();
-            current.clone()
-        };
-        e.open_dir(weak.clone(), path);
-    });
-
-    let weak = w.as_weak();
-    b.on_builtin(move |builtin| {
-        let Some(w) = weak.upgrade() else { return };
-        TileAction::Builtin(builtin.into()).execute(&w);
-    });
-
-    let weak = w.as_weak();
-    b.on_rename(move |idx, new_name| {
-        let w = weak.clone();
-        let e = ui_state().explorer();
-        let paths = e.paths();
-        let path = paths.get(idx as usize).unwrap();
-        let new_path = path.with_file_name(new_name.as_str());
-
-        if new_path == *path {
-            return;
-        }
-
-        if new_path.exists() {
-            show_error(
-                &w,
-                "Failed to rename",
-                format!("File {} already exists.", new_path.display()),
-            );
-            return;
-        }
-
-        match std::fs::rename(path, &new_path) {
-            Ok(()) => {
-                println!("Renamed {} to {}", path.display(), new_path.display())
+            if new_path == path {
+                return;
             }
-            Err(e) => {
-                show_error(&w, "Failed to rename", format!("{}", e));
+            if new_path.exists() {
+                show_error(
+                    &weak,
+                    "Failed to rename",
+                    format!("File {} already exists.", new_path.display()),
+                );
+                return;
             }
+
+            match std::fs::rename(&path, &new_path) {
+                Ok(()) => println!(
+                    "Renamed {} to {}",
+                    path.display(),
+                    new_path.display()
+                ),
+                Err(err) => {
+                    show_error(&weak, "Failed to rename", err.to_string())
+                }
+            }
+            e.open_dir(weak.clone(), new_path.parent().unwrap());
         }
-
-        // Todo update only one path?
-        e.open_dir(w, new_path.parent().unwrap());
     });
 
-    let weak = w.as_weak();
-    b.on_refresh(move || {
-        let e = ui_state().explorer();
-        let path = e.current.borrow().clone();
-        e.open_dir(weak.clone(), path);
+    b.on_refresh({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move || {
+            let path = e.current.borrow().clone();
+            e.open_dir(weak.clone(), path);
+        }
     });
 
-    b.on_get_dot_pos(move |idx| {
-        let e = ui_state().explorer();
-        let paths = e.paths();
-        let filename = paths
-            .get(idx as usize)
-            .unwrap()
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        filename.rfind('.').unwrap_or(filename.len()) as i32
+    b.on_get_dot_pos({
+        let e = explorer.clone();
+        move |idx| {
+            let paths = e.paths();
+            let filename = paths
+                .get(idx as usize)
+                .unwrap()
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            filename.rfind('.').unwrap_or(filename.len()) as i32
+        }
+    });
+
+    b.on_delete_items({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move |start, end| {
+            // TODO: make this an async operation
+            for path in &e.paths()[sel_range(start, end)] {
+                let result = match std::fs::metadata(path) {
+                    Ok(m) if m.is_dir() => std::fs::remove_dir_all(path),
+                    Ok(_) => std::fs::remove_file(path),
+                    Err(err) => Err(err),
+                };
+                match result {
+                    Ok(()) => info!("Deleted {path:?}"),
+                    Err(err) => warn!("Failed to delete {path:?}: {err}"),
+                }
+            }
+            let curr = e.current.borrow().clone();
+            e.open_dir(weak.clone(), curr);
+        }
+    });
+
+    b.on_trash_items({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move |start, end| {
+            if let Err(err) =
+                trash::delete_all(&e.paths()[sel_range(start, end)])
+            {
+                warn!("Failed to trash items: {err}");
+            }
+            let curr = e.current.borrow().clone();
+            e.open_dir(weak.clone(), curr);
+        }
+    });
+
+    // TODO: move to clipboard and delete on paste?
+    b.on_cut(move |_start, _end| {});
+
+    b.on_paste({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move || {
+            let dir = e.current.borrow().clone();
+            info!("Pasting into {dir:?}");
+
+            let files = match ui_state().clipboard().get_files() {
+                Ok(files) => files
+                    .iter()
+                    .filter_map(|f| uri_to_path(f))
+                    .collect::<Vec<_>>(),
+                Err(err) => {
+                    show_error(
+                        &weak,
+                        "Clipboard error",
+                        format!("Failed to paste: {err}"),
+                    );
+                    return;
+                }
+            };
+            if files.is_empty() {
+                return;
+            }
+
+            let mut errors = Vec::new();
+            for src in &files {
+                let Some(dst) = unique_dest(&dir, src) else {
+                    errors.push(format!("{}: invalid path", src.display()));
+                    continue;
+                };
+                match copy_recursive(src, &dst) {
+                    Ok(()) => info!("Pasted {src:?} -> {dst:?}"),
+                    Err(err) => {
+                        errors.push(format!("{}: {err}", src.display()))
+                    }
+                }
+            }
+
+            if !errors.is_empty() {
+                show_error(
+                    &weak,
+                    "Failed to paste some items",
+                    errors.join("\n"),
+                );
+            }
+
+            e.open_dir(weak.clone(), dir);
+        }
+    });
+
+    b.on_copy({
+        let e = explorer.clone();
+        move |start, end| {
+            info!("Copy from {start} to {end}");
+            let files: Vec<String> = e.paths()[sel_range(start, end)]
+                .iter()
+                .filter_map(|p| p.canonicalize().ok())
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
+            info!("Copying {} item(s)", files.len());
+            let _ = ui_state().clipboard().set_files(files);
+        }
+    });
+
+    b.on_compress_items({
+        let (e, weak) = (explorer.clone(), weak.clone());
+        move |start, end, name, password| {
+            let dir = e.current.borrow().clone();
+
+            let buf = Cursor::new(Vec::new());
+            let mut zip = ZipWriter::new(buf);
+            let options = SimpleFileOptions::default()
+                .with_aes_encryption(AesMode::Aes256, "Luj");
+            let options = SimpleFileOptions::default();
+            zip.start_file(name, options).unwrap();
+            zip.write_all(b"hello\n").unwrap();
+
+            // let names: Vec<std::ffi::OsString> = e.paths()
+            //     [sel_range(start, end)]
+            // .iter()
+            // .filter_map(|p| p.file_name())
+            // .map(|n| {
+            //     let mut s = std::ffi::OsString::from("./");
+            //     s.push(n);
+            //     s
+            // })
+            // .collect();
+            //
+            // if names.is_empty() {
+            //     return;
+            // }
+            //
+            // // Archive name: "<item>.zip" for one item, "<current dir>.zip" otherwise.
+            // let base = if names.len() == 1 {
+            //     e.paths()[sel_range(start, end)][0]
+            //         .file_name()
+            //         .map(|n| n.to_string_lossy().into_owned())
+            // } else {
+            //     dir.file_name().map(|n| n.to_string_lossy().into_owned())
+            // }
+            // .unwrap_or_else(|| "archive".to_string());
+            //
+            // // Don't overwrite (zip would otherwise *update* an existing archive).
+            // let mut archive = dir.join(format!("{base}.zip"));
+            // let mut n = 1;
+            // while archive.exists() {
+            //     archive = dir.join(format!("{base} ({n}).zip"));
+            //     n += 1;
+            // }
+            //
+            // let result = std::process::Command::new("zip")
+            //     .current_dir(&dir)
+            //     .arg("-r")
+            //     .arg("-q")
+            //     .arg(&archive)
+            //     .args(&names)
+            //     .output();
+            //
+            // match result {
+            //     Ok(out) if out.status.success() => {
+            //         info!(
+            //             "Compressed {} item(s) into {archive:?}",
+            //             names.len()
+            //         );
+            //     }
+            //     Ok(out) => {
+            //         let stderr = String::from_utf8_lossy(&out.stderr);
+            //         let stdout = String::from_utf8_lossy(&out.stdout);
+            //         let msg = if stderr.trim().is_empty() {
+            //             stdout
+            //         } else {
+            //             stderr
+            //         };
+            //         // Remove a partial archive if zip left one behind.
+            //         let _ = std::fs::remove_file(&archive);
+            //         show_error(
+            //             &weak,
+            //             "Failed to compress",
+            //             msg.trim().to_string(),
+            //         );
+            //     }
+            //     Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            //         show_error(
+            //             &weak,
+            //             "zip not installed",
+            //             "zip not found. Install it and try again.".to_string(),
+            //         );
+            //     }
+            //     Err(err) => {
+            //         show_error(&weak, "Failed to compress", err.to_string());
+            //     }
+            // }
+
+            e.open_dir(weak.clone(), dir);
+        }
     });
 }
 
@@ -329,5 +554,59 @@ impl History {
         }
         self.cursor += 1;
         self.history.get(self.cursor).cloned()
+    }
+}
+
+fn copy_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if src.is_dir() {
+        // Copying a directory into itself would recurse forever.
+        if dst.starts_with(src) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "cannot copy a directory into itself",
+            ));
+        }
+        std::fs::create_dir_all(dst)?;
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            copy_recursive(&entry.path(), &dst.join(entry.file_name()))?;
+        }
+    } else {
+        std::fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
+fn unique_dest(dir: &Path, src: &Path) -> Option<PathBuf> {
+    let name = src.file_name()?;
+    let candidate = dir.join(name);
+    if !candidate.exists() {
+        return Some(candidate);
+    }
+
+    let stem = src.file_stem()?.to_string_lossy();
+    let ext = src.extension().map(|e| e.to_string_lossy());
+    for n in 1.. {
+        let suffix = if n == 1 {
+            " (Copy)".to_string()
+        } else {
+            format!(" (Copy {n})")
+        };
+        let new_name = match &ext {
+            Some(ext) => format!("{stem}{suffix}.{ext}"),
+            None => format!("{stem}{suffix}"),
+        };
+        let candidate = dir.join(new_name);
+        if !candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    unreachable!()
+}
+fn uri_to_path(s: &str) -> Option<PathBuf> {
+    match Url::parse(s) {
+        Ok(url) if url.scheme() == "file" => url.to_file_path().ok(),
+        Ok(_) => None,
+        Err(_) => Some(PathBuf::from(s)),
     }
 }
