@@ -1,0 +1,294 @@
+import { Theme, ThemeAnimator } from "theme.slint";
+import {
+    PrimaryButton,
+    GeneralModal,
+    ThemeSelector,
+    Carousel,
+    SvgIcon,
+    IconButton,
+} from "elements.slint";
+import { ListView, VerticalBox } from "std-widgets.slint";
+import { SettingsBridge, Settings, SettingsRow } from "settings.slint";
+import { TransfersBridge, Transfers, TransferItem } from "transfers.slint";
+import {
+    AddDeviceModal,
+    AddDeviceBridge,
+    ConnectionOfferBridge,
+    ConnectionOfferModal,
+} from "add_remote_modal.slint";
+import { ErrorModal, Error } from "error_modal.slint";
+import {
+    DeviceItem,
+    DevicesBridge,
+    DeviceStatus,
+    DeviceScreen,
+} from "devices.slint";
+import {
+    IncomingTransferOfferModal,
+    IncomingTransferOfferBridge,
+    OutcomingTransferModal,
+    OutcomingTransferModalBridge,
+} from "transfer_offer_modal.slint";
+import { SearchBridge, Search, SearchBar } from "search.slint";
+import {
+    WindowBridge,
+    Window,
+    MainWindowTouchArea,
+    TopBarShower,
+} from "window.slint";
+import { WelcomeScreen } from "welcome.slint";
+import {
+    EssentialTileData,
+    SidebarBridge,
+    Sidebar,
+    SidebarShower,
+} from "sidebar.slint";
+import {
+    Explorer,
+    RecursiveSearch,
+} from "explorer/explorer.slint";
+import { ExplorerBridge, DirEntry } from "explorer/bridge.slint";
+import { Keys } from "keys.slint";
+import { HoverBridge } from "hover.slint";
+import { Icons } from "icons.slint";
+
+export {
+    Keys,
+    Theme,
+    Error,
+    Icons,
+    Window,
+    DirEntry,
+    DeviceItem,
+    HoverBridge,
+    TransferItem,
+    SearchBridge,
+    WindowBridge,
+    DevicesBridge,
+    SidebarBridge,
+    SettingsBridge,
+    ExplorerBridge,
+    AddDeviceBridge,
+    TransfersBridge,
+    EssentialTileData,
+    ConnectionOfferBridge,
+    IncomingTransferOfferBridge,
+    OutcomingTransferModalBridge,
+}
+export global Api {
+    pure callback make-data() -> data-transfer;
+    pure callback can-drop() -> DragAction;
+    callback dropped();
+}
+
+component MainFocusScope inherits FocusScope {
+    focus-on-click: true;
+    width: 100%;
+    height: 100%;
+
+    init => {
+        self.focus();
+    }
+
+    KeyBinding {
+        keys: @keys(F11);
+        activated => { WindowBridge.maximized = !WindowBridge.maximized; }
+    }
+
+    KeyBinding {
+        keys: Keys.map.essentials.keys;
+        activated => {
+            SidebarBridge.essentials();
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.essentials.alt-keys;
+        activated => {
+            SidebarBridge.essentials();
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.tabs.keys;
+        activated => {
+            SidebarBridge.essentials();
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.tabs.alt-keys;
+        activated => {
+            SidebarBridge.essentials();
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.toggle-sidebar.keys;
+        activated => {
+            WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+            WindowBridge.sidebar-hover = false;
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.toggle-sidebar.alt-keys;
+        activated => {
+            WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+            WindowBridge.sidebar-hover = false;
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.settings.keys;
+        activated => {
+            SettingsBridge.open = !SettingsBridge.open;
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.settings.alt-keys;
+        activated => {
+            SettingsBridge.open = !SettingsBridge.open;
+        }
+    }
+
+    KeyBinding {
+        keys: Keys.map.transfers.keys;
+        activated => { WindowBridge.current-window = Window.transfers; }
+    }
+
+    KeyBinding {
+        keys: Keys.map.transfers.alt-keys;
+        activated => { WindowBridge.current-window = Window.transfers; }
+    }
+
+    KeyBinding {
+        keys: @keys(Shift + A);
+        activated => {
+            AddDeviceBridge.open = !AddDeviceBridge.open;
+        }
+    }
+
+    @children
+}
+
+export component NectanWindow inherits Window {
+
+    title: "Nectan";
+    preferred-width: 720pxx;
+    preferred-height: 520px;
+    min-width: 400px;
+    min-height: 200px;
+    resize-border-width: 6px;
+    no-frame: !WindowBridge.native-topbar;
+    background: transparent;
+    maximized: WindowBridge.maximized;
+
+    default-font-family: Theme.font;
+    default-font-size: Theme.font-size;
+
+    z: 0;
+
+    callback pasted();
+    in-out property <keys> toggle-sidebar: @keys(Control + B);
+
+    ThemeAnimator { }
+
+    forward-focus: main-fs;
+
+    main-fs := MainFocusScope {
+
+        init => { self.focus(); }
+
+        MainWindowTouchArea { }
+
+        Rectangle {
+            z: 1;
+            background: Theme.colors.primary-col;
+            border-color: Theme.colors.fourth-col;
+            border-width: root.maximized ? 0 : 1px;
+            border-radius: WindowBridge.round-edges ? root.maximized ? 0 : 12px : 0;
+            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            clip: true;
+
+            TopBarShower { }
+
+            SidebarShower {
+                z: 1;
+            }
+
+            Topbar { }
+
+            Sidebar { }
+
+            HorizontalLayout {
+                spacing: 8px;
+                padding: 8px;
+                padding-left: !WindowBridge.sidebar-visible ? 8px : WindowBridge.sidebar-width;
+                padding-top: WindowBridge.native-topbar ? 8px :
+                    WindowBridge.topbar-always-on ? 24px :
+                    WindowBridge.topbar-hover ? 24px : 8px;
+
+                // For sidebar
+                animate x, padding-left {
+                    duration: Theme.animation-speed;
+                    easing: Theme.easing;
+                }
+		// Topbar
+                animate padding-top {
+                    delay: 200ms;
+                    duration: Theme.animation-speed;
+                    easing: Theme.easing;
+                }
+
+                if WindowBridge.current-window == Window.device: DeviceScreen { }
+
+                if Theme.theme-selector: ThemeSelector { }
+
+                if WindowBridge.current-window == Window.transfers: Transfers { }
+
+                if WindowBridge.current-window == Window.vaults: Explorer { }
+            }
+        }
+
+        property <bool> any-modal-open: SettingsBridge.open
+            || WindowBridge.nectan-modal-open
+            || AddDeviceBridge.open
+            || SearchBridge.open
+            || OutcomingTransferModalBridge.open
+            || IncomingTransferOfferBridge.open
+            || WindowBridge.welcome-open
+            || Error.open
+            || Theme.theme-selector;
+
+        changed any-modal-open => {
+            if !any-modal-open {
+                main-fs.focus();
+            }
+            WindowBridge.any-modal-open = any-modal-open;
+        }
+
+        Rectangle {
+            z: 1;
+
+            if SettingsBridge.open: Settings { }
+
+            if WindowBridge.nectan-modal-open: NectanModal { }
+
+            if OutcomingTransferModalBridge.open: OutcomingTransferModal { }
+
+            if IncomingTransferOfferBridge.open: IncomingTransferOfferModal { }
+
+            if AddDeviceBridge.open:  AddDeviceModal { }
+
+            if SearchBridge.open: Search { }
+
+            if ExplorerBridge.searching-recursive: RecursiveSearch { }
+
+            if Error.open: ErrorModal { }
+
+            if WindowBridge.welcome-open: WelcomeScreen { }
+        }
+    }
+}

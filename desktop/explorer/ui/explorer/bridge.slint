@@ -1,0 +1,70 @@
+
+export enum EntryType { directory, symlink, file }
+export struct DirEntry { name: string, type: EntryType, size: string, preview: image }
+export enum Builtin { recent, documents, pictures, videos, downloads, home, music, trash, drives }
+
+export struct Explorer {
+    entries: [DirEntry],
+    current-dir: [string],
+    search-results: [string],
+}
+
+export global ExplorerBridge {
+
+    in-out property <int> selected;
+
+    in-out property <[string]> current-dir;
+    in-out property <[DirEntry]> entries;
+    in-out property <[DirEntry]> search-results;
+
+    in-out property <length> list-height: 32px;
+    in-out property <bool> relative:true;
+
+    in-out property <bool> searching;
+    in-out property <bool> searching-recursive;
+    in-out property <bool> ripgrepping;
+    in-out property <bool> compressing;
+
+    // Dir navigation
+    callback open(DirEntry, int);
+    callback up();
+    // Navigate to component in current dir
+    callback navigate-to-in-current(int);
+
+    callback search-current(string);
+    callback clear-search();
+
+    // History
+    callback forward();
+    callback back();
+
+    callback copy(int, int);
+
+    callback cut(int, int);
+    callback paste();
+    callback delete-items(int, int);
+    callback trash-items(int, int);
+    callback rename(int, string);
+    callback new-folder();
+    callback new-file();
+    callback refresh();
+    callback properties(int);
+    callback terminal();
+    callback compress-items(int, int, string, bool, string);
+
+    callback builtin(Builtin);
+    pure callback get-dot-pos(int) -> int;
+
+    public function zoom-in() {
+        root.list-height += 2px;
+    }
+
+    public function zoom-out() {
+        root.list-height -= 2px;
+    }
+
+    in-out property <int> focus-tick;
+    public function focus() {
+        root.focus-tick += 1;
+    }
+}

@@ -1,0 +1,79 @@
+import { Theme } from "theme.slint";
+
+export struct Shortcut {
+    keys: keys,
+    alt-keys: keys,
+}
+
+
+export global Keys {
+    in-out property <bool> change-shortcut;
+    in-out property <bool> change-shortcut-alt;
+    in-out property <string> change-shortcut-id: "";
+
+    public function open-change(id: string, alt: bool) {
+        change-shortcut-id = id;
+        change-shortcut-alt = alt;
+        change-shortcut = true;
+    }
+
+    public function close-change() {
+        change-shortcut = false;
+        change-shortcut-id = "";
+    }
+
+    callback make-keys(KeyEvent) -> keys;
+    callback save-shortcut(string, keys, bool);
+
+    in-out property <KeyMap> map;
+}
+
+export struct ShortcutItem { id: string, title: string, keys: keys, alt_keys: keys }
+
+export struct ShortcutGroup {
+    category: string,
+    items: [ShortcutItem],
+}
+
+export component KeysBadge inherits Rectangle {
+
+    in property <keys> keys;
+    in property <bool> pressed;
+    in property <string> shortcut-id;
+    in property <bool> alt;
+    in property <bool> interactive: true;
+
+    in property <string> placeholder: @tr("None");
+
+    private property <bool> empty: root.keys.to-string() == "";
+
+    width: max(48px, label.preferred-width + 40px);
+    height: 26px;
+    border-radius: 5px;
+    background: Theme.colors.third-font;
+
+    Rectangle {
+        y: (root.pressed || ta.pressed) ? 0 : -1.25px;
+        width: 100%;
+        height: 24px;
+        border-radius: 5px;
+        background: ta.has-hover ? Theme.colors.primary-font.darker(0.1) : Theme.colors.primary-font;
+
+        label := Text {
+            text: root.empty ? root.placeholder : root.keys.to-string();
+            color: root.empty
+                ? Theme.colors.primary-col.with-alpha(0.55)
+                : Theme.colors.primary-col;
+            font-size: 11px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: root.interactive;
+        mouse-cursor: pointer;
+        clicked => { Keys.open-change(root.shortcut-id, root.alt); }
+    }
+}

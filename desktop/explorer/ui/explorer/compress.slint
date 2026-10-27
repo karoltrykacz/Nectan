@@ -1,0 +1,219 @@
+import {
+    GeneralModal,
+    PlainLineEdit,
+    Switch,
+    PrimaryButton,
+    IconButton,
+    SvgIcon,
+} from "../elements.slint";
+import { Theme } from "../theme.slint";
+import { WindowBridge } from "../window.slint";
+import { ExplorerBridge } from "bridge.slint";
+import { Icons } from "../icons.slint";
+
+export component CompressModal inherits GeneralModal {
+    in property <int> selection-start;
+    in property <int> selection-end;
+    property <string> archive-name;
+
+    property <bool> encrypt;
+    property <string> password;
+    property <string> confirm-password;
+    property <bool> passwords-match: !encrypt || (password != "" && password == confirm-password);
+
+    callback compress();
+
+    compress => {
+        let start = min(root.selection-start, root.selection-end);
+        let end = max(root.selection-start, root.selection-end);
+        ExplorerBridge.compress-items(start, end, archive-name, encrypt, password);
+        root.on-close();
+    }
+
+    Rectangle {
+
+        height: min( encrypt ? 360px : 256px, parent.height - 80px);
+        width: min(512px, parent.width - 80px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 14px;
+
+            Text {
+                text: @tr("Compress");
+                font-size: 20px;
+                color: Theme.colors.primary-font;
+                font-weight: 600;
+            }
+
+            Rectangle { }
+
+            Text {
+                text: @tr("Archive name");
+                font-size: 12px;
+                color: Theme.colors.secondary-font;
+                font-weight: 500;
+            }
+
+            Rectangle {
+                height: 2px;
+            }
+
+            Rectangle {
+                height: 32px;
+                border-radius: 12px;
+                border-corner-shape: superellipse(WindowBridge.edges-shape);
+                background: Theme.colors.third-col;
+
+                name := PlainLineEdit {
+                    input-text <=> root.archive-name;
+                    end: root.selection-end;
+                    rejected => {
+                        root.on-close();
+                    }
+
+                    accepted => {
+                        root.compress();
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 24px;
+            }
+
+            HorizontalLayout {
+                height: 42px;
+
+                Text {
+                    text: @tr("Encrypt archive (AES-256)");
+                    color: Theme.colors.primary-font;
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+
+                Switch {
+                    cross-axis-self-alignment: start;
+                    checked <=> encrypt;
+                }
+            }
+
+            if encrypt: VerticalLayout {
+
+                alignment: start;
+
+                Text {
+                    text: @tr("Password");
+                    font-size: 12px;
+                    color: Theme.colors.secondary-font;
+                    font-weight: 500;
+                }
+
+                Rectangle {
+                    height: 2px;
+                }
+
+                Rectangle {
+                    height: 32px;
+                    width: parent.width - 28px;
+                    border-radius: 8px;
+                    border-corner-shape: superellipse(WindowBridge.edges-shape);
+                    background: Theme.colors.third-col;
+                    property <bool> hide:true;
+
+                    PlainLineEdit {
+                        hide-input: hide;
+                        edited(t) => {
+                            root.password = t;
+                        }
+                        rejected => { root.on-close(); }
+                        accepted => {
+                            confirm.focus-input();
+                        }
+                    }
+
+                    IconButton {
+                        width: 28px;
+                        height: 28px;
+                        x: parent.width + 8px;
+                        SvgIcon {
+                            size: 20px;
+                            source: hide ? Icons.eye : Icons.eye-off;
+                        }
+
+                        clicked => { hide = !hide; }
+                    }
+                }
+
+                Rectangle {
+                    height: 12px;
+                }
+
+                Text {
+                    text: @tr("Confirm password");
+                    font-size: 12px;
+                    color: Theme.colors.secondary-font;
+                    font-weight: 500;
+                }
+
+                Rectangle {
+                    height: 2px;
+                }
+
+                Rectangle {
+                    height: 32px;
+                    border-radius: 8px;
+                    border-corner-shape: superellipse(WindowBridge.edges-shape);
+                    background: Theme.colors.third-col;
+
+                    confirm := PlainLineEdit {
+                        hide-input: true;
+                        rejected => { root.on-close(); }
+                        autofocus: false;
+                        edited(t) => {
+                            root.confirm-password = t;
+                        }
+                        accepted => {
+                            root.compress();
+                        }
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton {
+                    text: @tr("Cancel");
+                    alt: true;
+                    clicked => {
+                        root.on-close();
+                    }
+                }
+
+                Rectangle {
+                    width: 12px;
+                }
+
+                PrimaryButton {
+                    text: @tr("Compress");
+                    image: Icons.cpu;
+                    button-enabled: root.passwords-match;
+                    clicked => { root.compress(); }
+                }
+            }
+        }
+    }
+}

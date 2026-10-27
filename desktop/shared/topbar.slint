@@ -1,0 +1,77 @@
+import { IconButton, SvgIcon } from "elements.slint";
+import { WindowBridge } from "window.slint";
+import { Icons } from "icons.slint";
+import { Theme } from "theme.slint";
+
+export component Topbar inherits Rectangle {
+    x: 0;
+    y: 0;
+    z: 10;
+    height: 20px;
+    opacity: WindowBridge.native-topbar ? 0.0 :
+        WindowBridge.topbar-always-on ? 1.0 :
+        WindowBridge.topbar-hover ? 1.0 : 0.0;
+
+    animate opacity {
+        delay: 200ms;
+        duration: 200ms;
+        easing: ease;
+    }
+
+    HorizontalLayout {
+        padding-top: 7px;
+        padding-right: 8px;
+        height: 28px;
+        alignment: end;
+        spacing: 12px;
+
+        IconButton {
+            width: 20px;
+            height: 20px;
+            inner-bg: transparent;
+            enabled: WindowBridge.topbar-hover;
+
+            SvgIcon {
+                source: Icons.minimize;
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
+                size: 16px;
+            }
+
+            clicked => {
+                WindowBridge.minimize-window();
+            }
+        }
+
+        IconButton {
+            width: 20px;
+            height: 20px;
+            inner-bg: transparent;
+            enabled: WindowBridge.topbar-hover;
+            SvgIcon {
+                source: Icons.maximize;
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
+                size: 16px;
+            }
+
+            clicked => {
+                WindowBridge.maximize-window();
+            }
+        }
+
+        IconButton {
+            width: 20px;
+            height: 20px;
+            inner-bg: transparent;
+            enabled: WindowBridge.topbar-hover;
+            SvgIcon {
+                source: Icons.close;
+                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
+                size: 16px;
+            }
+
+            clicked => {
+                WindowBridge.close-window();
+            }
+        }
+    }
+}

@@ -1,0 +1,830 @@
+import {
+    PrimaryButton,
+    Switch,
+    GeneralFocusScope,
+    Spinner,
+    GeneralModal,
+    IconButton,
+    SvgIcon,
+} from "elements.slint";
+import { TreeList, TreeNode } from "file_tree.slint";
+import { Theme } from "theme.slint";
+import { ListView } from "std-widgets.slint";
+import { Window, WindowBridge } from "window.slint";
+import { SettingsRow } from "settings.slint";
+
+export struct OfferEntry { filename: string, is-dir: bool, size: string }
+
+export component EntryRow inherits Rectangle {
+    in property <length> row-padding-right;
+    in property <length> row-padding-left;
+
+    in property <OfferEntry> entry;
+
+    in property <bool> is-last;
+
+    height: 32px;
+    background: touch-area.has-hover ? Theme.colors.fourth-col : transparent;
+
+    HorizontalLayout {
+        padding-left: row-padding-left;
+        padding-right: row-padding-right;
+
+        Image {
+            source: entry.is-dir ? @image-url("icons/folder-nofill.svg") : @image-url("icons/file-nofill.svg");
+            width: 13px;
+            height: 13px;
+            colorize: Theme.colors.third-font;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Rectangle {
+            width: 8px;
+        }
+
+        Text {
+            text: entry.filename;
+            color: Theme.colors.primary-font;
+            font-size: 14px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            font-weight: 500;
+            overflow: elide;
+        }
+
+        Rectangle {
+            width: 12px;
+        }
+
+        Text {
+            text: entry.is-dir ? "-" : entry.size;
+            color: Theme.colors.secondary-font;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+    }
+
+    if !is-last: Rectangle {
+        y: parent.height;
+        height: 1px;
+        background: Theme.colors.border-col;
+        width: parent.width - 40px;
+    }
+
+    touch-area := TouchArea { }
+}
+
+component TransferSizeEntriesInfoHeader inherits Rectangle {
+    in property <int> total-entries;
+    in property <string> total-size;
+
+    VerticalLayout {
+        cross-axis-alignment: end;
+        alignment: start;
+        Text {
+            text: total-size;
+            font-size: 14px;
+            color: Theme.colors.primary-font;
+            font-weight: 600;
+        }
+
+        HorizontalLayout {
+            Text {
+                text: total-entries;
+                font-size: 14px;
+                color: Theme.colors.primary-font;
+                font-weight: 600;
+            }
+
+            Text {
+                text: @tr(" items");
+                color: Theme.colors.secondary-font;
+                font-size: 13px;
+                font-weight: 500;
+            }
+        }
+    }
+}
+
+
+enum SendModalState {
+    Initial,
+    Advanced,
+    SendingOffer,
+    WaitingForResponse,
+    Accepted,
+    Rejected,
+    Offline,
+    Error,
+}
+
+export component OutcomingTransferModal inherits Rectangle {
+    property <bool> respect-gitignore: true;
+    property <bool> send-hidden-files: true;
+    property <bool> compression: true;
+
+    property send-state <=> OutcomingTransferModalBridge.send-state;
+
+    callback on-closed();
+
+    changed send-state => {
+        if (send-state == SendModalState.Initial) {
+            modal.focus();
+        }
+    }
+
+    callback send();
+
+    send => {
+        OutcomingTransferModalBridge.send(OutcomingTransferModalBridge.sending-destination-id,OutcomingTransferModalBridge.transfer-name, compression);
+    }
+
+    modal := GeneralModal {
+
+        init => { self.focus(); }
+
+        on-close => {
+            on-closed();
+            OutcomingTransferModalBridge.open = false;
+            OutcomingTransferModalBridge.transfer-walk-cancelled();
+        }
+
+        on-enter => {
+            if (OutcomingTransferModalBridge.walk-finished) {
+                root.send();
+                send-state = SendModalState.SendingOffer;
+            }
+        }
+
+        Rectangle {
+
+            property <bool> is-initial: 
+		root.send-state == SendModalState.Initial ||
+                root.send-state == SendModalState.Advanced;
+
+            width: is-initial ? min(820px, parent.width - 80px) : min(520px, parent.width - 80px);
+            height: is-initial ? min(520px, parent.height - 80px) : min(256px, parent.height - 80px);
+
+            animate width, height {
+                duration: 200ms;
+                easing: cubic-bezier(0.34, 1, 0.64, 1);
+            }
+
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            clip: true;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {
+                    // name-input.clear-focus();
+                }
+            }
+
+            if send-state == SendModalState.SendingOffer ||
+                send-state == SendModalState.WaitingForResponse ||
+                send-state == SendModalState.Accepted ||
+                send-state == SendModalState.Error ||
+                send-state == SendModalState.Offline ||
+                send-state == SendModalState.Rejected:
+    	    GeneralFocusScope {
+                on-close => {}
+                on-enter => {}
+
+                VerticalLayout {
+                    padding: 20px;
+                    HorizontalLayout {
+                        VerticalLayout {
+                            alignment: start;
+                            Text {
+                                text: send-state == SendModalState.SendingOffer ? @tr("Sending offer")
+                                    : send-state == SendModalState.WaitingForResponse ? @tr("Waiting for response")
+                                    : send-state == SendModalState.Accepted ? @tr("Transfer accepted")
+                                    : send-state == SendModalState.Rejected ? @tr("Transfer rejected")
+                                    : send-state == SendModalState.Offline ? "Offline"
+                                    : @tr("Error occured");
+                                font-size: 20px;
+                                color: Theme.colors.primary-font;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: send-state == SendModalState.SendingOffer ?
+                                    @tr("Sending transfer offer, this shouldn't take long.")
+                                    : send-state == SendModalState.WaitingForResponse ?
+                                    @tr("Waiting for the remote device to accept the transfer.")
+                                    : send-state == SendModalState.Accepted ?
+                                    @tr("Transfer is currently processing.")
+                                    : send-state == SendModalState.Rejected ?
+                                    @tr("Remote device declined the transfer.")
+                                    : send-state == SendModalState.Offline ?
+                                    @tr("Remote device is offline.")
+                                    : OutcomingTransferModalBridge.sending-error-msg;
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
+                            }
+                        }
+
+                        TransferSizeEntriesInfoHeader {
+                            total-entries: OutcomingTransferModalBridge.walk-total-entries;
+                            total-size: OutcomingTransferModalBridge.walk-total-size;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 12px;
+
+                        if send-state == SendModalState.SendingOffer ||
+                            send-state == SendModalState.WaitingForResponse: PrimaryButton {
+                            text: @tr("Close");
+                            alt: OutcomingTransferModalBridge.send-state == SendModalState.Accepted ? false : true;
+                            clicked => {
+                                OutcomingTransferModalBridge.open = false;
+                                OutcomingTransferModalBridge.transfer-walk-cancelled();
+                            }
+                        }
+
+                        if send-state == SendModalState.SendingOffer ||
+                            send-state == SendModalState.WaitingForResponse: PrimaryButton {
+                            text: send-state == SendModalState.SendingOffer ? @tr("Sending offer") : @tr("Waiting");
+                            button-loading: true;
+                            animate-width: true;
+                            clicked => {
+                                OutcomingTransferModalBridge.open = false;
+                            }
+                        }
+                        if send-state == SendModalState.Rejected || send-state == SendModalState.Error: PrimaryButton {
+                            text: @tr("Ok");
+                            clicked => {
+                                OutcomingTransferModalBridge.open = false;
+                            }
+                        }
+                        if send-state == SendModalState.Accepted: PrimaryButton {
+                            alt: true;
+                            text: @tr("Go to transfers");
+                            clicked => {
+                                OutcomingTransferModalBridge.open = false;
+                            }
+                        }
+
+                        if send-state == SendModalState.Accepted: PrimaryButton {
+                            text: @tr("Ok");
+                            clicked => {
+                                OutcomingTransferModalBridge.open = false;
+                                WindowBridge.current-window = Window.transfers;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if root.send-state == SendModalState.Advanced: GeneralFocusScope {
+
+                on-enter => {
+                    root.send-state = SendModalState.Initial;
+                }
+                on-close => {
+                    root.send-state = SendModalState.Initial;
+                }
+
+                VerticalLayout {
+
+                    padding: 20px;
+
+                    HorizontalLayout {
+
+                        VerticalLayout {
+
+                            Text {
+                                text: @tr("Advanced settings");
+                                font-size: 20px;
+                                color: Theme.colors.primary-font;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: @tr("Overwrite global settings specifically for this transfer");
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
+                            }
+                        }
+
+                        TransferSizeEntriesInfoHeader {
+                            total-entries: OutcomingTransferModalBridge.walk-total-entries;
+                            total-size: OutcomingTransferModalBridge.walk-total-size;
+                        }
+                    }
+
+                    Rectangle {
+                        height: 24px;
+                    }
+
+                    SettingsRow {
+                        title: @tr("Compression");
+                        subtitle: @tr("Enable compression ");
+
+                        HorizontalLayout {
+                            cross-axis-alignment: center;
+                            spacing: 12px;
+
+                            // IconButton {
+                            //     width: 28px;
+                            //     height: 28px;
+                            //     SvgIcon {
+                            //         source: @image-url("icons/help-circle.svg");
+                            //         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                            //         size: 16px;
+                            //     }
+                            // }
+
+                            Switch {
+                                checked <=> root.compression;
+                                toggled => {
+                                    OutcomingTransferModalBridge.rescan-dir();
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 12px;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.colors.third-col;
+                    }
+
+                    Rectangle {
+                        height: 12px;
+                    }
+
+                    SettingsRow {
+                        title: @tr("Ignore");
+                        subtitle: @tr("Respect .gitignore files during scan.");
+
+                        Switch {
+                            checked <=> root.respect-gitignore;
+                            toggled => {
+                                OutcomingTransferModalBridge.rescan-dir();
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 12px;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.colors.third-col;
+                    }
+
+                    Rectangle {
+                        height: 12px;
+                    }
+
+                    SettingsRow {
+                        title: @tr("Hidden files");
+                        subtitle: @tr("Send hidden files");
+                        Switch {
+                            checked <=> root.send-hidden-files;
+                            toggled => {
+                                OutcomingTransferModalBridge.rescan-dir();
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 12px;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.colors.third-col;
+                    }
+
+                    Rectangle { }
+
+                    HorizontalLayout {
+                        alignment: end;
+
+                        PrimaryButton {
+                            text: @tr("Go back");
+                            clicked => {
+                                send-state = SendModalState.Initial;
+                            }
+                        }
+                    }
+                }
+            }
+            if send-state == SendModalState.Initial:VerticalLayout {
+                padding: 20px;
+                HorizontalLayout {
+
+                    VerticalLayout {
+
+                        name-input := TextInput {
+                            selection-background-color: Theme.colors.third-font;
+                            selection-foreground-color: Theme.colors.primary-font;
+                            font-size: 20px;
+                            font-weight: 600;
+                            color: Theme.colors.primary-font;
+                            wrap: no-wrap;
+                            text <=> OutcomingTransferModalBridge.transfer-name;
+
+                            changed text => {
+                                OutcomingTransferModalBridge.transfer-name-edited(self.text);
+                            }
+
+                            accepted => {
+                                self.clear-focus();
+                            }
+                            states [
+                                editing when self.has-focus: {
+                                    color: Theme.colors.primary-font.darker(1.75);
+                                    in {
+                                        animate color {
+                                            duration: 500ms;
+                                            easing: ease-in-out;
+                                            iteration-count: -1;
+                                            direction: alternate;
+                                        }
+                                    }
+                                    out {
+                                        animate color {
+                                            duration: 150ms;
+                                            easing: ease-in-out;
+                                        }
+                                    }
+                                }
+                                idle when !self.has-focus: {
+                                    color: Theme.colors.primary-font;
+                                }
+                            ]
+
+                            IconButton {
+                                width: 28px;
+                                height: 28px;
+                                SvgIcon {
+                                    source: @image-url("icons/edit.svg");
+                                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                                    size: 16px;
+                                }
+
+                                clicked => {
+                                    name-input.focus();
+                                    name-input.select-all();
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+
+                            alignment: start;
+
+                            Text {
+                                text: @tr("Sending to ");
+                                color: Theme.colors.third-font;
+                                font-size: 12px;
+                                font-weight: 500;
+                            }
+
+                            Text {
+                                text: OutcomingTransferModalBridge.sending-destination-name;
+                                color: Theme.colors.secondary-font;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+                        }
+                    }
+
+                    TransferSizeEntriesInfoHeader {
+                        total-entries: OutcomingTransferModalBridge.walk-total-entries;
+                        total-size: OutcomingTransferModalBridge.walk-total-size;
+                    }
+                }
+
+                Rectangle {
+                    height: 12px;
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: 12px;
+                    background: Theme.colors.third-col;
+
+                    VerticalLayout {
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        Text {
+                            x: 12px;
+                            text: @tr("Contents");
+                            color: Theme.colors.primary-font;
+                            font-size: 13px;
+                            font-weight: 500;
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        TreeList {
+                            nodes: OutcomingTransferModalBridge.nodes;
+                            toggle-node(id, path) => {
+                                OutcomingTransferModalBridge.toggle-node(id, path);
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 12px;
+                }
+
+                HorizontalLayout {
+                    advanced-button := IconButton {
+                        width: advanced.min-width;
+                        height: 28px;
+                        transform: false;
+                        advanced := HorizontalLayout {
+                            spacing: 12px;
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            y: 6px;
+                            Text {
+                                font-size: 13px;
+                                text: @tr("Advanced");
+                                color: advanced-button.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                                font-weight: 600;
+                            }
+                        }
+
+                        clicked => {
+                            send-state = SendModalState.Advanced;
+                        }
+                    }
+
+                    Rectangle { }
+
+                    PrimaryButton {
+                        text: @tr("Cancel");
+                        alt: true;
+                        clicked => {
+                            OutcomingTransferModalBridge.open = false;
+                            OutcomingTransferModalBridge.transfer-walk-cancelled();
+                        }
+                    }
+
+                    Rectangle {
+                        width: 12px;
+                    }
+
+                    PrimaryButton {
+                        text: OutcomingTransferModalBridge.walk-finished ? @tr("Send") : @tr("Scanning");
+                        button-loading: !OutcomingTransferModalBridge.walk-finished;
+                        animate-width: true;
+                        clicked => {
+                            if (OutcomingTransferModalBridge.walk-finished) {
+                                send-state = SendModalState.SendingOffer;
+                                root.send();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export struct TransferSettings { transfer-name: string, compression: bool }
+
+export global OutcomingTransferModalBridge {
+
+    in-out property <bool> open;
+
+    in-out property <SendModalState> send-state: SendModalState.Initial;
+    in-out property <string> sending-error-msg;
+    in-out property <string> sending-destination-name;
+    in-out property <string> sending-destination-id;
+    in-out property <string> transfer-name;
+    in-out property <string> walk-total-size;
+    in-out property <int> walk-total-entries;
+    in-out property <bool> walk-finished: true;
+
+    in-out property <[TreeNode]> nodes;
+    callback toggle-node(int, string);
+
+    callback select-files();
+    callback select-folders();
+    callback select-container();
+    callback transfer-name-edited(string);
+    callback transfer-walk-cancelled();
+
+    callback rescan-dir();
+
+    // Destination id, transfer name, compression enabled
+    callback send(string, string, bool);
+}
+
+
+export struct IncomingTransferOffer {
+    transfer-name: string,
+    from: string,
+    total-entries: int,
+    total-size: string,
+}
+
+
+export global IncomingTransferOfferBridge {
+    in-out property <bool> open: false;
+    in-out property <IncomingTransferOffer> offer;
+    in-out property <[OfferEntry]> entries;
+
+    in-out property <string> target-path;
+    callback change-destination();
+
+    // Index, path 
+    callback toggle-node(int, string);
+
+    callback accept();
+    callback reject();
+}
+
+
+export component IncomingTransferOfferModal inherits GeneralModal {
+
+    on-close => {
+        IncomingTransferOfferBridge.open = false;
+        IncomingTransferOfferBridge.reject();
+    }
+
+    on-enter => {
+        IncomingTransferOfferBridge.accept();
+    }
+
+    init => { self.focus() }
+
+    Rectangle {
+        width: min(820px, parent.width - 40px);
+        height: min(560px, parent.height - 40px);
+        clip: true;
+        background: Theme.colors.secondary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        drop-shadow-color: #00000088;
+        drop-shadow-blur: 50px;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 16px;
+            padding-bottom: 16px;
+
+            VerticalLayout {
+                spacing: 12px;
+
+                HorizontalLayout {
+                    VerticalLayout {
+                        alignment: start;
+                        Text {
+                            text: IncomingTransferOfferBridge.offer.transfer-name;
+                            font-size: 20px;
+                            color: Theme.colors.primary-font;
+                            font-weight: 600;
+                        }
+
+                        HorizontalLayout {
+                            alignment: start;
+                            Text {
+                                text: @tr("Incoming transfer from ");
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
+                            }
+
+                            Text {
+                                text: IncomingTransferOfferBridge.offer.from;
+                                font-size: 13px;
+                                color: Theme.colors.secondary-font;
+                                font-weight: 600;
+                            }
+                        }
+                    }
+
+                    TransferSizeEntriesInfoHeader {
+                        total-entries: IncomingTransferOfferBridge.offer.total-entries;
+                        total-size: IncomingTransferOfferBridge.offer.total-size;
+                    }
+                }
+
+                Rectangle {
+                    border-radius: 12px;
+                    background: Theme.colors.third-col;
+
+                    VerticalLayout {
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        Text {
+                            x: 12px;
+                            text: @tr("Contents");
+                            color: Theme.colors.primary-font;
+                            font-size: 13px;
+                            font-weight: 500;
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        ListView {
+                            for f[i] in IncomingTransferOfferBridge.entries: EntryRow {
+                                row-padding-left: 12px;
+                                row-padding-right: 12px;
+                                entry: f;
+                                is-last: i == IncomingTransferOfferBridge.entries.length - 1;
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    width: parent.width;
+                    cross-axis-alignment: center;
+
+                    Rectangle {
+                        height: 28px;
+
+                        HorizontalLayout {
+                            padding-left: 4px;
+                            cross-axis-alignment: center;
+                            alignment: start;
+
+                            SvgIcon {
+                                source: @image-url("icons/download.svg");
+                                size: 16px;
+                                fg: ta.has-hover ? Theme.colors.primary-font : Theme.colors.third-font;
+                            }
+
+                            Rectangle {
+                                width: 12px;
+                            }
+
+                            Text {
+                                color: ta.has-hover ? Theme.colors.primary-font : Theme.colors.third-font;
+                                font-size: 13px;
+                                overflow: elide;
+                                text: @tr("Saving to {}/{}", 
+				IncomingTransferOfferBridge.target-path, IncomingTransferOfferBridge.offer.transfer-name);
+                            }
+                        }
+
+                        ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                IncomingTransferOfferBridge.change-destination();
+                            }
+                        }
+                    }
+
+                    Rectangle { }
+
+                    PrimaryButton {
+                        text: @tr("Reject");
+                        alt: true;
+                        clicked => {
+                            IncomingTransferOfferBridge.reject();
+                        }
+                    }
+
+                    Rectangle {
+                        width: 12px;
+                    }
+
+                    PrimaryButton {
+                        text: @tr("Accept");
+                        clicked => {
+                            IncomingTransferOfferBridge.accept();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -32,6 +32,15 @@ pub struct Settings {
     pub autoaccept_from_favourites: bool,
     pub default_destination: PathBuf,
     pub language: String,
+    pub font_family: String,
+    pub font_scale: f32,
+    pub edges_shape: f32,
+    pub connection_notifications: bool,
+    pub transfer_notifications: bool,
+    pub device_notifications: bool,
+    pub round_window_edges: bool,
+    pub native_topbar: bool,
+    pub topbar_always_on: bool,
     pub speed_limits: Option<SpeedLimits>,
     pub shortcuts: HashMap<String, StoredShortcut>,
 }
@@ -53,6 +62,15 @@ impl Default for Settings {
             key: None,
             registered: false,
             autoaccept_from_nearby: false,
+            font_scale: 1.0,
+            edges_shape: 2.0,
+            connection_notifications: true,
+            transfer_notifications: true,
+            device_notifications: true,
+            round_window_edges: true,
+            native_topbar: false,
+            topbar_always_on: false,
+            font_family: "Rubik".into(),
             autoaccept_from_favourites: false,
             default_destination: default_destination(),
             language: default_language(),
@@ -123,6 +141,14 @@ impl Storage {
         self.read(|s| s.speed_limits.clone())
     }
 
+    pub fn font_scale(&self) -> f32 {
+        self.read(|s| s.font_scale)
+    }
+
+    pub fn font_family(&self) -> String {
+        self.read(|s| s.font_family.clone())
+    }
+
     pub fn dir() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(std::env::temp_dir)
@@ -166,6 +192,7 @@ const DEFAULTS: &[(&str, &[&str], &[&str])] = &[
     ("move-down", &["J"], &["DownArrow"]),
     ("move-up", &["K"], &["UpArrow"]),
     ("essentials", &["E"], &[]),
+    ("tabs", &["T"], &[]),
     ("toggle-sidebar", &["Control", "B"], &[]),
     ("transfers", &["Control", "T"], &[]),
     ("settings", &["Control", "I"], &[]),
@@ -175,8 +202,17 @@ const DEFAULTS: &[(&str, &[&str], &[&str])] = &[
     ("history-back", &["Control", "O"], &["Control", "LeftArrow"]),
     ("half-page-down", &["Control", "D"], &["PageDown"]),
     ("half-page-up", &["Control", "U"], &["PageUp"]),
-    ("find", &["Slash"], &["Control", "F"]),
-    ("ripgrep", &["Control", "Slash"], &["Control", "Shift", "F"]),
+    ("search-in-current", &["Slash"], &["Control", "F"]),
+    (
+        "search-recursively",
+        &["Shift", "Slash"],
+        &["Control", "Shift", "F"],
+    ),
+    (
+        "ripgrep",
+        &["Control", "Slash"],
+        &["Control", "Shift", "Alt", "F"],
+    ),
     ("copy", &["Y"], &["Control", "C"]),
     ("cut", &["D"], &["Control", "X"]),
     ("paste", &["P"], &["Control", "V"]),
@@ -187,6 +223,8 @@ const DEFAULTS: &[(&str, &[&str], &[&str])] = &[
     ("select-all", &["Control", "A"], &[]),
     ("select-regex", &["Control", "S"], &[]),
     ("compress", &["Shift", "Z"], &[]),
+    ("next", &["N"], &[]),
+    ("previous", &["Shift", "N"], &[]),
     ("rename", &["R"], &["F2"]),
     ("properties", &["Alt", "Return"], &[]),
     ("refresh", &["Control", "L"], &["F5"]),

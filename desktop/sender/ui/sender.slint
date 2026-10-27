@@ -1,0 +1,5 @@
+export enum CurrentWindow { transfers, main }
+
+export global SenderWindow {
+    in-out property <CurrentWindow> current-window;
+}

@@ -1,0 +1,1210 @@
+import { Theme } from "../../shared/theme.slint";
+import {
+    KeysBadge,
+    KeyMap,
+} from "../../shared/keys_shared.slint";
+import {
+    Switch,
+    PrimaryButton,
+    GeneralModal,
+    SvgIcon,
+    Slider,
+    LangSelection,
+    IconButton,
+    PlainLineEdit,
+} from "../../shared/elements.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Icons } from "../../shared/icons.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { CurrentWindow } from "sender.slint";
+import { Keys } from "../../shared/keys_shared.slint";
+
+export struct Config {
+    upload-limit: float,
+    download-limit: float,
+    device-notify: bool,
+    transfers-notify: bool,
+}
+
+export global SettingsBridge {
+
+    in-out property <bool> username-modal;
+    in-out property <bool> font-modal;
+    in-out property <bool> icons-config;
+    in-out property <bool> speed-limits-config;
+
+    in-out property <float> upload-limit;
+    in-out property <float> download-limit;
+
+    pure callback format-speed(float) -> string;
+
+    in-out property <bool> open;
+    in-out property <int> active-tab: 0;
+    in-out property <int> selected-row: -1;
+
+    in-out property <bool> autostart;
+    in-out property <string> default-download-dir;
+
+    callback join_discord();
+    callback open_github();
+    callback open_privacy();
+    callback change-default-dir();
+    callback confirm-limits(bool, float, float);
+
+    in-out property <bool> self-accept-nearby;
+    in-out property <bool> self-accept-favourites;
+    in-out property <bool> speed-limits-on;
+
+    in-out property <bool> connection-notifications;
+    in-out property <bool> transfers-notifications;
+    in-out property <bool> devices-notifications;
+
+    callback toggle_accept_nearby();
+    callback toggle_accept_favourites();
+    callback save_hotkeys();
+
+    property <int> tab-count: 5;
+
+    public function next-tab() {
+        active-tab = Math.mod(active-tab + 1, tab-count);
+    }
+
+    public function previous-tab() {
+        active-tab = Math.mod(active-tab + tab-count - 1, tab-count);
+    }
+}
+
+
+component SettingsPage inherits FocusScope {
+
+    init => {
+        self.focus();
+        SettingsBridge.selected-row = -1;
+    }
+
+    in property <string> title;
+    in property <int> row-count: 0;
+
+    KeyBinding {
+        keys: @keys(J);
+        activated => {
+            SettingsBridge.selected-row = Math.min(SettingsBridge.selected-row + 1, row-count - 1);
+        }
+    }
+
+    KeyBinding {
+        keys: @keys(K);
+        activated => {
+            SettingsBridge.selected-row = Math.max(SettingsBridge.selected-row - 1, 0);
+        }
+    }
+
+    KeyBinding {
+        keys: @keys(UpArrow);
+        activated => {
+            SettingsBridge.selected-row = Math.max(SettingsBridge.selected-row - 1, 0);
+        }
+    }
+
+    KeyBinding {
+        keys: @keys(DownArrow);
+        activated => {
+            SettingsBridge.selected-row = Math.min(SettingsBridge.selected-row + 1, row-count - 1);
+        }
+    }
+
+    ScrollView {
+        VerticalLayout {
+
+            padding: 20px;
+            padding-top: 16px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: title;
+                color: Theme.colors.primary-font;
+                font-size: 1.5rem;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                height: 4px;
+            }
+
+            @children
+        }
+    }
+}
+
+
+
+export component SettingsRow {
+
+    in property <string> title;
+    in property <string> subtitle;
+    in property <int> idx;
+    property <bool> selected: false;
+
+    callback activate();
+
+    changed selected => {
+        if selected {
+            fs.focus();
+        }
+    }
+
+    fs := FocusScope {
+        KeyBinding {
+            keys: @keys(Return);
+            activated => {
+                activate();
+            }
+        }
+
+        Rectangle {
+            x: 0;
+            height: 52px;
+            border-radius: 8px;
+            background: selected ? Theme.colors.third-col : transparent;
+        }
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding: 4px;
+            alignment: space-between;
+
+            VerticalLayout {
+                spacing: 2px;
+                alignment: center;
+
+                Text {
+                    text: root.title;
+                    color: Theme.colors.primary-font;
+                    font-size: 1rem;
+                    font-weight: 600;
+                }
+
+                Text {
+                    text: root.subtitle;
+                    color: Theme.colors.third-font;
+                    font-size: 0.9rem;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                @children
+            }
+        }
+    }
+}
+
+
+
+
+component SettingsTab inherits Rectangle {
+    in property <string> tab-name;
+    in property <int> tab-idx;
+    in property <image> icon;
+    in property <length> icon-size;
+
+    height: 28px;
+    border-radius: 12px;
+    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    background: SettingsBridge.active-tab == tab-idx ? Theme.colors.secondary-col
+        : (ta.has-hover ? Theme.colors.secondary-col : transparent);
+    border-width: 1px;
+    border-color: SettingsBridge.active-tab == tab-idx ? Theme.colors.fourth-col : transparent;
+    transform-scale: ta.pressed ? 0.9875 : 1.0;
+
+    animate transform-scale {
+        duration: 20ms;
+        easing: ease;
+    }
+
+    HorizontalLayout {
+        cross-axis-alignment: center;
+        alignment: start;
+        padding-left: 12px;
+        spacing: 8px;
+
+        SvgIcon {
+            source: root.icon;
+            size: root.icon-size;
+        }
+
+        Text {
+            vertical-alignment: center;
+            text: tab-name;
+            color: SettingsBridge.active-tab == tab-idx
+                ? Theme.colors.primary-font
+                : (ta.has-hover ? Theme.colors.primary-font : Theme.colors.secondary-font);
+            font-size: 0.9rem;
+            font-weight: 400;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: SettingsBridge.open;
+        clicked => {
+            SettingsBridge.active-tab = tab-idx;
+        }
+    }
+}
+
+
+component General inherits SettingsPage {
+
+    title: @tr("General");
+    row-count: 6;
+
+    SettingsRow {
+        z: 1;
+        idx: 1;
+        title: @tr("Language");
+        subtitle: @tr("Change language.");
+        LangSelection { }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Community");
+        subtitle: @tr("Join Nectan discord server.");
+
+        PrimaryButton {
+            text: @tr("Join");
+
+            clicked => {
+                SettingsBridge.join_discord();
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 3;
+        title: @tr("GitHub");
+        subtitle: @tr("Nectan is open source. ");
+
+        PrimaryButton {
+            text: @tr("Open");
+
+            clicked => {
+                SettingsBridge.open_github();
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 4;
+        title: @tr("Privacy Policy");
+        subtitle: @tr("See our privacy policy.");
+
+        PrimaryButton {
+            text: @tr("Open");
+
+            clicked => {
+                SettingsBridge.open_privacy();
+            }
+        }
+    }
+}
+
+component Transfers inherits SettingsPage {
+    title: @tr("Transfers");
+    row-count: 3;
+
+    SettingsRow {
+        idx: 0;
+        title: @tr("Username");
+        subtitle: WindowBridge.username;
+
+        PrimaryButton {
+            text: @tr("Change");
+
+            clicked => {
+                SettingsBridge.username-modal = true;
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 5;
+        title: @tr("Default download destination");
+        subtitle: SettingsBridge.default-download-dir;
+        PrimaryButton {
+            text: @tr("Change");
+            clicked => { SettingsBridge.change-default-dir(); }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 0;
+        title: @tr("Auto-accept nearby");
+        subtitle: @tr("Automatically accept transfers from nearby devices.");
+        Switch {
+            checked <=> SettingsBridge.self-accept-nearby;
+            toggled => {
+                SettingsBridge.toggle_accept_nearby();
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 1;
+        title: @tr("Auto-accept from favourites");
+        subtitle: @tr("Automatically accept transfers from favourites.");
+        Switch {
+            checked <=> SettingsBridge.self-accept-favourites;
+            toggled => {
+                SettingsBridge.toggle_accept_favourites();
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Speed limits");
+        subtitle: @tr("Configure speed limits");
+
+        HorizontalLayout {
+
+            spacing: 12px;
+            cross-axis-alignment: center;
+
+            if SettingsBridge.speed-limits-on: IconButton {
+                width: 28px;
+                height: 28px;
+                SvgIcon {
+                    source: Icons.tool;
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    size: 16px;
+                }
+
+                clicked => { SettingsBridge.speed-limits-config = true; }
+            }
+
+            Switch {
+                checked <=> SettingsBridge.speed-limits-on;
+                toggled(are-enabled) => {
+                    SettingsBridge.confirm-limits(
+                        are-enabled,
+                        SettingsBridge.upload-limit,
+                        SettingsBridge.download-limit);
+                }
+            }
+        }
+    }
+}
+
+component SpeedLimitsConfig inherits GeneralModal {
+
+    on-close => {
+        root.restore-focus();
+        SettingsBridge.speed-limits-config = false;
+    }
+
+    on-enter => {
+        root.restore-focus();
+        SettingsBridge.speed-limits-config = false;
+        SettingsBridge.confirm-limits(true, SettingsBridge.upload-limit, SettingsBridge.download-limit);
+    }
+
+    init => { self.focus(); }
+
+    Rectangle {
+
+        width: min(520px, parent.width - 80px);
+        height: min(256px, parent.height - 80px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 16px;
+
+            Text {
+                text: @tr("Change limits");
+                font-size: 20px;
+                color: Theme.colors.primary-font;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                height: 32px;
+            }
+
+            VerticalLayout {
+                alignment: start;
+                spacing: 8px;
+
+                HorizontalLayout {
+
+                    SvgIcon {
+                        source: Icons.uploads;
+                        size: 14px;
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                    }
+
+                    Text {
+                        text: @tr("Upload");
+                        color: Theme.colors.primary-font;
+                        font-size: 13px;
+                        font-weight: 600;
+                    }
+
+                    Text {
+                        text: SettingsBridge.format-speed(SettingsBridge.upload-limit);
+                        color: Theme.colors.primary-font;
+                        horizontal-alignment: end;
+                        font-size: 13px;
+                        font-weight: 500;
+                    }
+                }
+
+                Slider {
+                    value <=> SettingsBridge.upload-limit;
+                }
+            }
+
+            Rectangle {
+                height: 20px;
+            }
+
+            VerticalLayout {
+                alignment: start;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    SvgIcon {
+                        source: Icons.downloads;
+                        size: 14px;
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                    }
+
+                    Text {
+                        text: @tr("Download");
+                        color: Theme.colors.primary-font;
+                        font-size: 13px;
+                        font-weight: 600;
+                    }
+
+                    Text {
+                        text: SettingsBridge.format-speed(SettingsBridge.download-limit);
+                        color: Theme.colors.primary-font;
+                        horizontal-alignment: end;
+                        font-size: 13px;
+                        font-weight: 500;
+                    }
+                }
+
+                Slider {
+                    value <=> SettingsBridge.download-limit;
+                }
+            }
+
+            Rectangle {
+                height: 20px;
+            }
+
+            PrimaryButton {
+                cross-axis-self-alignment: end;
+                text: @tr("Save");
+                image: Icons.save;
+
+                clicked => {
+                    root.restore-focus();
+                    SettingsBridge.speed-limits-config = false;
+                    SettingsBridge.confirm-limits(true, SettingsBridge.upload-limit, SettingsBridge.download-limit);
+                }
+            }
+        }
+    }
+}
+
+component IconsEditor inherits GeneralModal {
+
+    on-close => {
+        root.restore-focus();
+        SettingsBridge.icons-config = false;
+    }
+
+    on-enter => {
+        root.on-close();
+    }
+
+    init => { self.focus(); }
+
+    TouchArea {
+        clicked => { root.on-close(); }
+    }
+
+    Rectangle {
+
+        width: min(512px, parent.width - 40px);
+        height: min(320px, parent.height - 40px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 16px;
+
+            Text {
+                text: @tr("Edit icons");
+                font-size: 1.5rem;
+                color: Theme.colors.primary-font;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                height: 2px;
+            }
+
+            Text {
+                wrap: word-wrap;
+                text: @tr("Supported formats: PNG, JPEG, SVG");
+                font-size: 0.9rem;
+                color: Theme.colors.secondary-font;
+            }
+
+            Rectangle { }
+
+            FlexboxLayout {
+                cross-axis-self-alignment: center;
+                spacing-horizontal: 12px;
+                spacing-vertical: 20px;
+                cross-axis-alignment: center;
+                width: 320px;
+                alignment: center;
+                for icon[i] in [
+                    Icons.downloads,
+                    Icons.documents,
+                    Icons.music,
+                    Icons.videos,
+                    Icons.pictures,
+                    Icons.trash,
+                    Icons.home,
+                    Icons.recent,
+                    Icons.drives,
+                    Icons.search,
+                    Icons.save,
+                    Icons.refresh,
+                    Icons.settings,
+                    Icons.chevron-left,
+                    Icons.chevron-right,
+                    Icons.filter,
+                    Icons.grid,
+                    Icons.list,
+                    Icons.file,
+                    Icons.directory,
+                    Icons.eye,
+                    Icons.eye-off,
+                    Icons.cpu,
+                    Icons.transfers,
+                ]: IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: icon;
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 18px;
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            PrimaryButton {
+
+                cross-axis-self-alignment: end;
+                text: @tr("Save");
+                image: Icons.save;
+
+                clicked => {
+                    root.on-close();
+                }
+            }
+        }
+    }
+}
+
+
+component FontModal inherits GeneralModal {
+    property <string> new-font;
+
+    function save() {
+        Theme.font = new-font;
+        Theme.set-font(new-font);
+        root.restore-focus();
+        root.on-close();
+    }
+
+    on-close => {
+        root.restore-focus();
+        SettingsBridge.font-modal = false;
+    }
+
+    on-enter => { save(); }
+
+    Rectangle {
+
+        width: min(520px, parent.width - 80px);
+        height: min(256px, parent.height - 80px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 24px;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 14px;
+
+            VerticalLayout {
+                spacing: 4px;
+                alignment: start;
+                Text {
+                    text: @tr("Change font");
+                    font-size: 20px;
+                    color: Theme.colors.primary-font;
+                    font-weight: 600;
+                }
+
+                VerticalLayout {
+                    alignment: start;
+                    Text {
+                        wrap: word-wrap;
+                        text: @tr("Use fc-list : family to see the installed fonts.\nWarning! Font names are case-sensitive.");
+                        font-size: 13px;
+                        color: Theme.colors.secondary-font;
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            Rectangle {
+                border-radius: 8px;
+                background: Theme.colors.third-col;
+                height: 32px;
+                VerticalLayout {
+                    PlainLineEdit {
+                        input-text <=> new-font;
+                        placeholder-text: @tr("Enter font family name");
+                        rejected => { root.on-close(); }
+                        accepted => { save(); }
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton {
+                    text: @tr("Cancel");
+                    alt: true;
+                    clicked => {
+                        root.on-close();
+                    }
+                }
+
+                Rectangle {
+                    width: 12px;
+                }
+
+                PrimaryButton {
+                    text: @tr("Save");
+                    image: Icons.save;
+                    clicked => { save(); }
+                }
+            }
+        }
+    }
+}
+
+component ChangeUsernameModal inherits GeneralModal {
+    property <string> new-username: WindowBridge.username;
+
+    function save() {
+        WindowBridge.change-username(new-username);
+        WindowBridge.username = new-username;
+        root.on-close();
+    }
+
+    on-close => {
+        root.restore-focus();
+        SettingsBridge.username-modal = false;
+    }
+
+    on-enter => { save(); }
+
+    Rectangle {
+
+        width: min(520px, parent.width - 80px);
+        height: min(256px, parent.height - 80px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 24px;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 14px;
+
+            VerticalLayout {
+                spacing: 4px;
+                alignment: start;
+                Text {
+                    text: @tr("Change username");
+                    font-size: 20px;
+                    color: Theme.colors.primary-font;
+                    font-weight: 600;
+                }
+
+                Text {
+                    wrap: word-wrap;
+                    text: @tr("New username will be visible to other devices after app restart.");
+                    font-size: 13px;
+                    color: Theme.colors.secondary-font;
+                }
+            }
+
+            Rectangle { }
+
+            Rectangle {
+                border-radius: 8px;
+                background: Theme.colors.third-col;
+                VerticalLayout {
+                    PlainLineEdit {
+                        input-text <=> root.new-username;
+                        placeholder-text: @tr("Enter username");
+                        accepted => { root.restore-focus(); save(); }
+                        rejected => { root.on-close(); }
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton {
+                    text: @tr("Cancel");
+                    alt: true;
+                    clicked => {
+                        SettingsBridge.username-modal = false;
+                    }
+                }
+
+                Rectangle {
+                    width: 12px;
+                }
+
+                PrimaryButton {
+                    text: @tr("Save");
+                    image: Icons.save;
+                    clicked => { save(); }
+                }
+            }
+        }
+    }
+}
+
+component Notifications inherits SettingsPage {
+    title: @tr("Notifications");
+    row-count: 3;
+
+    SettingsRow {
+        idx: 0;
+        title: @tr("Connection notification");
+        subtitle: @tr("Send notification upon new connection request.");
+        Switch {
+            checked <=> SettingsBridge.connection-notifications;
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 1;
+        title: @tr("Transfer notification");
+        subtitle: @tr("Send notifications about transfer offers and updates.");
+        Switch {
+            checked <=> SettingsBridge.transfers-notifications;
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Device notification");
+        subtitle: @tr("Send notification when device comes up online.");
+        Switch {
+            checked <=> SettingsBridge.devices-notifications;
+        }
+    }
+}
+
+component Appearance inherits SettingsPage {
+    title: @tr("Appearance");
+    row-count: 5;
+
+    SettingsRow {
+        idx: 0;
+        title: @tr("Theme");
+        subtitle: Theme.themes[Theme.mode].name;
+        PrimaryButton {
+            text: @tr("Change");
+            clicked => {
+                Theme.theme-selector = true;
+                SettingsBridge.open = false;
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+
+        idx: 0;
+        title: @tr("Font");
+        subtitle: Theme.font;
+
+        PrimaryButton {
+            text: @tr("Change");
+            clicked => {
+                SettingsBridge.font-modal = true;
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 1;
+        title: @tr("Icons");
+        subtitle: @tr("Edit icons set");
+
+        PrimaryButton {
+            text: @tr("Edit");
+            clicked => {
+                SettingsBridge.icons-config = true;
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Font scaling");
+        subtitle: @tr("Change font scale factor");
+
+        HorizontalLayout {
+            spacing: 12px;
+            cross-axis-alignment: center;
+
+            if Theme.font-scale != 1.0: IconButton {
+                width: 28px;
+                height: 28px;
+                SvgIcon {
+                    source: Icons.refresh;
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    size: 16px;
+                }
+
+                clicked => { Theme.set-font-scale(1.0); font-factor.value = 1.0; }
+            }
+
+            font-factor := Slider {
+                width: 100px;
+                minimum: 0.75;
+                maximum: 1.5;
+                value <=> Theme.font-scale;
+                changed(value) => {
+                    Theme.set-font-scale(Theme.font-scale);
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 1;
+        title: @tr("Window edges rounded");
+        subtitle: @tr("Round window edges");
+
+        HorizontalLayout {
+            spacing: 24px;
+            cross-axis-alignment: center;
+            Switch {
+                checked <=> WindowBridge.round-edges;
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Edges shape");
+        subtitle: @tr("Change edges shape");
+        Slider {
+            width: 100px;
+            value <=> WindowBridge.edges-shape;
+            minimum: 1.0;
+            maximum: 5.0;
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 3;
+        title: @tr("Native topbar");
+        subtitle: @tr("Use native window decorations.");
+        Switch {
+            checked <=> WindowBridge.native-topbar;
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 4;
+        title: @tr("Topbar always on");
+        subtitle: @tr("Don't hide topbar");
+
+        Switch {
+            checked <=> WindowBridge.topbar-always-on;
+        }
+    }
+}
+
+
+
+export component Settings inherits GeneralModal {
+
+    on-close => { SettingsBridge.open = false; }
+
+    forward-focus: fs;
+
+    fs := FocusScope {
+        init => { self.focus(); }
+
+        KeyBinding {
+            keys: @keys(H);
+            activated => { SettingsBridge.previous-tab() }
+        }
+
+        KeyBinding {
+            keys: @keys(L);
+            activated => { SettingsBridge.next-tab() }
+        }
+
+        KeyBinding {
+            keys: @keys(Tab);
+            activated => { SettingsBridge.next-tab() }
+        }
+
+        KeyBinding {
+            keys: @keys(RightArrow);
+            activated => { SettingsBridge.next-tab() }
+        }
+
+        KeyBinding {
+            keys: @keys(LeftArrow);
+            activated => { SettingsBridge.previous-tab() }
+        }
+
+        TouchArea {
+            clicked => { SettingsBridge.open = false; }
+        }
+
+        Rectangle {
+            width: min(920px, parent.width - 40px);
+            height: min(620px, parent.height - 40px);
+            clip: true;
+
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            border-width: 1px;
+            border-color: Theme.colors.fourth-col.with-alpha(0.5);
+
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 50px;
+
+            TouchArea { }
+
+            HorizontalLayout {
+
+                VerticalLayout {
+                    width: 196px;
+                    padding: 8px;
+                    spacing: 2px;
+
+                    SettingsTab {
+                        tab-idx: 0;
+                        tab-name: @tr("General");
+                        icon-size: 14px;
+                        icon: Icons.settings;
+                    }
+
+                    SettingsTab {
+                        tab-idx: 1;
+                        tab-name: @tr("Transfers");
+                        icon-size: 14px;
+                        icon: Icons.transfers;
+                    }
+
+                    SettingsTab {
+                        tab-idx: 2;
+                        tab-name: @tr("Notifications");
+                        icon-size: 14px;
+                        icon: Icons.bell;
+                    }
+
+                    SettingsTab {
+                        tab-idx: 3;
+                        tab-name: @tr("Appearance");
+                        icon-size: 14px;
+                        icon: Icons.palette;
+                    }
+                }
+
+                Rectangle {
+                    width: 1px;
+                    background: Theme.colors.fourth-col.with-alpha(0.5);
+                }
+
+                if SettingsBridge.active-tab == 0: General { }
+
+                if SettingsBridge.active-tab == 1: Transfers { }
+
+                if SettingsBridge.active-tab == 2: Notifications { }
+
+                if SettingsBridge.active-tab == 3: Appearance { }
+            }
+        }
+
+        if SettingsBridge.username-modal: ChangeUsernameModal {
+            restore-focus => { fs.focus(); }
+        }
+
+        if SettingsBridge.font-modal: FontModal {
+            restore-focus => { fs.focus(); }
+        }
+
+        if SettingsBridge.speed-limits-config: SpeedLimitsConfig {
+            restore-focus => { fs.focus(); }
+        }
+
+        if SettingsBridge.icons-config: IconsEditor {
+            restore-focus => { fs.focus(); }
+        }
+    }
+}

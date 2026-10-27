@@ -1,0 +1,1293 @@
+import { Theme } from "../theme.slint";
+import {
+    GeneralModal,
+    PlainLineEdit,
+    PrimaryButton,
+    Spinner,
+    Breadcrumb,
+    IconButton,
+    SvgIcon,
+    Switch,
+} from "../elements.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
+import { WindowBridge, MainWindowTouchArea } from "../window.slint";
+import { Keys } from "../keys.slint";
+import { SettingsRow } from "../settings.slint";
+import { ExplorerBridge, EntryType, DirEntry } from "bridge.slint";
+import { CompressModal } from "compress.slint";
+import { Icons } from "../icons.slint";
+
+component MenuRow inherits Rectangle {
+    in property <string> text;
+    callback clicked;
+
+    height: 28px;
+    border-radius: 6px;
+    background: row-ta.has-hover
+        ? Theme.colors.third-col
+        : transparent;
+
+    row-ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+
+        Text {
+            text: root.text;
+            font-size: 0.8rem;
+            color: Theme.colors.primary-font;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component MenuSeparator inherits Rectangle {
+    height: 9px;
+
+    Rectangle {
+        y: 4px;
+        height: 1px;
+        background: Theme.colors.border-col;
+    }
+}
+
+component ContextMenu inherits Rectangle {
+    callback action(string);
+
+    property <length> menu-width: 256px;
+    property <length> menu-height: 420px;
+
+    property <length> pop-x: 0px;
+    property <length> pop-y: 0px;
+
+    x: 0px;
+    y: 0px;
+    width: 0px;
+    height: 0px;
+
+    public function open(mx: length, my: length, bound-w: length, bound-h: length) {
+        root.pop-x = max(0px, min(mx, bound-w - root.menu-width));
+        root.pop-y = max(0px, min(my, bound-h - root.menu-height));
+        popup.show();
+    }
+
+    popup := PopupWindow {
+        x: root.pop-x;
+        y: root.pop-y;
+        width: root.menu-width;
+        height: root.menu-height;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: Theme.colors.primary-col;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 20px;
+            clip: true;
+
+            VerticalLayout {
+                padding: 6px;
+                spacing: 0px;
+
+                MenuRow {
+                    text: @tr("Open");
+                    clicked => { root.action("open"); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Scripts");
+                    clicked => { root.action("scripts"); }
+                }
+
+                MenuSeparator { }
+
+                MenuRow {
+                    text: @tr("Cut");
+                    clicked => { root.action("cut"); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Copy");
+                    clicked => { root.action("copy"); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Rename");
+                    clicked => { root.action("rename"); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Compress");
+                    clicked => { root.action("compress"); popup.close(); }
+                }
+
+                MenuSeparator { }
+
+                MenuRow {
+                    text: @tr("Send ");
+                }
+
+                MenuRow {
+                    text: @tr("Email");
+                    clicked => { root.action("email"); popup.close(); }
+                }
+
+                MenuSeparator { }
+
+                MenuRow {
+                    text: @tr("Move to trash");
+                    clicked => { root.action("trash"); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Delete permanently");
+                    clicked => { root.action("delete-permanently"); popup.close(); }
+                }
+
+                MenuSeparator { }
+
+                MenuRow {
+                    text: @tr("Properties");
+                    clicked => { root.action("properties"); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Copy as path");
+                    clicked => { root.action("copy-path"); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Hash");
+                    clicked => { root.action("hash"); }
+                }
+            }
+        }
+    }
+}
+
+component TopBar inherits HorizontalLayout {
+    padding: 12px;
+    padding-left: 4px;
+    padding-right: 12px;
+    cross-axis-alignment: center;
+
+    IconButton {
+        width: 28px;
+        height: 28px;
+        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+
+        SvgIcon {
+            source: Icons.chevron-left;
+            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: 18px;
+        }
+
+        clicked => {
+            ExplorerBridge.back();
+            EventResult.accept
+        }
+    }
+
+    Rectangle {
+        width: 2px;
+    }
+
+    IconButton {
+        width: 28px;
+        height: 28px;
+        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+
+        SvgIcon {
+            source: Icons.chevron-right;
+            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: 18px;
+        }
+
+        clicked => {
+            ExplorerBridge.forward();
+        }
+    }
+
+    Rectangle {
+        width: 2px;
+    }
+
+    IconButton {
+        width: 28px;
+        height: 28px;
+        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+
+        SvgIcon {
+            source: Icons.chevron-right;
+            transform-rotation: -90deg;
+            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: 18px;
+        }
+
+        clicked => {
+            ExplorerBridge.up();
+        }
+    }
+
+    Rectangle {
+        width: 12px;
+    }
+
+    Breadcrumb {
+        components: ExplorerBridge.current-dir;
+        clicked(idx) => { ExplorerBridge.navigate-to-in-current(idx); }
+    }
+
+    Rectangle { }
+
+    IconButton {
+        width: 28px;
+        height: 28px;
+        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+
+        SvgIcon {
+            source: Icons.search;
+            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: 16px;
+        }
+
+        clicked => { ExplorerBridge.searching = true; }
+    }
+
+    Rectangle {
+        width: 8px;
+    }
+
+    IconButton {
+        width: 28px;
+        height: 28px;
+        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+
+        SvgIcon {
+            source: Icons.filter;
+            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: 16px;
+        }
+
+        clicked => {}
+    }
+
+    Rectangle {
+        width: 8px;
+    }
+
+    IconButton {
+        width: 28px;
+        height: 28px;
+        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+
+        SvgIcon {
+            source: Icons.terminal;
+            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: 16px;
+        }
+
+        clicked => { ExplorerBridge.terminal(); }
+    }
+
+    // Rectangle {
+    //     width: 8px;
+    // }
+    //
+    // IconButton {
+    //     width: 28px;
+    //     height: 28px;
+    //     inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+    //
+    //     SvgIcon {
+    //         source: ExplorerBridge.view == View.grid ? Icons.grid : Icons.list;
+    //         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+    //         size: 16px;
+    //     }
+    //
+    //     clicked => {
+    //         if ExplorerBridge.view == View.grid {
+    //             ExplorerBridge.view = list;
+    //         } else {
+    //             ExplorerBridge.view = grid;
+    //         }
+    //     }
+    // }
+
+    Rectangle {
+        width: 8px;
+    }
+
+    IconButton {
+        width: 28px;
+        height: 28px;
+        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+
+        SvgIcon {
+            source: Icons.columns;
+            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: 16px;
+        }
+
+        clicked => {}
+    }
+}
+
+
+
+export component RecursiveSearch inherits GeneralModal {
+
+    property <string> query;
+    property <bool> scanning: true;
+
+    in-out property <float> split-ratio: 0.575;
+
+    property <length> min-pane-width: 200px;
+    property <length> max-content-width: 1070px;
+    property <length> handle-width: 20px;
+
+    property <length> available: max(0px, row.width - 80px - handle-width);
+    property <length> content-w: min(max-content-width, available);
+    property <length> left-w: content-w * split-ratio;
+    property <length> right-w: content-w * (1 - split-ratio);
+    property <length> panel-h: min(512px, row.height - 80px);
+
+    property <float> min-ratio: min(0.5, min-pane-width / max(content-w, 1px));
+    property <float> max-ratio: 1 - min-ratio;
+
+    init => { self.focus(); }
+
+    on-close => {
+        close();
+    }
+    on-enter => {
+        close();
+    }
+
+    function close() {
+        ExplorerBridge.searching-recursive = false;
+        ExplorerBridge.focus();
+    }
+
+    // function current-dir() -> string {
+    //     ExplorerBridge.current-dir.
+    //
+    // }
+
+    Timer {
+        running: scanning;
+        interval: 600ms;
+        triggered => {
+            scanning = false;
+        }
+    }
+
+    row := HorizontalLayout {
+        spacing: 0px;
+        alignment: center;
+        cross-axis-alignment: center;
+
+        Rectangle {
+            height: root.panel-h;
+            width: root.left-w;
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            clip: true;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 14px;
+
+                HorizontalLayout {
+                    Text {
+                        text: @tr("Searching in {}", "lujec");
+                        font-size: 16px;
+                        color: Theme.colors.primary-font;
+                        font-weight: 500;
+                        overflow: elide;
+                    }
+
+                    if root.scanning: Spinner { }
+                }
+
+                Text {
+                    cross-axis-self-alignment: end;
+                    width: 60px;
+                    text: "0 / 123 ";
+                }
+
+                Rectangle {
+                    border-radius: 8px;
+                    background: Theme.colors.third-col;
+                    height: 32px;
+
+                    le := PlainLineEdit {
+                        input-text <=> query;
+                        accepted => { close(); }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            width: root.handle-width;
+            height: root.panel-h;
+
+            Rectangle {
+                width: 2px;
+                height: 20px;
+                border-radius: 2px;
+                background: handle-area.pressed ? Theme.colors.primary-font
+                    : handle-area.has-hover ? Theme.colors.primary-font.with-alpha(0.6)
+                    : Theme.colors.border-col;
+                animate background { duration: 120ms; }
+            }
+
+            handle-area := TouchArea {
+                mouse-cursor: MouseCursor.col-resize;
+
+                property <length> start-x;
+
+                pointer-event(event) => {
+                    if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                        self.start-x = self.mouse-x;
+                    }
+                }
+
+                moved => {
+                    if (self.pressed) {
+                        root.split-ratio = max(root.min-ratio, min(root.max-ratio,
+                            root.split-ratio + (self.mouse-x - self.start-x) / max(root.content-w, 1px)));
+                    }
+                }
+
+                double-clicked => {
+                    root.split-ratio = 0.55;
+                }
+            }
+        }
+
+        Rectangle {
+            height: root.panel-h;
+            width: root.right-w;
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            clip: true;
+        }
+    }
+}
+
+component RenameModal inherits GeneralModal {
+    in property <int> selection-end;
+    in-out property <string> new-name;
+
+    callback save();
+
+    on-enter => { root.save(); }
+
+    Rectangle {
+
+        height: min(196px, parent.height - 80px);
+        width: min(512px, parent.width - 80px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 14px;
+
+            Text {
+                text: @tr("Rename");
+                font-size: 20px;
+                color: Theme.colors.primary-font;
+                font-weight: 600;
+            }
+
+            Rectangle { }
+
+            Rectangle {
+
+                border-radius: 8px;
+                background: Theme.colors.third-col;
+                border-corner-shape: superellipse(WindowBridge.edges-shape);
+
+                le := PlainLineEdit {
+                    autofocus: true;
+                    input-text <=> new-name;
+                    start: 0;
+                    end: root.selection-end;
+
+                    rejected => {
+                        root.on-close();
+                    }
+
+                    accepted => {
+                        root.save();
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton {
+                    text: @tr("Cancel");
+                    alt: true;
+                    clicked => {
+                        root.on-close();
+                    }
+                }
+
+                Rectangle {
+                    width: 12px;
+                }
+
+                PrimaryButton {
+                    text: @tr("Save");
+                    image: Icons.save;
+                    clicked => { save(); }
+                }
+            }
+        }
+    }
+}
+
+
+export component Explorer inherits Rectangle {
+    background: Theme.colors.secondary-col;
+    border-radius: 12px;
+    border-corner-shape: superellipse(WindowBridge.edges-shape);
+
+    property <bool> renaming;
+    property <bool> searching;
+    property <string> new-name;
+
+    property <int> focus-tick <=> ExplorerBridge.focus-tick;
+    changed focus-tick => { main-fs.focus(); }
+
+    property <bool> any-modal <=> WindowBridge.any-modal-open;
+    changed any-modal => {
+        debug("changed");
+        if !any-modal {
+            main-fs.focus();
+        }
+    }
+
+    property <int> cursor;
+    property <int> cursor-hover;
+
+    property <Point> drag;
+
+    property <bool> selecting;
+    property <bool> did-select;
+    property <length> sel-x0;
+    property <length> sel-y0;
+    property <length> sel-x1;
+    property <length> sel-y1;
+
+    property <int> anchor: -1;
+
+    property <length> target-y: 0px;
+    property <bool> pending-g;
+
+    function update-selection() {
+        let h = ExplorerBridge.list-height;
+        let n = ExplorerBridge.entries.length;
+        if n > 0 {
+            root.anchor = Math.min(Math.max(Math.floor(root.sel-y0 / h), 0), n - 1);
+            root.cursor = Math.min(Math.max(Math.floor(root.sel-y1 / h), 0), n - 1);
+        }
+    }
+
+    function move-cursor(delta: int) {
+        let max-index = ExplorerBridge.entries.length - 1;
+        root.cursor = Math.min(Math.max(root.cursor + delta, 0), max-index);
+        ensure-visible();
+    }
+
+    function move-end() {
+        let max-index = ExplorerBridge.entries.length - 1;
+        root.cursor = max-index;
+        ensure-visible();
+    }
+
+    function move-start() {
+        root.cursor = 0;
+        ensure-visible();
+    }
+
+    function ensure-visible() {
+        let h = ExplorerBridge.list-height;
+        let top = root.cursor * h;
+        let bottom = top + h;
+
+        if (top + root.target-y < 0px) {
+            root.target-y = -top;
+        } else if (bottom + root.target-y > list.height) {
+            root.target-y = list.height - bottom;
+        }
+        list.content-y = root.target-y;
+    }
+
+    pure function visible-rows() -> int {
+        (list.content-height / ExplorerBridge.list-height)
+    }
+
+    function open-at(i: int) {
+        if (i >= 0 && i < ExplorerBridge.entries.length) {
+            ExplorerBridge.open(ExplorerBridge.entries[i], i);
+            root.cursor = 0;
+        }
+        clear-selection();
+    }
+
+    function is-selected(idx: int) -> bool {
+        if root.anchor != -1 {
+            idx >= min(root.anchor, root.cursor) && idx <= max(root.anchor, root.cursor)
+        } else {
+            root.cursor == idx
+        }
+    }
+    function rename() {
+        root.new-name = ExplorerBridge.entries[root.cursor].name;
+        root.renaming = true;
+    }
+
+    function clear-selection() {
+        root.anchor = -1;
+    }
+
+    function delete-permanently() {
+        ExplorerBridge.delete-items(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
+        clear-selection();
+    }
+
+    function trash() {
+        ExplorerBridge.trash-items(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
+        clear-selection();
+    }
+
+    function copy() {
+        ExplorerBridge.copy(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
+        clear-selection();
+    }
+
+    function paste() {
+        ExplorerBridge.paste();
+        clear-selection();
+    }
+
+    z: 0;
+    clip: true;
+
+    VerticalLayout {
+
+        padding-left: 8px;
+        padding-right: 0px;
+        padding-bottom: 8px;
+
+        TopBar {
+            z: 1;
+        }
+
+        if root.searching: Rectangle {
+            height: 32px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-corner-shape: superellipse(WindowBridge.edges-shape);
+
+            SvgIcon {
+                x: 8px;
+                source: Icons.search;
+                fg: Theme.colors.primary-font;
+                size: 18px;
+            }
+
+            PlainLineEdit {
+                x: 32px;
+                rejected => {
+                    main-fs.focus();
+                    root.searching = false;
+                    ExplorerBridge.clear-search();
+                }
+                edited(query) => {
+                    ExplorerBridge.search-current(query);
+                }
+                accepted => {
+                    main-fs.focus();
+                    root.searching = false;
+                }
+            }
+        }
+        if root.searching: Rectangle {
+            height: 8px;
+        }
+
+        main-fs := FocusScope {
+
+            init => { self.focus(); }
+
+            KeyBinding {
+                keys: Keys.map.delete-permanently.keys;
+                activated => { delete-permanently(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.delete-permanently.alt-keys;
+                activated => { delete-permanently(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.trash.keys;
+                activated => { trash(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.trash.alt-keys;
+                activated => { trash(); }
+            }
+
+            KeyBinding {
+                keys: @keys(Shift + V);
+                activated => { anchor = root.cursor; }
+            }
+
+            KeyBinding {
+                keys: @keys(V);
+                activated => { anchor = root.cursor; }
+            }
+
+            KeyBinding {
+                keys: Keys.map.close.keys;
+                activated => {
+                    root.anchor = -1;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.close.alt-keys;
+                activated => {
+                    root.anchor = -1;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.history-back.keys;
+                activated => {
+                    ExplorerBridge.back();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.history-back.alt-keys;
+                activated => {
+                    ExplorerBridge.back();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.history-forward.keys;
+                activated => {
+                    ExplorerBridge.forward();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.history-forward.alt-keys;
+                activated => {
+                    ExplorerBridge.forward();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.half-page-down.keys;
+                activated => {
+                    move-cursor(visible-rows() / 2);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.half-page-down.alt-keys;
+                activated => {
+                    move-cursor(visible-rows() / 2);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.half-page-up.keys;
+                activated => {
+                    move-cursor(-(visible-rows() / 2));
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.half-page-up.alt-keys;
+                activated => {
+                    move-cursor(-(visible-rows() / 2));
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.refresh.keys;
+                activated => {
+                    ExplorerBridge.refresh();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.refresh.alt-keys;
+                activated => {
+                    ExplorerBridge.refresh();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.rename.keys;
+                activated => { rename(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.rename.alt-keys;
+                activated => { rename(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.move-down.keys;
+                activated => {
+                    move-cursor(1);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.move-down.alt-keys;
+                activated => {
+                    move-cursor(1);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.move-up.keys;
+                activated => {
+                    move-cursor(-1);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.move-up.alt-keys;
+                activated => {
+                    move-cursor(-1);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.go-inside.keys;
+                activated => {
+                    root.open-at(root.cursor);
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.go-inside.alt-keys;
+                activated => {
+                    root.open-at(root.cursor);
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.go-parent.keys;
+                activated => {
+                    ExplorerBridge.up();
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.go-parent.alt-keys;
+                activated => {
+                    ExplorerBridge.up();
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.search-in-current.keys;
+                activated => {
+                    root.searching = !root.searching;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.search-in-current.alt-keys;
+                activated => {
+                    root.searching = !root.searching;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.search-recursively.keys;
+                activated => {
+                    ExplorerBridge.searching-recursive = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.search-recursively.alt-keys;
+                activated => {
+                    ExplorerBridge.searching-recursive = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.ripgrep.keys;
+                activated => {
+                    ExplorerBridge.ripgrepping = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.ripgrep.alt-keys;
+                activated => {
+                    ExplorerBridge.ripgrepping = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.confirm.keys;
+                activated => {
+                    root.open-at(root.cursor);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.confirm.alt-keys;
+                activated => {
+                    root.open-at(root.cursor);
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.zoom-in.keys;
+                activated => { ExplorerBridge.zoom-in(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.zoom-in.alt-keys;
+                activated => { ExplorerBridge.zoom-in(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.zoom-out.keys;
+                activated => { ExplorerBridge.zoom-out(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.zoom-out.alt-keys;
+                activated => { ExplorerBridge.zoom-out(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.copy.keys;
+                activated => { copy(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.copy.alt-keys;
+                activated => { copy(); }
+            }
+
+            KeyBinding {
+                keys: Keys.map.cut.keys;
+                activated => {
+                    debug("Cut");
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.cut.alt-keys;
+                activated => {
+                    debug("Cut");
+                    clear-selection();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.paste.keys;
+                activated => {
+                    clear-selection();
+                    ExplorerBridge.paste();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.paste.alt-keys;
+                activated => {
+                    clear-selection();
+                    ExplorerBridge.paste();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.undo.keys;
+                activated => {
+                    debug("Undo");
+                    clear-selection();
+                    // ExplorerBridge.undo(); // or fucking window brdige???
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.undo.alt-keys;
+                activated => {
+                    debug("Undo");
+                    clear-selection();
+                    // ExplorerBridge.paste();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.redo.keys;
+                activated => {
+                    debug("Redo");
+                    // ExplorerBridge.undo(); // or fucking window brdige???
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.redo.alt-keys;
+                activated => {
+                    debug("Redo");
+                    // ExplorerBridge.paste();
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.compress.keys;
+                activated => {
+                    ExplorerBridge.compressing = true;
+                }
+            }
+
+            KeyBinding {
+                keys: Keys.map.compress.alt-keys;
+                activated => {
+                    ExplorerBridge.compressing = true;
+                }
+            }
+
+            key-pressed(event) => {
+                let was-pending-g = root.pending-g;
+                root.pending-g = false;
+                if event.text == Key.G {
+                    if was-pending-g {
+                        move-start();
+                    } else {
+                        root.pending-g = true;
+                    }
+                    return EventResult.accept;
+                }
+                if event.text == "G" {
+                    move-end();
+                    return EventResult.accept;
+                }
+                EventResult.reject
+            }
+            ta := TouchArea {
+                pointer-event(event) => {
+                    let at = Math.floor((-list.content-y + self.mouse-y) / ExplorerBridge.list-height);
+
+                    if event.kind == PointerEventKind.move {
+                        cursor-hover = at;
+
+                        if self.pressed {
+                            root.sel-x1 = Math.min(Math.max(self.mouse-x, 0px), self.width);
+                            root.sel-y1 = Math.min(Math.max(self.mouse-y - list.content-y, 0px), list.content-height);
+
+                            if !root.selecting
+                                && (Math.abs((root.sel-x1 - root.sel-x0) / 1px) > 4
+                                || Math.abs((root.sel-y1 - root.sel-y0) / 1px) > 4) {
+                                root.selecting = true;
+                                root.did-select = true;
+                            }
+                            if root.selecting {
+                                update-selection();
+                            }
+                        }
+                    }
+                    if event.kind == PointerEventKind.cancel {
+                        root.selecting = false;
+                    }
+                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                        if at >= 0 && at < ExplorerBridge.entries.length && !is-selected(at) {
+                            root.cursor = at;
+                            clear-selection();
+                        }
+                        ctx.open(self.mouse-x, self.mouse-y, self.width, self.height);
+                    }
+                    if event.button == PointerEventButton.left {
+                        if event.kind == PointerEventKind.down {
+                            root.sel-x0 = self.mouse-x;
+                            root.sel-y0 = self.mouse-y - list.content-y;
+                            root.sel-x1 = root.sel-x0;
+                            root.sel-y1 = root.sel-y0;
+                            root.selecting = false;
+                            root.did-select = false;
+                        }
+                        if event.kind == PointerEventKind.up {
+                            root.selecting = false;
+                        }
+                    }
+                }
+                clicked => {
+                    if !root.did-select {
+                        root.open-at(Math.floor((-list.content-y + self.mouse-y) / ExplorerBridge.list-height));
+                    }
+                    main-fs.focus();
+                }
+            }
+
+            list := ListView {
+
+                property <[DirEntry]> entries: ExplorerBridge.search-results.length > 0 ?
+                    ExplorerBridge.search-results : ExplorerBridge.entries;
+
+                for entry[i] in entries: Rectangle {
+                    clip: true;
+                    z: 0;
+                    width: parent.width - 12px;
+                    height: ExplorerBridge.list-height;
+                    background: is-selected(i) ? Theme.colors.fourth-col :
+                        cursor-hover == i ? Theme.colors.third-col : transparent;
+
+                    border-radius: 12px;
+                    border-corner-shape: superellipse(WindowBridge.edges-shape);
+
+                    transform-scale-y: (ta.pressed && root.cursor-hover == i) ? 0.99 : 1.0;
+                    transform-scale-x: (ta.pressed && root.cursor-hover == i) ? 0.998 : 1.0;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        cross-axis-alignment: center;
+                        spacing: 8px;
+
+                        // if ExplorerBridge.relative: Rectangle {
+                        //     width: max(16px, t.preferred-width);
+                        //     t := Text {
+                        //         text: abs(i - root.cursor) + 1;
+                        //         font-size: 0.8rem;
+                        //         color: Theme.colors.primary-font;
+                        //         font-weight: 400;
+                        //     }
+                        // }
+
+                        if entry.type == EntryType.directory: Image {
+                            source: Icons.directory;
+                            height: ExplorerBridge.list-height - 12px;
+                            width: ExplorerBridge.list-height - 12px;
+                            colorize: Theme.colors.fourth-font;
+                        }
+
+                        if entry.type == EntryType.file: Image {
+                            source: Icons.file;
+                            height: ExplorerBridge.list-height - 12px;
+                            width: ExplorerBridge.list-height - 12px;
+                            colorize: Theme.colors.fourth-font;
+                        }
+
+                        Text {
+                            text: entry.name;
+                            font-size: 0.8rem;
+                            color: Theme.colors.primary-font;
+                            font-weight: 400;
+                        }
+
+                        Rectangle { }
+
+                        if entry.type == EntryType.file: Text {
+                            text: entry.size;
+                            font-size: 0.75rem;
+                            color: Theme.colors.third-font;
+                            font-weight: 400;
+                        }
+                    }
+                }
+            }
+
+            ctx := ContextMenu {
+                action(id) => {
+                    main-fs.focus();
+                    debug("context action: ", id);
+                }
+            }
+
+            if root.selecting: Rectangle {
+                z: 1;
+                x: Math.min(root.sel-x0, root.sel-x1);
+                y: Math.min(root.sel-y0, root.sel-y1) + list.content-y;
+                width: Math.max(root.sel-x0, root.sel-x1) - Math.min(root.sel-x0, root.sel-x1);
+                height: Math.max(root.sel-y0, root.sel-y1) - Math.min(root.sel-y0, root.sel-y1);
+                background: Theme.colors.fourth-col.brighter(1.0).with-alpha(0.5);
+                border-color: Theme.colors.fourth-font;
+                border-width: 1px;
+                border-radius: 8px;
+            }
+        }
+    }
+
+    if root.renaming: RenameModal {
+        new-name <=> root.new-name;
+        selection-end: ExplorerBridge.get-dot-pos(root.cursor);
+
+        on-close => {
+            main-fs.focus();
+            renaming = false;
+        }
+        save => {
+            ExplorerBridge.rename(root.cursor, new-name);
+            main-fs.focus();
+            renaming = false;
+        }
+    }
+
+    if ExplorerBridge.compressing: CompressModal {
+        selection-start: root.anchor;
+        selection-end: root.cursor;
+        on-close => {
+            main-fs.focus();
+            ExplorerBridge.compressing = false;
+        }
+    }
+}

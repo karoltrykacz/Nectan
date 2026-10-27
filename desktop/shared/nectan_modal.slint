@@ -1,0 +1,53 @@
+import { WindowBridge } from "window.slint";
+import { GeneralModal } from "elements.slint";
+import { Theme } from "theme.slint";
+
+export component NectanModal inherits GeneralModal {
+
+    on-close => { WindowBridge.nectan-modal-open = false; }
+
+    init => { root.focus(); }
+    TouchArea {
+        clicked => { WindowBridge.nectan-modal-open = false; }
+    }
+
+    Rectangle {
+        width: min(620px, parent.width * 0.8);
+        height: min(420px, parent.height * 0.8);
+
+        background: Theme.colors.primary-col;
+        border-radius: 14px;
+        border-width: 1px;
+        border-color: Theme.colors.third-col;
+        clip: true;
+
+        VerticalLayout {
+            cross-axis-alignment: center;
+            alignment: center;
+
+            Image {
+                source: @image-url("icons/tray.png");
+                width: 96px;
+                height: 96px;
+            }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            Text {
+                text: "Nectan";
+                color: Theme.colors.primary-font;
+                font-size: 42px;
+                font-weight: 700;
+            }
+
+            Text {
+                text: "1.0.0";
+                font-size: 13px;
+                font-weight: 500;
+                color: Theme.colors.third-font;
+            }
+        }
+    }
+}

@@ -1,4 +1,4 @@
 /target
-/container
 Cargo.lock
-build.sh
+install.sh
+uninstall.sh

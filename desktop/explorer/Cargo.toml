@@ -1,0 +1,51 @@
+[package]
+name = "nectan_explorer"
+version = "0.1.0"
+edition = "2024"
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nectan_core = {path = "../../core"}
+anyhow = "1.0.104"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+uuid = { version = "1.26.0", features = ["v4"] }
+dirs = "7.0.0"
+rfd = "0.17.2"
+slint = { 
+    git = "https://github.com/R-Cramer4/slint.git", 
+    branch = "corner-shape",
+    default-features = false, features = [
+    "std",
+    "compat-1-18",
+    "backend-winit-wayland",
+    "backend-winit-x11",
+    "renderer-skia-software",
+    "unstable-winit-030",
+    "raw-window-handle-06"
+] }
+ignore = { version = "0.4.33", features = ["simd-accel"] }
+open = "5.4.4"
+trash = "5.2.9"
+url = "2.5.8"
+zbus = "6.1.0"
+clipboard-rs = { version = "0.3.5", features = ["wayland"] }
+zip = "9.0.5"
+rayon = "1.12.0"
+# image = "0.25.10"
+# resvg = "0.48.1"
+# notify-rust = "4"
+# sysinfo = "0.39.6"
+
+[build-dependencies]
+slint-build = { git = "https://github.com/R-Cramer4/slint.git", branch = "corner-shape"}
+
+[target.'cfg(target_os = "linux")'.dependencies]
+raw-window-handle = "0.6"
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+x11rb = "0.13"
+
+

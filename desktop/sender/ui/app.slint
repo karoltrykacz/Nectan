@@ -1,0 +1,78 @@
+import { WindowBridge, TopBarShower } from "../../shared/window.slint";
+import { Theme, ThemeAnimator } from "../../shared/theme.slint";
+import { Topbar } from "../../shared/topbar.slint";
+import { Transfers } from "../../shared/transfers.slint";
+import { NectanModal } from "../../shared/nectan_modal.slint";
+import { Sidebar } from "sidebar.slint";
+import { CurrentWindow } from "sender.slint";
+import { SettingsBridge, Settings } from "settings.slint";
+
+export enum CurrentWindow { transfers, main }
+
+export component NectanSender inherits Window {
+    title: "Nectan";
+    preferred-width: 1128px;
+    preferred-height: 720px;
+    min-width: 400px;
+    min-height: 200px;
+    resize-border-width: 6px;
+    no-frame: !WindowBridge.native-topbar;
+    background: transparent;
+    maximized: WindowBridge.maximized;
+    default-font-family: Theme.font;
+    default-font-size: Theme.font-size;
+    z: 0;
+
+    in-out property <CurrentWindow> current-window;
+    callback new-window();
+
+    ThemeAnimator { }
+
+    main-fs := FocusScope {
+
+        KeyBinding {
+            keys: @keys(Control + N);
+            activated => {
+                root.new-window();
+            }
+        }
+
+        Rectangle {
+
+            z: 1;
+            background: Theme.colors.primary-col;
+            border-color: Theme.colors.fourth-col;
+            border-width: root.maximized ? 0 : 1px;
+            border-radius: WindowBridge.round-edges ? root.maximized ? 0 : 24px : 0;
+            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            clip: true;
+
+            TopBarShower { }
+
+            Topbar { }
+
+            Sidebar { }
+
+            HorizontalLayout {
+                padding: 8px;
+                padding-left: WindowBridge.sidebar-width;
+
+                if root.current-window == CurrentWindow.transfers: Transfers { }
+            }
+        }
+
+        Rectangle {
+            z: 1;
+
+            if SettingsBridge.open: Settings { }
+
+            if WindowBridge.nectan-modal-open: NectanModal { }
+
+            // if OutcomingTransferModalBridge.open: OutcomingTransferModal { }
+            //
+            // if IncomingTransferOfferBridge.open: IncomingTransferOfferModal { }
+            //
+            // if AddDeviceBridge.open:  AddDeviceModal { }
+        }
+    }
+}

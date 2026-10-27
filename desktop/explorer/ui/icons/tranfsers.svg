@@ -1,0 +1,21 @@
+<svg
+	xmlns="http://www.w3.org/2000/svg"
+	viewBox="0 0 24 24"
+	height="24"
+	width="24"
+	fill="none"
+	stroke="currentColor"
+	class-name="icon"
+	stroke-width="2"
+	stroke-linecap="round"
+	strokeLinejoin="round"
+>
+	<g transform="translate(-4.5, 0)">
+		<line x1="12" y1="5" x2="12" y2="19"></line>
+		<polyline points="16 15 12 19 8 15"></polyline>
+	</g>
+	<g transform="rotate(180 12 12) translate(-4.5, 0)">
+		<line x1="12" y1="5" x2="12" y2="19"></line>
+		<polyline points="16 15 12 19 8 15"></polyline>
+	</g>
+</svg>

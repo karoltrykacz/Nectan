@@ -1,0 +1,93 @@
+import { DropDownOption } from "dropdown.slint";
+import { Theme } from "theme.slint";
+
+export global WindowBridge {
+
+    callback reorder-requested(int, int);
+    callback close-requested(int);
+
+    in-out property <bool> welcome-open;
+
+    in-out property <bool> any-modal-open;
+    in-out property <bool> nectan-modal-open: false;
+
+    in-out property <bool> topbar-hover: false;
+    in-out property <bool> topbar-always-on;
+    in-out property <bool> native-topbar;
+    in-out property <bool> round-edges:true;
+    in-out property <float> edges-shape: 2.5;
+    in-out property <bool> maximized;
+    in-out property <bool> sidebar-visible: true;
+    in-out property <bool> sidebar-hover: true;
+    in-out property <length> sidebar-width: 200px;
+    in-out property <length> border-radius: 12px;
+
+    callback drag-window();
+
+    callback minimize-window();
+    callback maximize-window();
+    callback close-window();
+
+    in-out property <string> username;
+
+    callback change-username(string);
+    callback close-welcome(string);
+
+    in-out property <[DropDownOption]> languages;
+    in-out property <int> selected-language-idx;
+    callback select-language(string);
+}
+
+export component TopBarShower inherits Rectangle {
+    x: WindowBridge.sidebar-hover || WindowBridge.sidebar-visible ? WindowBridge.sidebar-width + 20px : 0;
+    z: 3;
+    y: 0;
+    width: 100%;
+    height: 25px;
+
+    TouchArea {
+        property <bool> maybe-dragging: false;
+        moved => {
+            if (self.maybe-dragging) {
+                WindowBridge.drag-window();
+            }
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                self.maybe-dragging = true;
+            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                self.maybe-dragging = false;
+            }
+            // if self.mouse-y > 20px {
+            //     WindowBridge.topbar-hover = false;
+            // }
+            // if self.mouse-y < 20px {
+            //     WindowBridge.topbar-hover = true;
+            // }
+        }
+    }
+}
+
+export component MainWindowTouchArea inherits TouchArea {
+
+    width: 100%;
+    height: 100%;
+
+    pointer-event(event) => {
+        if self.mouse-y > 20px {
+            WindowBridge.topbar-hover = false;
+        } else {
+            WindowBridge.topbar-hover = true;
+        }
+    }
+
+    scroll-event(event) => {
+        if event.delta-x > 10px {
+            WindowBridge.sidebar-visible = true;
+        }
+        if event.delta-x < -10px {
+            WindowBridge.sidebar-visible = false;
+        }
+        return accept;
+    }
+}

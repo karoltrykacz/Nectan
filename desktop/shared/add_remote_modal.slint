@@ -1,0 +1,785 @@
+import { Theme } from "theme.slint";
+import {
+    GeneralModal,
+    PrimaryButton,
+    Spinner,
+    LinkButton,
+    IconButton,
+    SvgIcon,
+} from "elements.slint";
+
+export enum LookupState {
+    connection-failed,
+    code-not-found,
+    already-connected,
+    connecting,
+    checking,
+    waiting-for-remote-approval,
+    connected,
+    rejected,
+}
+
+export global AddDeviceBridge {
+    in-out property <LookupState> lookup-state;
+    in-out property <string> our-code: "416 192";
+    in-out property <int> time-left: 0;
+
+    in-out property <bool> connecting;
+    in-out property <bool> open: false;
+
+    // Ask server to validate code and start timer
+    callback request_code();
+    callback code_submitted(string);
+    callback copy_code(string);
+    callback cancel();
+
+    pure callback digits-only(string) -> string;
+    pure callback format-code(string) -> string;
+}
+
+component DisplayMode {
+    property <int> minutes: AddDeviceBridge.time-left / 60;
+    property <int> secs: Math.mod(AddDeviceBridge.time-left, 60);
+    property <string> timer-display: "\{minutes}:\{secs < 10 ? "0" : ""}\{secs}";
+    property <int> copied;
+
+    Timer {
+        running: copied > 0;
+        interval: 2000ms;
+        triggered => {
+            copied = 0;
+        }
+    }
+
+    init => {
+        if (AddDeviceBridge.time-left <= 0) {
+            AddDeviceBridge.time-left = 90;
+            AddDeviceBridge.request_code();
+        }
+    }
+
+    Rectangle {
+        clip: true;
+        width: 128px;
+        height: 32px;
+        x: copied > 0 ? -19px : -200px;
+        background: Theme.colors.primary-font;
+        border-bottom-right-radius: 12px;
+        border-top-right-radius: 12px;
+
+        animate x {
+            duration: 200ms;
+            easing: ease;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 0px;
+
+            Text {
+                text: "Copied";
+                color: Theme.colors.primary-col;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+
+            for i in copied: Text {
+                text: "!";
+                color: Theme.colors.primary-col;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+
+        Rectangle {
+            height: 128px;
+
+            VerticalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+
+                codeWrap := Rectangle {
+                    transform-scale: 1.0;
+
+                    animate transform-scale {
+                        duration: 100ms;
+                        easing: ease;
+                    }
+
+                    states [
+                        pressed when touch.pressed: {
+                            transform-scale: 0.97;
+                        }
+                    ]
+
+                    code-text := TextInput {
+                        width: 100%;
+                        height: 100%;
+                        text: AddDeviceBridge.our-code;
+                        color: Theme.colors.primary-font;
+                        font-size: 36px;
+                        font-weight: 600;
+                        letter-spacing: 1px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        read-only: true;
+                        single-line: true;
+                        key-pressed(event) => {
+                            EventResult.reject
+                        }
+                    }
+
+                    touch := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            debug("Copied code");
+                            AddDeviceBridge.copy_code(code-text.text);
+                            if copied < 5 {
+                                copied += 1;
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    width: 100%;
+                    height: 20px;
+                    text: AddDeviceBridge.time-left <= 0
+                        ? @tr("Expired")
+                        : root.timer-display;
+                    color: Theme.colors.primary-font;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        if AddDeviceBridge.time-left <= 30: PrimaryButton {
+            cross-axis-self-alignment: center;
+            width: 96px;
+            text: @tr("Refresh");
+            image: @image-url("icons/refresh.svg");
+            clicked => {
+                AddDeviceBridge.time-left = 90;
+                AddDeviceBridge.request_code();
+            }
+        }
+    }
+}
+
+component Status inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+
+    alignment: center;
+    cross-axis-alignment: center;
+    spacing: 4px;
+
+    Text {
+        text: title;
+        color: Theme.colors.primary-font;
+        font-size: 16px;
+        font-weight: 500;
+        horizontal-alignment: center;
+    }
+
+    Text {
+        text: subtitle;
+        color: Theme.colors.secondary-font;
+        font-size: 13px;
+        horizontal-alignment: center;
+    }
+
+    @children
+}
+
+component ConnectingStatus {
+
+    init => { fs.focus(); }
+
+    fs := FocusScope {
+
+        KeyBinding {
+            keys: @keys(Return);
+            activated => {
+                debug("Activated");
+                if AddDeviceBridge.lookup-state == LookupState.code-not-found {
+                    AddDeviceBridge.connecting = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.rejected {
+                    AddDeviceBridge.connecting = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.connection-failed {
+                    AddDeviceBridge.connecting = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.already-connected {
+                    AddDeviceBridge.connecting = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.connected {
+                    AddDeviceBridge.connecting = false;
+                    AddDeviceBridge.open = false;
+                }
+                if AddDeviceBridge.lookup-state == LookupState.waiting-for-remote-approval {}
+                if AddDeviceBridge.lookup-state == LookupState.connecting {}
+                if AddDeviceBridge.lookup-state == LookupState.checking {}
+            }
+        }
+
+        VerticalLayout {
+
+            cross-axis-alignment: center;
+
+            callback retry();
+
+            Rectangle {
+                width: 100%;
+                height: 20px;
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.checking: Status {
+
+                title: @tr("Finding");
+                subtitle: @tr("Looking for code.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                Spinner { }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.code-not-found: Status {
+
+                title: @tr("Code not found");
+                subtitle: @tr("Make sure code is valid and not expired.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                PrimaryButton {
+                    cross-axis-self-alignment: center;
+                    width: 102px;
+                    text: @tr("Try again");
+                    image: @image-url("icons/refresh.svg");
+                    clicked => {
+                        AddDeviceBridge.connecting = false;
+                    }
+                }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.connecting: Status {
+
+                title: @tr("Found device");
+                subtitle: @tr("Connecting to remote device.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                Spinner { }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.waiting-for-remote-approval: Status {
+
+                title: @tr("Request delivered");
+                subtitle: @tr("Remote device must approve new connection.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                Spinner { }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.rejected: Status {
+
+                title: @tr("Connection rejected");
+                subtitle: @tr("Remote device rejected connection");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                PrimaryButton {
+                    cross-axis-self-alignment: center;
+                    width: 102px;
+                    text: @tr("Try again");
+                    image: @image-url("icons/refresh.svg");
+                    clicked => {
+                        AddDeviceBridge.connecting = false;
+                    }
+                }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.connected: Status {
+
+                title: @tr("Connected");
+                subtitle: @tr("You can start sending and receiving files.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                PrimaryButton {
+                    width: 72px;
+                    text: @tr("Done");
+
+                    clicked => {
+                        AddDeviceBridge.open = false;
+                        AddDeviceBridge.connecting = false;
+                    }
+                }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.connection-failed: Status {
+
+                title: @tr("Connection failed");
+                subtitle: @tr("Remote device is unreachable.");
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                PrimaryButton {
+                    cross-axis-self-alignment: center;
+                    width: 102px;
+                    text: @tr("Try again");
+                    image: @image-url("icons/refresh.svg");
+                    clicked => {
+                        AddDeviceBridge.connecting = false;
+                    }
+                }
+            }
+
+            if AddDeviceBridge.lookup-state == LookupState.checking: PrimaryButton {
+                cross-axis-self-alignment: end;
+                width: 86px;
+                alt: true;
+                text: @tr("Cancel");
+
+                clicked => {
+                    AddDeviceBridge.connecting = false;
+                }
+            }
+        }
+    }
+}
+
+component InputMode inherits VerticalLayout {
+    in-out property <string> typed-code: "";
+
+    callback retry();
+
+    retry => {
+        root.typed-code = "";
+        code-input.text = "";
+        AddDeviceBridge.connecting = false;
+    }
+
+    init => {
+        AddDeviceBridge.connecting = false;
+        root.typed-code = "";
+        code-input.focus();
+    }
+
+    alignment: center;
+
+    Rectangle {
+        height: 128px;
+
+        Text {
+            width: 100%;
+            height: 100%;
+            visible: code-input.text.is-empty;
+            text: "123 456";
+            font-size: 36px;
+            font-weight: 600;
+            color: Theme.colors.fourth-font.with-alpha(0.5);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        code-input := TextInput {
+            selection-background-color: Theme.colors.third-font;
+            selection-foreground-color: Theme.colors.primary-font;
+            width: 100%;
+            height: 100%;
+            font-size: 36px;
+            font-weight: 600;
+            color: Theme.colors.primary-font;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            input-type: InputType.number;
+            single-line: true;
+
+            init => {
+                self.focus();
+            }
+
+            edited() => {
+                root.typed-code = AddDeviceBridge.digits-only(self.text);
+                self.text = AddDeviceBridge.format-code(root.typed-code);
+                self.set-selection-offsets(self.text.character-count, self.text.character-count);
+                if root.typed-code.character-count == 6 {
+                    AddDeviceBridge.code_submitted(root.typed-code);
+                    AddDeviceBridge.connecting = true;
+                }
+            }
+        }
+    }
+}
+
+component AddRemoteHelp inherits GeneralModal {
+
+    on-close => {}
+
+    Rectangle {
+        width: min(512px, parent.width * 0.8);
+        height: min(220px, parent.height * 0.9);
+        background: Theme.colors.secondary-col;
+        border-radius: 14px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 50px;
+
+        TouchArea { }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 16px;
+            spacing: 14px;
+
+            Text {
+                text: @tr("Help");
+                color: Theme.colors.primary-font;
+                font-size: 20px;
+                font-weight: 600;
+            }
+
+            Text {
+                text: @tr("6 digit code exchange is quick and private method to connect two devices. To pair simply share your code with your friend and accept incoming connection.");
+                color: Theme.colors.secondary-font;
+                font-size: 14px;
+                wrap: word-wrap;
+            }
+
+            Rectangle { }
+
+            PrimaryButton {
+                cross-axis-self-alignment: end;
+                text: @tr("Ok");
+                clicked => {
+                    root.on-close();
+                }
+            }
+        }
+    }
+}
+
+    // component QrCode inherits VerticalLayout {
+//     cross-axis-alignment: center;
+//     spacing: 20px;
+//     alignment: center;
+//
+//     Rectangle {
+//         width: 190px;
+//         height: 190px;
+//         border-radius: 16px;
+//         clip: true;
+//         Image {
+//             source: @image-url("./icons/qr-code.png");
+//             width: 200px;
+//             height: 200px;
+//         }
+//     }
+//
+//     Text {
+//         text: @tr("Scan with your mobile device to pair");
+//         color: Theme.colors.secondary-font;
+//         font-size: 13px;
+//         font-weight: 500;
+//         horizontal-alignment: center;
+//     }
+// }
+
+enum AddMode { input, display }
+
+export component AddDeviceModal inherits GeneralModal {
+
+    property <bool> qr;
+    property <bool> help;
+    in-out property <AddMode> code-mode: AddMode.input;
+
+    callback set-lookup-state(LookupState);
+
+    set-lookup-state(state) => {
+        AddDeviceBridge.lookup-state = state;
+    }
+
+    // Timer {
+    //     interval: 1s;
+    //     running: AddDeviceBridge.time-left > 0;
+    //
+    //     triggered => {
+    //         if (AddDeviceBridge.time-left > 0) {
+    //             AddDeviceBridge.time-left -= 1;
+    //         }
+    //     }
+    // }
+
+
+    on-close => { AddDeviceBridge.open = false; }
+
+    fs := FocusScope {
+
+        KeyBinding {
+            keys: @keys(Tab);
+            activated => {
+                if !AddDeviceBridge.connecting {
+                    if root.code-mode == AddMode.input {
+                        root.code-mode = AddMode.display;
+                    } else {
+                        root.code-mode = AddMode.input;
+                    }
+                    fs.focus();
+                }
+            }
+        }
+
+        TouchArea {
+            clicked => { AddDeviceBridge.open = false; }
+        }
+
+        Rectangle {
+            width: min(620px, parent.width * 0.8);
+            height: min(380px, parent.height * 0.8);
+            background: Theme.colors.secondary-col;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            drop-shadow-color: #00000088;
+            drop-shadow-blur: 50px;
+            clip: true;
+
+            TouchArea { }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 16px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    Text {
+                        text: @tr("Add device");
+                        color: Theme.colors.primary-font;
+                        font-size: 20px;
+                        font-weight: 600;
+                    }
+
+                    // IconButton {
+                //     y: 4px;
+                //     width: 28px;
+                //     height: 28px;
+                //     inner-bg: help.hovered ? Theme.colors.secondary-font : Theme.colors.primary-font;
+                //     SvgIcon {
+                //         source: @image-url("icons/qr.svg");
+                //         size: 16px;
+                //         fg: parent.hovered ? Theme.colors.primary-col : Theme.colors.fourth-col;
+                //     }
+                //
+                //     clicked => { root.qr = true; }
+                // }
+
+                help := IconButton {
+                        y: 4px;
+                        width: 28px;
+                        height: 28px;
+                        inner-bg: help.hovered ? Theme.colors.secondary-font : Theme.colors.primary-font;
+                        SvgIcon {
+                            source: @image-url("icons/help-circle.svg");
+                            size: 16px;
+                            fg: parent.hovered ? Theme.colors.primary-col : Theme.colors.fourth-col;
+                        }
+
+                        clicked => { root.help = true; }
+                    }
+                }
+
+                if root.code-mode == AddMode.display && !AddDeviceBridge.connecting: DisplayMode { }
+
+                if root.code-mode == AddMode.input && !AddDeviceBridge.connecting: InputMode { }
+
+                if AddDeviceBridge.connecting: ConnectingStatus { }
+
+                if !AddDeviceBridge.connecting: HorizontalLayout {
+                    alignment: end;
+                    spacing: 12px;
+
+                    PrimaryButton {
+                        width: 112px;
+                        text: root.code-mode == AddMode.display
+                            ? @tr("Enter code")
+                            : @tr("Show code");
+                        image: root.code-mode == AddMode.display ?
+                            @image-url("icons/edit.svg") : @image-url("icons/eye.svg");
+                        animate-width: false;
+                        clicked => {
+                            if root.code-mode == AddMode.input {
+                                root.code-mode = AddMode.display;
+                            } else {
+                                root.code-mode = AddMode.input;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if root.help: AddRemoteHelp {
+            on-close => {
+                root.help = false;
+            }
+        }
+    }
+}
+
+    export global ConnectionOfferBridge {
+    in-out property <bool> open;
+    in-out property <string> remote-device-name;
+
+    callback accept(bool);
+}
+
+export component ConnectionOfferModal inherits GeneralModal {
+
+    on-close => {
+        ConnectionOfferBridge.accept(false);
+        ConnectionOfferBridge.open = false;
+    }
+
+    on-enter => {
+        ConnectionOfferBridge.accept(true);
+        ConnectionOfferBridge.open = false;
+    }
+
+    Rectangle {
+
+        width: min(520px, parent.width - 80px);
+        height: min(192px, parent.height - 80px);
+
+        animate width, height {
+            duration: 200ms;
+            easing: cubic-bezier(0.34, 1, 0.64, 1);
+        }
+
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 18px;
+
+            HorizontalLayout {
+                VerticalLayout {
+                    alignment: start;
+                    Text {
+                        text: @tr("Accept connection");
+                        font-size: 20px;
+                        color: Theme.colors.primary-font;
+                        font-weight: 600;
+                    }
+
+                    Rectangle {
+                        height: 4px;
+                    }
+
+                    HorizontalLayout {
+                        alignment: start;
+                        Text {
+                            text: ConnectionOfferBridge.remote-device-name;
+                            font-size: 13px;
+                            color: Theme.colors.secondary-font;
+                            font-weight: 500;
+                        }
+
+                        Text {
+                            text: @tr(" wants to connect to you.");
+                            font-size: 13px;
+                            color: Theme.colors.secondary-font;
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: start;
+                Rectangle {
+                    height: 8px;
+                }
+
+                Text {
+                    text: @tr("This action won't transfer any files.");
+                    color: Theme.colors.primary-font;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+
+                Text {
+                    text: @tr("Accepting will allow {} to send transfer offers to you.",
+		    ConnectionOfferBridge.remote-device-name);
+                    color: Theme.colors.primary-font;
+                    wrap: word-wrap;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+
+                Rectangle {
+                    height: 12px;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton {
+                    text: @tr("Reject");
+                    alt: true;
+                    clicked => {
+                        ConnectionOfferBridge.open = false;
+                        ConnectionOfferBridge.accept(false);
+                    }
+                }
+
+                Rectangle {
+                    width: 12px;
+                }
+
+                PrimaryButton {
+                    text: @tr("Accept");
+                    clicked => {
+                        ConnectionOfferBridge.open = false;
+                        ConnectionOfferBridge.accept(true);
+                    }
+                }
+            }
+        }
+    }
+}

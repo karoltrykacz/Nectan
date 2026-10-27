@@ -186,7 +186,8 @@ impl TransferDirection {
     }
 }
 
-const DUMB_ITEMS: TableDefinition<u32, TransferItem> = TableDefinition::new("items");
+const DUMB_ITEMS: TableDefinition<u32, TransferItem> =
+    TableDefinition::new("items");
 
 #[derive(Clone, Copy)]
 pub enum TransferStatus {
@@ -241,7 +242,9 @@ enum TransferControl {
 impl PendingTransfer {
     pub fn test(total_items: u32) -> Self {
         let id = Uuid::new_v4();
-        let db = redb::Database::create(std::env::temp_dir().join(id.to_string())).unwrap();
+        let db =
+            redb::Database::create(std::env::temp_dir().join(id.to_string()))
+                .unwrap();
         let txn = db.begin_write().unwrap();
         {
             let mut table = txn.open_table(DUMB_ITEMS).unwrap();
@@ -252,7 +255,10 @@ impl PendingTransfer {
                         TransferItem {
                             idx: i,
                             sent_bytes: (i * 123) as u64,
-                            path: PathBuf::from(format!("/media/karol/file-{}", i)),
+                            path: PathBuf::from(format!(
+                                "/media/karol/file-{}",
+                                i
+                            )),
                             size: 123 * (i * i) as u64,
                             is_dir: true,
                             err: None,
@@ -296,13 +302,15 @@ impl PendingTransfer {
         let id = offer.transfer_id;
         println!("Transfer root_path {root_path:?}");
 
-        let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
+        let db_dir =
+            dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
         let dir = match direction {
             TransferDirection::Outcoming => "out",
             TransferDirection::Incoming => "in",
         };
         let db_dir = db_dir.join(format!("Nectan/t-{id}-{}", dir));
-        let db = redb::Database::create(db_dir).expect("Failed to create database");
+        let db =
+            redb::Database::create(db_dir).expect("Failed to create database");
 
         let txn = db.begin_write().unwrap();
         {
@@ -328,7 +336,9 @@ impl PendingTransfer {
             failed: AtomicU32::new(0),
             processed_items: AtomicU32::new(0),
             sent_bytes: AtomicU64::new(0),
-            items_queue: Mutex::new(FixedBitSet::with_capacity(offer.entries_num as usize)),
+            items_queue: Mutex::new(FixedBitSet::with_capacity(
+                offer.entries_num as usize,
+            )),
             speed: AtomicU64::new(0),
             db,
             total_items: offer.entries_num as u32,
@@ -487,7 +497,9 @@ impl PendingTransfer {
 
                     if drained {
                         // All transfers processed, wait until all finished
-                        info!("All transfers drained. Waiting for last items to finish.");
+                        info!(
+                            "All transfers drained. Waiting for last items to finish."
+                        );
                         let _ = self.sem.acquire_many(4).await;
                         self.set_status(TransferStatus::Finished);
                         return Ok(());
@@ -533,7 +545,10 @@ impl PendingTransfer {
         }
     }
 
-    pub async fn process_stream(self: Arc<Self>, mut stream: StreamPair) -> Result<()> {
+    pub async fn process_stream(
+        self: Arc<Self>,
+        mut stream: StreamPair,
+    ) -> Result<()> {
         let permit = tokio::select! {
             permit = self.sem.clone().acquire_owned() =>{
                 permit.unwrap()
@@ -607,7 +622,9 @@ impl PendingTransfer {
             return Ok(());
         }
 
-        if std::fs::exists(&output_dir).map_err(|_| TransferItemError::OpenFail)? {
+        if std::fs::exists(&output_dir)
+            .map_err(|_| TransferItemError::OpenFail)?
+        {
             error!("File [{}] already exsited.", output_dir.display());
             return Err(TransferItemError::FileAlreadyExisted);
         }
@@ -639,7 +656,10 @@ impl PendingTransfer {
         let mut total_written = header.sent_bytes;
 
         let period = Duration::from_millis(250);
-        let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+        let mut tick = tokio::time::interval_at(
+            tokio::time::Instant::now() + period,
+            period,
+        );
 
         loop {
             tokio::select! {
@@ -687,7 +707,8 @@ impl PendingTransfer {
             .await
             .map_err(|_| TransferItemError::FileIOError)?;
 
-        std::fs::rename(&lock_path, &output_dir).map_err(|_| TransferItemError::FileIOError)?;
+        std::fs::rename(&lock_path, &output_dir)
+            .map_err(|_| TransferItemError::FileIOError)?;
 
         // Final ack
         stream
@@ -853,7 +874,11 @@ impl PendingTransfer {
             }
         }
     }
-    pub fn set_item_progress(&self, item_id: u32, sent_bytes: u64) -> Result<(), redb::Error> {
+    pub fn set_item_progress(
+        &self,
+        item_id: u32,
+        sent_bytes: u64,
+    ) -> Result<(), redb::Error> {
         let txn = self.db.begin_write()?;
         {
             let mut table = txn.open_table(DUMB_ITEMS)?;
@@ -867,7 +892,11 @@ impl PendingTransfer {
         txn.commit()?;
         Ok(())
     }
-    pub fn set_item_error(&self, item_id: u32, e: TransferItemError) -> Result<(), redb::Error> {
+    pub fn set_item_error(
+        &self,
+        item_id: u32,
+        e: TransferItemError,
+    ) -> Result<(), redb::Error> {
         let txn = self.db.begin_write()?;
         {
             let mut table = txn.open_table(DUMB_ITEMS)?;
@@ -896,7 +925,10 @@ pub struct Transfers {
 }
 
 impl Transfers {
-    pub fn new(devices: Devices, event_tx: tokio::sync::mpsc::Sender<AppEvent>) -> Self {
+    pub fn new(
+        devices: Devices,
+        event_tx: tokio::sync::mpsc::Sender<AppEvent>,
+    ) -> Self {
         // let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
         // let db_dir = db_dir.join("transfers");
         // let db = redb::Database::create(db_dir).expect("Failed to create transfers database");
@@ -910,7 +942,9 @@ impl Transfers {
             devices,
         }
     }
-    pub fn pending_transfers(&self) -> &std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>> {
+    pub fn pending_transfers(
+        &self,
+    ) -> &std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>> {
         &self.pending_transfers.inner
     }
 
@@ -976,7 +1010,11 @@ impl Transfers {
         let _ = self.event_tx.send(AppEvent::TransfersUpdated).await;
     }
 
-    pub async fn forward_incoming_stream(&self, id: Uuid, stream: StreamPair) -> Result<()> {
+    pub async fn forward_incoming_stream(
+        &self,
+        id: Uuid,
+        stream: StreamPair,
+    ) -> Result<()> {
         let Some(t) = self.get(id) else {
             error!("Transfer not found");
             bail!("Transfer not found")

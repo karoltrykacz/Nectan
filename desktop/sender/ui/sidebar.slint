@@ -1,0 +1,155 @@
+import { IconButton, SvgIcon } from "../../shared/elements.slint";
+import { Theme } from "../../shared/theme.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { Icons } from "../../shared/icons.slint";
+import { NotificationsBridge } from "../../shared/notifications.slint";
+import { AddDeviceBridge } from "../../shared/add_remote_modal.slint";
+import { CurrentWindow, SenderWindow } from "sender.slint";
+import { SettingsBridge } from "settings.slint";
+
+export component Sidebar inherits Rectangle {
+
+    background: Theme.colors.primary-col;
+
+    x: WindowBridge.sidebar-visible ? 0 : (WindowBridge.sidebar-hover ? 0 : -WindowBridge.sidebar-width);
+    width: WindowBridge.sidebar-width;
+    z: 2;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: WindowBridge.sidebar-visible ? transparent : Theme.colors.border-col;
+
+    animate x, border-color {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    forward-focus: fs;
+
+    fs := FocusScope {
+
+        TouchArea {
+            property <bool> maybe-dragging: false;
+
+            moved => {
+                if (self.maybe-dragging) {
+                    WindowBridge.drag-window();
+                }
+            }
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down) {
+                    self.maybe-dragging = true;
+                } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                    self.maybe-dragging = false;
+                }
+            }
+        }
+
+        VerticalLayout {
+            padding: 8px;
+            padding-bottom: 4px;
+
+            HorizontalLayout {
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+
+                    Image {
+                        source: @image-url("../../shared/icons/tray.png");
+                        width: 16px;
+                        height: 16px;
+                    }
+
+                    clicked => {
+                        WindowBridge.nectan-modal-open = true;
+                    }
+                }
+
+                Rectangle { }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+
+                    SvgIcon {
+                        source: Icons.bell;
+                        size: 16px;
+                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                    }
+
+                    clicked => {
+                        NotificationsBridge.notifications-visible = !NotificationsBridge.notifications-visible;
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            // SearchBar { }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            Rectangle {
+                height: 12px;
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                spacing: 8px;
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: Icons.settings;
+                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        size: 16px;
+                    }
+
+                    clicked => {
+                        SettingsBridge.open = true;
+                    }
+                }
+
+                Rectangle { }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: Icons.nearby;
+                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        size: 16px;
+                    }
+
+                    clicked => {
+
+                        SenderWindow.current-window = CurrentWindow.transfers;
+                    }
+                }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: Icons.plus;
+                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        size: 16px;
+                    }
+
+                    clicked => {
+                        debug("Clicked");
+                        AddDeviceBridge.open = true;
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 4px;
+            }
+        }
+    }
+}

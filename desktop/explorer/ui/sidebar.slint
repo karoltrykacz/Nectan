@@ -1,0 +1,707 @@
+import {
+    IconButton,
+    SvgIcon,
+} from "elements.slint";
+import { SearchBar } from "search.slint";
+import { DeviceItem } from "devices.slint";
+import { Window, WindowBridge } from "window.slint";
+import { Theme } from "theme.slint";
+import { DevicesBridge } from "devices.slint";
+import { AddDeviceBridge } from "add_remote_modal.slint";
+import { ExplorerBridge } from "explorer/bridge.slint";
+import { SettingsBridge } from "settings.slint";
+import { HoverBridge } from "hover.slint";
+import { Keys } from "keys.slint";
+import { Icons } from "icons.slint";
+
+export struct EssentialTileData { id: int, slot: int, emoji: string, icon: image }
+
+export global SidebarBridge {
+    in-out property <[EssentialTileData]> essentials-data;
+
+    callback essentials();
+    in-out property <bool> essentials-select;
+    in-out property <int> essentials-cursor: -1;
+
+    essentials => {
+        essentials-cursor = essentials-data.length / 2;
+        essentials-select = true;
+    }
+
+    callback reorder(int, int);
+    pure callback id-at-slot(int) -> int;
+    callback clicked(int);
+
+    callback name();
+}
+
+export component SidebarShower inherits Rectangle {
+    x: 0;
+    width: WindowBridge.sidebar-visible ? 0 : WindowBridge.sidebar-hover ? WindowBridge.sidebar-width + 300px : 24px;
+    sidebar-toggle := TouchArea {
+        pointer-event(event) => {
+            debug("moved ", event);
+            if self.mouse-x > WindowBridge.sidebar-width {
+                WindowBridge.sidebar-hover = false;
+            }
+            if self.mouse-x < 20px {
+                WindowBridge.sidebar-hover = true;
+            }
+        }
+    }
+}
+
+component SidebarDevice inherits Rectangle {
+    clip: true;
+
+    in property <DeviceItem> device;
+    in property <bool> selected: false;
+
+    height: 36px;
+    border-radius: 12px;
+
+    background: area.has-hover ? Theme.colors.fourth-col : selected ? Theme.colors.third-col : Theme.colors.secondary-col;
+
+    transform-scale: area.pressed ? 0.98 : 1.0;
+
+    animate transform-scale {
+        duration: 25ms;
+        easing: cubic-bezier(0.06,0.76,0.09,0.98);
+    }
+
+    callback clicked;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        alignment: start;
+        cross-axis-alignment: center;
+
+        // Rectangle {
+        //     height: 6px;
+        //     width: 6px;
+        //     border-radius: 4px;
+        //     background: device.status == DeviceStatus.online ? #ff9800 :
+        //         (device.status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
+        // }
+        //
+        // Rectangle {
+        //     width: 4px;
+        // }
+
+        Text {
+            vertical-alignment: center;
+            height: root.height;
+            text: device.name;
+            overflow: elide;
+            color: Theme.colors.primary-font;
+            font-size: 13px;
+            font-weight: 600;
+        }
+    }
+
+    area := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component CustomFolder inherits Rectangle {
+    property <bool> expanded;
+    height: 36px;
+    background: ta.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
+    border-radius: 12px;
+    border-corner-shape: superellipse(WindowBridge.edges-shape);
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.expanded = !root.expanded; }
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        cross-axis-alignment: center;
+
+        Text {
+            text: "👋";
+            font-size: 1.2rem;
+            color: Theme.colors.third-font;
+        }
+
+        Rectangle {
+            width: 8px;
+        }
+
+        Text {
+            text: "Custom folder";
+            font-size: 0.8rem;
+            color: Theme.colors.third-font;
+        }
+
+        Rectangle { }
+
+        SvgIcon {
+            source: Icons.chevron-left;
+            transform-rotation: root.expanded ? 90deg : -90deg;
+            size: 13px;
+
+            animate transform-rotation {
+                duration: 100ms;
+                easing: ease;
+            }
+        }
+    }
+}
+
+
+component Essentials {
+
+    in property <int> highlighted-slot: -1;
+
+    in property <[EssentialTileData]> tiles;
+    in property <length> min-cell-w: 120px;
+    in property <length> cell-h: 90px;
+    in property <length> gap;
+    in property <length> drag-threshold: 8px;
+
+    callback reorder(int, int);
+    callback clicked(int);
+    pure callback id-at-slot(int) -> int;
+
+    out property <int> pressed-id: (root-ta.pressed && !root.did-drag) ? root.press-id : -1;
+
+    out property <int> cols: Math.max(1, Math.floor((root.width + gap) / (min-cell-w + gap)));
+    property <length> cell-w: (root.width - gap * (cols - 1)) / cols;
+
+    property <int> press-id: -1;
+    property <length> press-x;
+    property <length> press-y;
+
+    property <int> dragged-id: -1;
+    property <bool> did-drag: false;
+    property <int> drag-slot: 0;
+    property <length> drag-x;
+    property <length> drag-y;
+    property <length> grab-dx;
+    property <length> grab-dy;
+
+    property <int> hover-slot: root-ta.has-hover
+        ? root.slot-hit(root-ta.mouse-x, root-ta.mouse-y)
+        : -1;
+
+    pure function slot-x(slot: int) -> length {
+        Math.mod(slot, cols) * (cell-w + gap)
+    }
+
+    pure function slot-y(slot: int) -> length {
+        Math.floor(slot / cols) * (cell-h + gap)
+    }
+
+    pure function slot-at(px: length, py: length) -> int {
+        Math.min(tiles.length - 1,
+                Math.max(0, Math.floor(py / (cell-h + gap))) * cols
+            + Math.min(cols - 1, Math.max(0, Math.floor(px / (cell-w + gap)))))
+    }
+
+    pure function slot-hit(px: length, py: length) -> int {
+        let s = slot-at(px, py);
+        let ox = px - slot-x(s);
+        let oy = py - slot-y(s);
+        (s >= 0 && ox >= 0px && ox <= cell-w && oy >= 0px && oy <= cell-h) ? s : -1
+    }
+
+    root-ta := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+
+        changed pressed => {
+            if (!self.pressed) {
+                root.dragged-id = -1;
+            }
+        }
+
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left) {
+                if (e.kind == PointerEventKind.down) {
+                    let s = root.slot-hit(self.mouse-x, self.mouse-y);
+                    if (s >= 0) {
+                        root.press-id = root.id-at-slot(s);
+                        root.drag-slot = s;
+                        root.did-drag = false;
+                        root.press-x = self.mouse-x;
+                        root.press-y = self.mouse-y;
+                        root.grab-dx = self.mouse-x - root.slot-x(s);
+                        root.grab-dy = self.mouse-y - root.slot-y(s);
+                    }
+                } else if (e.kind == PointerEventKind.up) {
+                    if (root.press-id >= 0 && !root.did-drag) {
+                        root.clicked(root.press-id);
+                    }
+                    root.press-id = -1;
+                    root.dragged-id = -1;
+                    root.did-drag = false;
+                } else if (e.kind == PointerEventKind.cancel) {
+                    root.press-id = -1;
+                    root.dragged-id = -1;
+                    root.did-drag = false;
+                }
+            }
+        }
+
+        moved => {
+            if (self.pressed && root.press-id >= 0) {
+                if (!root.did-drag) {
+                    let dx = (self.mouse-x - root.press-x) / 1px;
+                    let dy = (self.mouse-y - root.press-y) / 1px;
+                    if (dx * dx + dy * dy > (root.drag-threshold / 1px) * (root.drag-threshold / 1px)) {
+                        root.did-drag = true;
+                        root.dragged-id = root.press-id;
+                    }
+                }
+                if (root.dragged-id >= 0) {
+                    root.drag-x = self.mouse-x - root.grab-dx;
+                    root.drag-y = self.mouse-y - root.grab-dy;
+                    let target = root.slot-at(self.mouse-x, self.mouse-y);
+                    if (target != root.drag-slot) {
+                        root.reorder(root.dragged-id, target);
+                        root.drag-slot = target;
+                    }
+                }
+            }
+        }
+    }
+
+    for t in root.tiles: Rectangle {
+        background: hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+
+        property <bool> dragged: t.id == root.dragged-id;
+
+        function drop-hovered() -> bool {
+            HoverBridge.hovering ? HoverBridge.is-hovered(self.absolute-position, self.width, self.height) : false
+        }
+
+        property <bool> hovered: drop-hovered() ? true :
+            root.dragged-id >= 0 ?
+            dragged
+            : (t.slot == root.hover-slot || t.slot == root.highlighted-slot);
+
+        property <float> grid-col: Math.mod(t.slot, root.cols);
+        property <float> grid-row: Math.floor(t.slot / root.cols);
+
+        animate grid-col, grid-row {
+            duration: 180ms;
+            easing: ease-in-out;
+        }
+
+        property <length> off-x: dragged ? root.drag-x - grid-col * (root.cell-w + root.gap) : 0px;
+        property <length> off-y: dragged ? root.drag-y - grid-row * (root.cell-h + root.gap) : 0px;
+
+        animate off-x, off-y {
+            duration: dragged ? 0ms : 100ms;
+            easing: ease;
+        }
+
+        x: grid-col * (root.cell-w + root.gap) + off-x;
+        y: grid-row * (root.cell-h + root.gap) + off-y;
+        width: root.cell-w;
+        height: root.cell-h;
+        z: dragged ? 10 : 0;
+        opacity: dragged ? 0.85 : 1.0;
+        border-radius: 12px;
+
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
+
+        drop-shadow-spread: 2px;
+        drop-shadow-blur: dragged ? 4px : 0px;
+        drop-shadow-color: dragged ? #0008 : transparent;
+
+        transform-scale: pressed-id == t.id ? 0.97 : 1.0;
+
+        // Text {
+        //     text: t.emoji;
+        //     font-family: Theme.emoji-font;
+        //     font-size: 20px;
+        // }
+
+        SvgIcon {
+            source: t.icon;
+            fg: hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
+            size: 16px;
+        }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+
+    background: Theme.colors.primary-col;
+
+    x: WindowBridge.sidebar-visible ? 0 : ((WindowBridge.sidebar-hover || SidebarBridge.essentials-select) ? 0 : -WindowBridge.sidebar-width);
+    width: WindowBridge.sidebar-width;
+    z: 2;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: WindowBridge.sidebar-visible ? transparent : Theme.colors.border-col;
+
+    animate x, border-color {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    callback leave();
+
+    property <int> cursor <=> SidebarBridge.essentials-cursor;
+    property <bool> essentials-sel <=> SidebarBridge.essentials-select;
+
+    pure function count() -> int {
+        SidebarBridge.essentials-data.length
+    }
+
+    function move-to(target: int) {
+        if target >= 0 && target < count() {
+            cursor = target;
+        }
+    }
+
+    leave => {
+        cursor = -1;
+        ExplorerBridge.focus();
+        SidebarBridge.essentials-select = false;
+    }
+
+    changed essentials-sel => {
+        if root.essentials-sel {
+            fs.focus();
+        }
+    }
+
+    forward-focus: fs;
+
+    fs := FocusScope {
+
+        focus-lost(reason) => {
+            SidebarBridge.essentials-select = false;
+            root.cursor = -1;
+        }
+
+        key-pressed(event) => {
+            // if root.cursor < 0 && event.text != Key.Escape {
+            //     return EventResult.accept;
+            // }
+            if event.text == "l" || event.text == Key.RightArrow {
+                root.move-to(root.cursor + 1);
+                return EventResult.accept;
+            }
+            if event.text == "h" || event.text == Key.LeftArrow {
+                root.move-to(root.cursor - 1);
+                return EventResult.accept;
+            }
+            if event.text == "j" || event.text == Key.DownArrow {
+                root.move-to(root.cursor + essentials.cols);
+                return EventResult.accept;
+            }
+            if event.text == "k" || event.text == Key.UpArrow {
+                root.move-to(root.cursor - essentials.cols);
+                return EventResult.accept;
+            }
+            if event.text == Key.Return || event.text == " " {
+                SidebarBridge.clicked(SidebarBridge.id-at-slot(root.cursor));
+                root.leave();
+                return EventResult.accept;
+            }
+            if event.text == Key.Escape || event.text == "s" {
+                root.leave();
+                return EventResult.accept;
+            }
+            root.leave();
+            EventResult.reject
+        }
+
+        TouchArea {
+
+            property <bool> maybe-dragging: false;
+
+            moved => {
+                if (self.maybe-dragging) {
+                    WindowBridge.drag-window();
+                }
+            }
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down) {
+                    self.maybe-dragging = true;
+                } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                    self.maybe-dragging = false;
+                }
+            }
+        }
+
+        VerticalLayout {
+            padding: 8px;
+            padding-bottom: 4px;
+
+            HorizontalLayout {
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+
+                    Image {
+                        source: @image-url("icons/tray.png");
+                        width: 16px;
+                        height: 16px;
+                    }
+
+                    clicked => {
+                        WindowBridge.nectan-modal-open = true;
+                    }
+                }
+
+                Rectangle { }
+
+                // IconButton {
+                //     width: 28px;
+                //     height: 28px;
+                //
+                //     SvgIcon {
+                //         source: @image-url("icons/bell.svg");
+                //         size: 16px;
+                //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                //     }
+                //
+                //     clicked => {
+                //         NotificationsBridge.notifications-visible = !NotificationsBridge.notifications-visible;
+                //     }
+                // }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: Icons.sidebar;
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 16px;
+                    }
+
+                    clicked => {
+                        WindowBridge.sidebar-visible = !WindowBridge.sidebar-visible;
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            SearchBar { }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            essentials := Essentials {
+                gap: 8px;
+                min-cell-w: 42px;
+                cell-h: 36px;
+                tiles: SidebarBridge.essentials-data;
+                highlighted-slot: root.cursor;
+
+                property <int> rows: max(1, ceil(SidebarBridge.essentials-data.length / self.cols));
+                height: rows * self.cell-h + (rows - 1) * self.gap;
+
+                reorder(id, target) => { SidebarBridge.reorder(id, target); }
+                id-at-slot(slot) => { return SidebarBridge.id-at-slot(slot); }
+                clicked(id) => { SidebarBridge.clicked(id) }
+            }
+
+            Rectangle {
+                height: 12px;
+            }
+
+            // CustomFolder { }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                spacing: 8px;
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: Icons.settings;
+                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        size: 16px;
+                    }
+
+                    clicked => {
+                        SettingsBridge.open = true;
+                    }
+                }
+
+                Rectangle { }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: Icons.nearby;
+                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        size: 16px;
+                    }
+
+                    clicked => {
+                        WindowBridge.current-window = Window.transfers;
+                    }
+                }
+
+                IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: Icons.plus;
+                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        size: 16px;
+                    }
+
+                    clicked => {
+                        debug("Clicked");
+                        AddDeviceBridge.open = true;
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 4px;
+            }
+        }
+    }
+}
+
+            // GridLayout {
+            //
+            //     spacing: 8px;
+            //     Row {
+            //
+            //         IconButton {
+            //             border-radius: 12px;
+            //             height: 36px;
+            //             transform-y: 0;
+            //             inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.secondary-col;
+            //             inner-border: AddDeviceBridge.open ? Theme.colors.fourth-col : transparent;
+            //
+            //             Text {
+            //                 font-size: 20px;
+            //                 text: "🔗";
+            //             }
+            //
+            //             // SvgIcon {
+            //             //     source: @image-url("icons/link.svg");
+            //             //     fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            //             //     size: 16px;
+            //             // }
+            //
+            //             clicked => { AddDeviceBridge.open = true; }
+            //         }
+            //
+            //         IconButton {
+            //             border-radius: 12px;
+            //             height: 36px;
+            //             inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.secondary-col;
+            //             transform-y: 0;
+            //             inner-border: WindowBridge.current-window == Window.transfers ? Theme.colors.fourth-col : transparent;
+            //
+            //             SvgIcon {
+            //                 source: @image-url("icons/tranfsers.svg");
+            //                 fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            //                 size: 17px;
+            //             }
+            //
+            //             clicked => { WindowBridge.current-window = Window.transfers; }
+            //         }
+            //
+            //         IconButton {
+            //             border-radius: 12px;
+            //             height: 36px;
+            //             inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.secondary-col;
+            //             transform-y: 0;
+            //             inner-border: WindowBridge.current-window == Window.vaults ? Theme.colors.fourth-col : transparent;
+            //
+            //             SvgIcon {
+            //                 source: @image-url("icons/archive.svg");
+            //                 fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            //                 size: 15px;
+            //             }
+            //
+            //             clicked => { WindowBridge.current-window = Window.vaults; }
+            //         }
+            //     }
+
+                // Row {
+                //
+                //     IconButton {
+                //         border-radius: 12px;
+                //         height: 36px;
+                //         inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+                //         transform-y: 0;
+                //         SvgIcon {
+                //             source: @image-url("icons/search.svg");
+                //             fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                //             size: 16px;
+                //         }
+                //
+                //         clicked => { AddDeviceBridge.open = true; }
+                //     }
+                //
+                //     IconButton {
+                //         border-radius: 12px;
+                //         height: 36px;
+                //         inner-bg: self.hovered ? Theme.colors.fourth-col : Theme.colors.third-col;
+                //         transform-y: 0;
+                //         SvgIcon {
+                //             source: @image-url("icons/hard-drive.svg");
+                //             fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                //             size: 16px;
+                //         }
+                //
+                //         clicked => { AddDeviceBridge.open = true; }
+                //     }
+                // }
+            // }
+
+            // Rectangle {
+            //     height: 8px;
+            // }
+            //
+            // VerticalLayout {
+            //     spacing: 8px;
+            //
+            //     for d[i] in DevicesBridge.devices: SidebarDevice {
+            //         device: d;
+            //         selected: true;
+            //         clicked => {
+            //             DevicesBridge.device-details-open-idx = i;
+            //             WindowBridge.current-window = Window.device;
+            //         }
+            //     }
+            //
+            //     if DevicesBridge.devices.length == 0: Rectangle {
+            //         height: 32px;
+            //
+            //         Text {
+            //             x: 52px;
+            //             y: 12px;
+            //             height: root.height;
+            //             text: "Add first device";
+            //             color: Theme.colors.primary-font;
+            //             font-size: 13px;
+            //             font-weight: 600;
+            //         }
+            //
+            //         SvgIcon {
+            //             x: 20px;
+            //             source: @image-url("icons/corner-left-up.svg");
+            //         }
+            //     }
+            // }
+            //
+            // Rectangle {
+            //     height: 8px;
+            // }
