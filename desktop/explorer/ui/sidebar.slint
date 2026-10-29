@@ -51,61 +51,6 @@ export component SidebarShower inherits Rectangle {
     }
 }
 
-component SidebarDevice inherits Rectangle {
-    clip: true;
-
-    in property <DeviceItem> device;
-    in property <bool> selected: false;
-
-    height: 36px;
-    border-radius: 12px;
-
-    background: area.has-hover ? Theme.colors.fourth-col : selected ? Theme.colors.third-col : Theme.colors.secondary-col;
-
-    transform-scale: area.pressed ? 0.98 : 1.0;
-
-    animate transform-scale {
-        duration: 25ms;
-        easing: cubic-bezier(0.06,0.76,0.09,0.98);
-    }
-
-    callback clicked;
-
-    HorizontalLayout {
-        padding-left: 12px;
-        alignment: start;
-        cross-axis-alignment: center;
-
-        // Rectangle {
-        //     height: 6px;
-        //     width: 6px;
-        //     border-radius: 4px;
-        //     background: device.status == DeviceStatus.online ? #ff9800 :
-        //         (device.status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
-        // }
-        //
-        // Rectangle {
-        //     width: 4px;
-        // }
-
-        Text {
-            vertical-alignment: center;
-            height: root.height;
-            text: device.name;
-            overflow: elide;
-            color: Theme.colors.primary-font;
-            font-size: 13px;
-            font-weight: 600;
-        }
-    }
-
-    area := TouchArea {
-        width: 100%;
-        height: 100%;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
 
 component CustomFolder inherits Rectangle {
     property <bool> expanded;

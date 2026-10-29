@@ -1,27 +1,151 @@
-import { IconButton, SvgIcon } from "../../shared/elements.slint";
+import { IconButton, SvgIcon, SearchBar } from "../../shared/elements.slint";
 import { Theme } from "../../shared/theme.slint";
 import { WindowBridge } from "../../shared/window.slint";
 import { Icons } from "../../shared/icons.slint";
 import { NotificationsBridge } from "../../shared/notifications.slint";
 import { AddDeviceBridge } from "../../shared/add_remote_modal.slint";
-import { CurrentWindow, SenderWindow } from "sender.slint";
+import { SenderWindow } from "sender.slint";
 import { SettingsBridge } from "settings.slint";
+import { DeviceItem } from "../../shared/devices.slint";
+import { VerticalBox } from "std-widgets.slint";
+
+component SidebarFolder inherits Rectangle {
+    in property <string> title;
+    in property <image> icon;
+    in-out property <bool> expanded: true;
+
+    height: layout.preferred-height;
+
+    layout := VerticalLayout {
+        spacing: 4px;
+
+        header := Rectangle {
+            height: 28px;
+            border-radius: 8px;
+            background: header-area.has-hover ? Theme.colors.fourth-col : transparent;
+            transform-scale: header-area.pressed ? 0.985 : 1.0;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 10px;
+                spacing: 6px;
+                cross-axis-alignment: center;
+
+                if root.icon.width != 0: SvgIcon {
+                    source: root.icon;
+                    size: 13px;
+                }
+
+                Text {
+                    vertical-alignment: center;
+                    text: root.title;
+                    color: Theme.colors.primary-font;
+                    font-size: 11px;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+
+                Rectangle { }
+
+                SvgIcon {
+                    source: Icons.chevron-right;
+                    transform-rotation: root.expanded ? -90deg : 90deg;
+                    animate transform-rotation {
+                        duration: Theme.animation-speed;
+                        easing: Theme.easing;
+                    }
+                    size: 10px;
+                    colorize: Theme.colors.primary-font;
+                }
+            }
+
+            header-area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.expanded = !root.expanded; }
+            }
+        }
+
+        body := Rectangle {
+            clip: true;
+            height: root.expanded ? content.preferred-height : 0px;
+
+            animate height {
+                duration: Theme.animation-speed;
+                easing: Theme.easing;
+            }
+
+            content := VerticalLayout {
+                y: 0px;
+                width: parent.width;
+                height: self.preferred-height;
+                spacing: 2px;
+                padding-left: 12px;
+                @children
+            }
+        }
+    }
+}
+
+component SidebarDevice inherits Rectangle {
+    clip: true;
+
+    in property <DeviceItem> device;
+    in property <bool> selected: false;
+
+    height: 36px;
+    border-radius: 12px;
+
+    background: area.has-hover ? Theme.colors.fourth-col : selected ? Theme.colors.third-col : Theme.colors.secondary-col;
+
+    transform-scale: area.pressed ? 0.98 : 1.0;
+
+    animate transform-scale {
+        duration: 25ms;
+        easing: cubic-bezier(0.06,0.76,0.09,0.98);
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        alignment: start;
+        cross-axis-alignment: center;
+
+        // Rectangle {
+        //     height: 6px;
+        //     width: 6px;
+        //     border-radius: 4px;
+        //     background: device.status == DeviceStatus.online ? #ff9800 :
+        //         (device.status == DeviceStatus.nearby ? #0288d1 : Theme.colors.third-font);
+        // }
+        //
+        // Rectangle {
+        //     width: 4px;
+        // }
+
+        Text {
+            vertical-alignment: center;
+            height: root.height;
+            text: device.name;
+            overflow: elide;
+            color: Theme.colors.primary-font;
+            font-size: 13px;
+            font-weight: 600;
+        }
+    }
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            SenderWindow.send-type-modal = true;
+        }
+    }
+}
 
 export component Sidebar inherits Rectangle {
-
+    x: 0;
     background: Theme.colors.primary-col;
-
-    x: WindowBridge.sidebar-visible ? 0 : (WindowBridge.sidebar-hover ? 0 : -WindowBridge.sidebar-width);
     width: WindowBridge.sidebar-width;
-    z: 2;
     border-radius: 8px;
     border-width: 1px;
-    border-color: WindowBridge.sidebar-visible ? transparent : Theme.colors.border-col;
-
-    animate x, border-color {
-        duration: Theme.animation-speed;
-        easing: Theme.easing;
-    }
 
     forward-focus: fs;
 
@@ -46,7 +170,6 @@ export component Sidebar inherits Rectangle {
 
         VerticalLayout {
             padding: 8px;
-            padding-bottom: 4px;
 
             HorizontalLayout {
                 IconButton {
@@ -66,35 +189,48 @@ export component Sidebar inherits Rectangle {
 
                 Rectangle { }
 
-                IconButton {
-                    width: 28px;
-                    height: 28px;
-
-                    SvgIcon {
-                        source: Icons.bell;
-                        size: 16px;
-                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                    }
-
-                    clicked => {
-                        NotificationsBridge.notifications-visible = !NotificationsBridge.notifications-visible;
-                    }
-                }
-            }
-
-            Rectangle {
-                height: 8px;
-            }
-
-            // SearchBar { }
-
-            Rectangle {
-                height: 8px;
+                // IconButton {
+                //     width: 28px;
+                //     height: 28px;
+                //
+                //     SvgIcon {
+                //         source: Icons.bell;
+                //         size: 16px;
+                //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                //     }
+                //
+                //     clicked => {
+                //         NotificationsBridge.notifications-visible = !NotificationsBridge.notifications-visible;
+                //     }
+                // }
             }
 
             Rectangle {
                 height: 12px;
             }
+
+            SidebarFolder {
+                title: "Favourite";
+                icon: Icons.star-filled;
+
+                SidebarDevice { }
+            }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            SidebarFolder {
+                title: "Nearby";
+                icon: Icons.nearby;
+                SidebarDevice { }
+            }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            SidebarDevice { }
 
             Rectangle { }
 
@@ -116,20 +252,18 @@ export component Sidebar inherits Rectangle {
 
                 Rectangle { }
 
-                IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: Icons.nearby;
-                        fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
-                        size: 16px;
-                    }
-
-                    clicked => {
-
-                        SenderWindow.current-window = CurrentWindow.transfers;
-                    }
-                }
+                // IconButton {
+                //     width: 28px;
+                //     height: 28px;
+                //     SvgIcon {
+                //         source: Icons.nearby;
+                //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                //         size: 16px;
+                //     }
+                //
+                //     clicked => {
+                //     }
+                // }
 
                 IconButton {
                     width: 28px;
@@ -141,14 +275,9 @@ export component Sidebar inherits Rectangle {
                     }
 
                     clicked => {
-                        debug("Clicked");
                         AddDeviceBridge.open = true;
                     }
                 }
-            }
-
-            Rectangle {
-                height: 4px;
             }
         }
     }

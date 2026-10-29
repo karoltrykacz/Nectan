@@ -1,4 +1,6 @@
-use crate::{devices::DeviceStatus::Offline, storage_utils::DataWriter};
+use crate::{
+    devices::DeviceStatus::Offline, storage_utils::DataWriter,
+};
 use anyhow::{Result, anyhow, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use core::fmt;
@@ -68,7 +70,9 @@ pub struct UserInfo(Arc<std::sync::Mutex<UserInfoInner>>);
 
 impl UserInfo {
     pub fn new(username: Username) -> Self {
-        UserInfo(Arc::new(std::sync::Mutex::new(UserInfoInner { username })))
+        UserInfo(Arc::new(std::sync::Mutex::new(UserInfoInner {
+            username,
+        })))
     }
     pub fn username(&self) -> Username {
         self.0.lock().unwrap().username.clone()
@@ -96,19 +100,25 @@ pub struct Device {
     pub fav: bool,
 }
 
-pub fn serialize_device_id<S>(id: &DeviceId, s: S) -> Result<S::Ok, S::Error>
+pub fn serialize_device_id<S>(
+    id: &DeviceId,
+    s: S,
+) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     s.serialize_str(&STANDARD.encode(id.as_bytes()))
 }
 
-pub fn deserialize_device_id<'de, D>(d: D) -> Result<DeviceId, D::Error>
+pub fn deserialize_device_id<'de, D>(
+    d: D,
+) -> Result<DeviceId, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let s = String::deserialize(d)?;
-    let bytes = STANDARD.decode(s).map_err(serde::de::Error::custom)?;
+    let bytes =
+        STANDARD.decode(s).map_err(serde::de::Error::custom)?;
     let arr: [u8; 32] = bytes
         .try_into()
         .map_err(|_| serde::de::Error::custom("invalid length"))?;
@@ -145,7 +155,13 @@ pub struct Devices {
 }
 
 impl Devices {
-    pub fn new(path: Option<PathBuf>) -> Result<Self, std::io::Error> {
+    pub fn reload(&self) {
+        let mut devices: Vec<Device> =
+            self.writer.load().unwrap_or_default();
+        let devices = devices.drain(..).map(|d| (d.id, d)).collect();
+        *self.inner.write().unwrap() = devices;
+    }
+    pub fn new(path: Option<PathBuf>) -> Self {
         let base_path = match path {
             Some(p) => p,
             None => dirs::data_dir()
@@ -153,17 +169,26 @@ impl Devices {
                 .join("Nectan"),
         };
 
-        let writer = DataWriter::new(base_path, "nectan_devices_store")?;
-        let mut initial: Vec<Device> = writer.load().unwrap_or_default();
-        println!("Loaded [{}] devices. {:#?}", initial.len(), initial);
+        let writer =
+            DataWriter::new(base_path, "nectan_devices_store")
+                .expect("Failed to create devices storage.");
+
+        let mut initial: Vec<Device> =
+            writer.load().unwrap_or_default();
+
+        println!(
+            "Loaded [{}] devices. {:#?}",
+            initial.len(),
+            initial
+        );
 
         let initial = initial.drain(..).map(|d| (d.id, d)).collect();
 
-        Ok(Self {
+        Self {
             inner: Arc::new(RwLock::new(initial)),
             nearby_endpoints: Arc::new(RwLock::new(HashSet::new())),
             writer: Arc::new(writer),
-        })
+        }
     }
 
     fn persist(&self) -> Result<usize, std::io::Error> {
@@ -201,7 +226,11 @@ impl Devices {
     /// Returns whether the value was newly inserted.
     /// If device is known, and device is online, connection state will be upgraded to nearby.
     pub fn add_nearby(&self, endpoint_id: EndpointId) -> bool {
-        let new = self.nearby_endpoints.write().unwrap().insert(endpoint_id);
+        let new = self
+            .nearby_endpoints
+            .write()
+            .unwrap()
+            .insert(endpoint_id);
         if new {
             for device in self.inner.write().unwrap().values_mut() {
                 if device
@@ -245,13 +274,16 @@ impl Devices {
     }
     pub fn is_alive(&self, target: EndpointId) -> bool {
         self.inner.read().unwrap().iter().any(|(_, device)| {
-            device
-                .connection
-                .as_ref()
-                .is_some_and(|c| c.remote_id() == target && c.close_reason().is_none())
+            device.connection.as_ref().is_some_and(|c| {
+                c.remote_id() == target && c.close_reason().is_none()
+            })
         })
     }
-    pub fn remove_conn(&self, target: DeviceId, conn_id: usize) -> bool {
+    pub fn remove_conn(
+        &self,
+        target: DeviceId,
+        conn_id: usize,
+    ) -> bool {
         let mut lock = self.inner.write().unwrap();
         let Some(device) = lock.get_mut(&target) else {
             return false;
@@ -268,7 +300,10 @@ impl Devices {
         }
         false
     }
-    pub fn get_connection(&self, device_id: DeviceId) -> Option<Connection> {
+    pub fn get_connection(
+        &self,
+        device_id: DeviceId,
+    ) -> Option<Connection> {
         self.inner
             .read()
             .unwrap()

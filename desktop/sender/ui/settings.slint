@@ -16,8 +16,8 @@ import {
 import { ScrollView } from "std-widgets.slint";
 import { Icons } from "../../shared/icons.slint";
 import { WindowBridge } from "../../shared/window.slint";
-import { CurrentWindow } from "sender.slint";
 import { Keys } from "../../shared/keys_shared.slint";
+import { SettingsRow } from "../../shared/elements.slint";
 
 export struct Config {
     upload-limit: float,
@@ -139,68 +139,6 @@ component SettingsPage inherits FocusScope {
 
 
 
-export component SettingsRow {
-
-    in property <string> title;
-    in property <string> subtitle;
-    in property <int> idx;
-    property <bool> selected: false;
-
-    callback activate();
-
-    changed selected => {
-        if selected {
-            fs.focus();
-        }
-    }
-
-    fs := FocusScope {
-        KeyBinding {
-            keys: @keys(Return);
-            activated => {
-                activate();
-            }
-        }
-
-        Rectangle {
-            x: 0;
-            height: 52px;
-            border-radius: 8px;
-            background: selected ? Theme.colors.third-col : transparent;
-        }
-
-        HorizontalLayout {
-            padding-left: 12px;
-            padding-right: 12px;
-            padding: 4px;
-            alignment: space-between;
-
-            VerticalLayout {
-                spacing: 2px;
-                alignment: center;
-
-                Text {
-                    text: root.title;
-                    color: Theme.colors.primary-font;
-                    font-size: 1rem;
-                    font-weight: 600;
-                }
-
-                Text {
-                    text: root.subtitle;
-                    color: Theme.colors.third-font;
-                    font-size: 0.9rem;
-                }
-            }
-
-            VerticalLayout {
-                alignment: center;
-                cross-axis-alignment: center;
-                @children
-            }
-        }
-    }
-}
 
 
 
@@ -259,7 +197,24 @@ component SettingsTab inherits Rectangle {
 component General inherits SettingsPage {
 
     title: @tr("General");
-    row-count: 6;
+
+    SettingsRow {
+        title: @tr("Username");
+        subtitle: WindowBridge.username;
+
+        PrimaryButton {
+            text: @tr("Change");
+
+            clicked => {
+                SettingsBridge.username-modal = true;
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
 
     SettingsRow {
         z: 1;
@@ -332,25 +287,6 @@ component Transfers inherits SettingsPage {
     row-count: 3;
 
     SettingsRow {
-        idx: 0;
-        title: @tr("Username");
-        subtitle: WindowBridge.username;
-
-        PrimaryButton {
-            text: @tr("Change");
-
-            clicked => {
-                SettingsBridge.username-modal = true;
-            }
-        }
-    }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
         idx: 5;
         title: @tr("Default download destination");
         subtitle: SettingsBridge.default-download-dir;
@@ -366,7 +302,6 @@ component Transfers inherits SettingsPage {
     }
 
     SettingsRow {
-        idx: 0;
         title: @tr("Auto-accept nearby");
         subtitle: @tr("Automatically accept transfers from nearby devices.");
         Switch {
@@ -463,8 +398,6 @@ component SpeedLimitsConfig inherits GeneralModal {
         clip: true;
 
         TouchArea {
-            width: 100%;
-            height: 100%;
             clicked => {}
         }
 
@@ -889,7 +822,6 @@ component Notifications inherits SettingsPage {
     row-count: 3;
 
     SettingsRow {
-        idx: 0;
         title: @tr("Connection notification");
         subtitle: @tr("Send notification upon new connection request.");
         Switch {
@@ -931,7 +863,6 @@ component Appearance inherits SettingsPage {
     row-count: 5;
 
     SettingsRow {
-        idx: 0;
         title: @tr("Theme");
         subtitle: Theme.themes[Theme.mode].name;
         PrimaryButton {
@@ -950,7 +881,6 @@ component Appearance inherits SettingsPage {
 
     SettingsRow {
 
-        idx: 0;
         title: @tr("Font");
         subtitle: Theme.font;
 
@@ -1148,7 +1078,6 @@ export component Settings inherits GeneralModal {
                     spacing: 2px;
 
                     SettingsTab {
-                        tab-idx: 0;
                         tab-name: @tr("General");
                         icon-size: 14px;
                         icon: Icons.settings;

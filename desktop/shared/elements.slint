@@ -3,6 +3,7 @@ import { VerticalBox, ScrollView } from "std-widgets.slint";
 import { DropDownOption } from "dropdown.slint";
 import { WindowBridge } from "window.slint";
 import { HoverBridge } from "hover.slint";
+import { Icons } from "icons.slint";
 
 export component SvgIcon inherits Image {
     in property <color> fg: Theme.colors.primary-font;
@@ -10,6 +11,69 @@ export component SvgIcon inherits Image {
     colorize: root.fg;
     width: root.size;
     height: root.size;
+}
+
+export component SettingsRow {
+
+    in property <string> title;
+    in property <string> subtitle;
+    in property <int> idx;
+    property <bool> selected: false;
+
+    callback activate();
+
+    changed selected => {
+        if selected {
+            fs.focus();
+        }
+    }
+
+    fs := FocusScope {
+        KeyBinding {
+            keys: @keys(Return);
+            activated => {
+                activate();
+            }
+        }
+
+        Rectangle {
+            x: 0;
+            height: 52px;
+            border-radius: 8px;
+            background: selected ? Theme.colors.third-col : transparent;
+        }
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding: 4px;
+            alignment: space-between;
+
+            VerticalLayout {
+                spacing: 2px;
+                alignment: center;
+
+                Text {
+                    text: root.title;
+                    color: Theme.colors.primary-font;
+                    font-size: 1rem;
+                    font-weight: 600;
+                }
+
+                Text {
+                    text: root.subtitle;
+                    color: Theme.colors.third-font;
+                    font-size: 0.9rem;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                @children
+            }
+        }
+    }
 }
 
 export component IconButton inherits Rectangle {
@@ -264,13 +328,16 @@ export component GeneralModal inherits Rectangle {
         }
 
         KeyBinding {
-            keys: @keys(Return);
+            keys: @keys(Escape);
             activated => { root.restore-focus(); root.on-close(); }
         }
 
+        KeyBinding {
+            keys: @keys(Return);
+            activated => { root.restore-focus(); root.on-enter(); }
+        }
+
         Rectangle {
-            width: 100%;
-            height: 100%;
             background: #00000088;
             border-radius: WindowBridge.round-edges ? 24px : 0;
             border-corner-shape: superellipse(WindowBridge.edges-shape);
@@ -361,17 +428,12 @@ export component Switch inherits Rectangle {
     height: 22px;
 
     Rectangle {
-        width: 100%;
-        height: 100%;
         border-radius: 12px;
         border-color: Theme.colors.border-col.with-alpha(0.5);
         border-width: 1px;
-
-        // border-corner-shape: superellipse(WindowBridge.edges-shape);
-
         background: root.checked ? Theme.colors.primary-font : Theme.colors.secondary-col;
-
         transform-scale: ta.pressed ? 0.975 : 1.0;
+
         animate transform-scale {
             duration: 100ms;
             easing: ease;
@@ -421,8 +483,6 @@ export component PrimarySmallButton {
     opacity: root.button-enabled ? 1.0 : 0.4;
 
     touch := TouchArea {
-        width: 100%;
-        height: 100%;
         enabled: root.button-enabled;
         mouse-cursor: root.button-enabled ? pointer : default;
         clicked => {
@@ -459,6 +519,88 @@ export component PrimarySmallButton {
                 font-size: 12px;
                 color: Theme.colors.primary-col;
                 vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component SquareButton {
+    in property <string> text;
+    in property <image> image;
+    in property <length> size: 64px;
+    in property <bool> button-enabled: true;
+    in property <bool> alt: false;
+    callback clicked;
+    property <bool> is-disabled: !root.button-enabled;
+
+    width: root.size;
+    height: root.size;
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        background: root.alt
+            ? (touch.pressed
+            ? Theme.colors.third-col
+            : (touch.has-hover ? Theme.colors.secondary-col : transparent))
+            : (root.is-disabled
+            ? Theme.colors.third-font
+            : (touch.pressed
+            ? Theme.colors.third-font
+            : (touch.has-hover ? Theme.colors.secondary-font : Theme.colors.primary-font)));
+        border-width: root.alt ? 1px : 0px;
+        border-color: Theme.colors.hover-col;
+
+        animate background {
+            duration: 100ms;
+            easing: ease-out;
+        }
+        animate width, height {
+            duration: 20ms;
+            easing: ease-out;
+        }
+        states [
+            pressed when touch.pressed: {
+                width: 97%;
+                height: 97%;
+            }
+        ]
+
+        VerticalLayout {
+            padding: 8px;
+            spacing: 8px;
+            alignment: center;
+            cross-axis-alignment: center;
+
+            Image {
+                source: root.image;
+                width: 20px;
+                height: 20px;
+                colorize: root.alt
+                    ? Theme.colors.primary-font
+                    : (root.is-disabled ? Theme.colors.third-col : Theme.colors.primary-col);
+            }
+
+            Text {
+                text: root.text;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                overflow: elide;
+                color: root.alt
+                    ? Theme.colors.primary-font
+                    : (root.is-disabled ? Theme.colors.third-col : Theme.colors.primary-col);
+            }
+        }
+
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                if (!root.is-disabled) {
+                    root.clicked();
+                }
             }
         }
     }
@@ -559,8 +701,6 @@ export component PrimaryButton {
         }
 
         touch := TouchArea {
-            width: 100%;
-            height: 100%;
             mouse-cursor: root.button-loading ? wait : pointer;
             clicked => {
                 if (root.button-loading ? false : (root.is-disabled ? false : true)) {
@@ -609,7 +749,6 @@ export component StyledInput inherits Rectangle {
         text <=> root.text;
         font-size: 15px;
         color: Theme.colors.primary-font;
-        single-line: true;
         accepted => { root.accepted(); }
     }
 }
@@ -730,7 +869,7 @@ export component Dropdown inherits Rectangle {
     property <length> scroll-y: 0px;
     property <length> list-height: min(156px, root.options.length * 36px);
 
-    function ensure-visible(idx: int) {
+    function make-visible(idx: int) {
         if (idx * 36px < -root.scroll-y) {
             root.scroll-y = -(idx * 36px);
         } else if ((idx + 1) * 36px > -root.scroll-y + root.list-height) {
@@ -740,7 +879,7 @@ export component Dropdown inherits Rectangle {
 
     function open() {
         root.expanded = true;
-        root.ensure-visible(root.current);
+        root.make-visible(root.current);
     }
 
     function close() {
@@ -763,11 +902,10 @@ export component Dropdown inherits Rectangle {
         if (target != root.current) {
             root.selected(target);
         }
-        root.ensure-visible(target);
+        root.make-visible(target);
     }
 
     height: 32px;
-    clip: false;
 
     fs := FocusScope {
         changed has-focus => {
@@ -898,11 +1036,10 @@ export component Dropdown inherits Rectangle {
             content-y <=> root.scroll-y;
 
             init => {
-                root.ensure-visible(root.current);
+                root.make-visible(root.current);
             }
 
             VerticalLayout {
-                spacing: 0;
 
                 for opt[idx] in root.options: Rectangle {
                     height: 36px;
@@ -1206,7 +1343,6 @@ export component Breadcrumb inherits HorizontalLayout {
     callback clicked(int);
 
     for part[index] in components: HorizontalLayout {
-        spacing: 0px;
 
         if index > 1: Text {
             text: "/";
@@ -1254,6 +1390,44 @@ export component Breadcrumb inherits HorizontalLayout {
                     mouse-cursor: pointer;
                 }
             }
+        }
+    }
+}
+
+export component SearchBar inherits Rectangle {
+    background: h.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
+    height: 32px;
+    border-radius: 24px;
+    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    transform-scale: h.pressed ? 0.98 : 1.0;
+    callback search();
+
+    HorizontalLayout {
+        padding-left: 8px;
+        spacing: 8px;
+        cross-axis-alignment: center;
+
+        SvgIcon {
+            source: Icons.search;
+            fg: Theme.colors.third-font;
+            size: 16px;
+        }
+
+        Rectangle {
+            Text {
+                x: 0;
+                y: (parent.height - self.height) / 2 + 1px;
+                text: @tr("Search...");
+                font-size: 0.9rem;
+                color: Theme.colors.secondary-font;
+            }
+        }
+    }
+
+    h := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.search();
         }
     }
 }

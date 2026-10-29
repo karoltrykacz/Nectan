@@ -10,8 +10,7 @@ import {
 import { TreeList, TreeNode } from "file_tree.slint";
 import { Theme } from "theme.slint";
 import { ListView } from "std-widgets.slint";
-import { Window, WindowBridge } from "window.slint";
-import { SettingsRow } from "settings.slint";
+import { SettingsRow } from "elements.slint";
 
 export struct OfferEntry { filename: string, is-dir: bool, size: string }
 
@@ -125,6 +124,7 @@ export component OutcomingTransferModal inherits Rectangle {
 
     property send-state <=> OutcomingTransferModalBridge.send-state;
 
+    callback on-accepted();
     callback on-closed();
 
     changed send-state => {
@@ -179,10 +179,7 @@ export component OutcomingTransferModal inherits Rectangle {
             clip: true;
 
             TouchArea {
-                width: 100%;
-                height: 100%;
                 clicked => {
-                    // name-input.clear-focus();
                 }
             }
 
@@ -277,7 +274,7 @@ export component OutcomingTransferModal inherits Rectangle {
                             text: @tr("Ok");
                             clicked => {
                                 OutcomingTransferModalBridge.open = false;
-                                WindowBridge.current-window = Window.transfers;
+                                root.on-accepted();
                             }
                         }
                     }
@@ -436,7 +433,6 @@ export component OutcomingTransferModal inherits Rectangle {
                             font-size: 20px;
                             font-weight: 600;
                             color: Theme.colors.primary-font;
-                            wrap: no-wrap;
                             text <=> OutcomingTransferModalBridge.transfer-name;
 
                             changed text => {
@@ -527,6 +523,7 @@ export component OutcomingTransferModal inherits Rectangle {
 
                         Text {
                             x: 12px;
+                            width: 64px;
                             text: @tr("Contents");
                             color: Theme.colors.primary-font;
                             font-size: 13px;
@@ -685,8 +682,6 @@ export component IncomingTransferOfferModal inherits GeneralModal {
         drop-shadow-blur: 50px;
 
         TouchArea {
-            width: 100%;
-            height: 100%;
             clicked => {}
         }
 
@@ -743,6 +738,7 @@ export component IncomingTransferOfferModal inherits GeneralModal {
 
                         Text {
                             x: 12px;
+                            width: 64px;
                             text: @tr("Contents");
                             color: Theme.colors.primary-font;
                             font-size: 13px;

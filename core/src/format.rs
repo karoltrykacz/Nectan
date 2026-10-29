@@ -134,7 +134,11 @@ impl<F: Amounts> NumberPrefix<F> {
         )
     }
 
-    fn format_number(mut amount: F, kilo: F, prefixes: [Prefix; 8]) -> Self {
+    fn format_number(
+        mut amount: F,
+        kilo: F,
+        prefixes: [Prefix; 8],
+    ) -> Self {
         // For negative numbers, flip it to positive, do the processing, then
         // flip it back to negative again afterwards.
         let was_negative = if amount.is_negative() {
@@ -301,7 +305,9 @@ impl Prefix {
 /// Traits for floating-point values for both the possible multipliers. They
 /// need to be Copy, have defined 1000 and 1024s, and implement a bunch of
 /// operators.
-pub trait Amounts: Copy + Sized + PartialOrd + Div<Output = Self> + Neg<Output = Self> {
+pub trait Amounts:
+    Copy + Sized + PartialOrd + Div<Output = Self> + Neg<Output = Self>
+{
     /// The constant representing 1000, for decimal prefixes.
     const NUM_1000: Self;
 
@@ -353,7 +359,10 @@ mod test {
 
     #[test]
     fn decimal_0() {
-        assert_eq!(NumberPrefix::decimal(0f64), NumberPrefix::Standalone(0f64))
+        assert_eq!(
+            NumberPrefix::decimal(0f64),
+            NumberPrefix::Standalone(0f64)
+        )
     }
 
     #[test]
@@ -463,7 +472,9 @@ mod test {
     #[test]
     fn yotta() {
         assert_eq!(
-            NumberPrefix::decimal(1_000_000_000_000_000_000_000_000f64),
+            NumberPrefix::decimal(
+                1_000_000_000_000_000_000_000_000f64
+            ),
             NumberPrefix::Prefixed(Prefix::Yotta, 1f64)
         )
     }
@@ -472,7 +483,9 @@ mod test {
     fn and_so_on() {
         // When you hit yotta, don't keep going
         assert_eq!(
-            NumberPrefix::decimal(1_000_000_000_000_000_000_000_000_000f64),
+            NumberPrefix::decimal(
+                1_000_000_000_000_000_000_000_000_000f64
+            ),
             NumberPrefix::Prefixed(Prefix::Yotta, 1000f64)
         )
     }
@@ -585,14 +598,20 @@ impl fmt::Display for HumanDuration {
         for (i, &(cur, _, _)) in UNITS.iter().enumerate() {
             idx = i;
             match UNITS.get(i + 1) {
-                Some(&next) if self.0.saturating_add(next.0 / 2) >= cur + cur / 2 => break,
+                Some(&next)
+                    if self.0.saturating_add(next.0 / 2)
+                        >= cur + cur / 2 =>
+                {
+                    break;
+                }
                 _ => continue,
             }
         }
 
         let (unit, name, alt) = UNITS[idx];
         // FIXME when `div_duration_f64` is stable
-        let mut t = (self.0.as_secs_f64() / unit.as_secs_f64()).round() as usize;
+        let mut t = (self.0.as_secs_f64() / unit.as_secs_f64())
+            .round() as usize;
         if idx < UNITS.len() - 1 {
             t = Ord::max(t, 2);
         }
@@ -617,8 +636,12 @@ const UNITS: &[(Duration, &str, &str)] = &[
 impl fmt::Display for HumanBytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match NumberPrefix::binary(self.0 as f64) {
-            NumberPrefix::Standalone(number) => write!(f, "{number:.0} B"),
-            NumberPrefix::Prefixed(prefix, number) => write!(f, "{number:.2} {prefix}B"),
+            NumberPrefix::Standalone(number) => {
+                write!(f, "{number:.0} B")
+            }
+            NumberPrefix::Prefixed(prefix, number) => {
+                write!(f, "{number:.2} {prefix}B")
+            }
         }
     }
 }
@@ -626,8 +649,12 @@ impl fmt::Display for HumanBytes {
 impl fmt::Display for DecimalBytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match NumberPrefix::decimal(self.0 as f64) {
-            NumberPrefix::Standalone(number) => write!(f, "{number:.0} B"),
-            NumberPrefix::Prefixed(prefix, number) => write!(f, "{number:.2} {prefix}B"),
+            NumberPrefix::Standalone(number) => {
+                write!(f, "{number:.0} B")
+            }
+            NumberPrefix::Prefixed(prefix, number) => {
+                write!(f, "{number:.2} {prefix}B")
+            }
         }
     }
 }
@@ -635,8 +662,12 @@ impl fmt::Display for DecimalBytes {
 impl fmt::Display for BinaryBytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match NumberPrefix::binary(self.0 as f64) {
-            NumberPrefix::Standalone(number) => write!(f, "{number:.0} B"),
-            NumberPrefix::Prefixed(prefix, number) => write!(f, "{number:.2} {prefix}B"),
+            NumberPrefix::Standalone(number) => {
+                write!(f, "{number:.0} B")
+            }
+            NumberPrefix::Prefixed(prefix, number) => {
+                write!(f, "{number:.2} {prefix}B")
+            }
         }
     }
 }
@@ -667,7 +698,9 @@ impl fmt::Display for HumanFloatCount {
         let num = format!("{:.*}", precision, self.0);
 
         let (int_part, frac_part) = match num.split_once('.') {
-            Some((int_str, fract_str)) => (int_str.to_string(), fract_str),
+            Some((int_str, fract_str)) => {
+                (int_str.to_string(), fract_str)
+            }
             None => (self.0.trunc().to_string(), ""),
         };
         let len = int_part.len();
@@ -696,7 +729,10 @@ mod tests {
     #[test]
     fn human_duration_alternate() {
         for (unit, _, alt) in UNITS {
-            assert_eq!(format!("2{alt}"), format!("{:#}", HumanDuration(2 * *unit)));
+            assert_eq!(
+                format!("2{alt}"),
+                format!("{:#}", HumanDuration(2 * *unit))
+            );
         }
     }
 
@@ -707,22 +743,43 @@ mod tests {
             format!("{}", HumanDuration(Duration::from_secs(0)))
         );
         assert_eq!("0 seconds", format!("{}", HumanDuration(MILLI)));
-        assert_eq!("0 seconds", format!("{}", HumanDuration(499 * MILLI)));
-        assert_eq!("1 second", format!("{}", HumanDuration(500 * MILLI)));
-        assert_eq!("1 second", format!("{}", HumanDuration(999 * MILLI)));
+        assert_eq!(
+            "0 seconds",
+            format!("{}", HumanDuration(499 * MILLI))
+        );
+        assert_eq!(
+            "1 second",
+            format!("{}", HumanDuration(500 * MILLI))
+        );
+        assert_eq!(
+            "1 second",
+            format!("{}", HumanDuration(999 * MILLI))
+        );
     }
 
     #[test]
     fn human_duration_less_than_two_seconds() {
-        assert_eq!("1 second", format!("{}", HumanDuration(1499 * MILLI)));
-        assert_eq!("2 seconds", format!("{}", HumanDuration(1500 * MILLI)));
-        assert_eq!("2 seconds", format!("{}", HumanDuration(1999 * MILLI)));
+        assert_eq!(
+            "1 second",
+            format!("{}", HumanDuration(1499 * MILLI))
+        );
+        assert_eq!(
+            "2 seconds",
+            format!("{}", HumanDuration(1500 * MILLI))
+        );
+        assert_eq!(
+            "2 seconds",
+            format!("{}", HumanDuration(1999 * MILLI))
+        );
     }
 
     #[test]
     fn human_duration_one_unit() {
         assert_eq!("1 second", format!("{}", HumanDuration(SECOND)));
-        assert_eq!("60 seconds", format!("{}", HumanDuration(MINUTE)));
+        assert_eq!(
+            "60 seconds",
+            format!("{}", HumanDuration(MINUTE))
+        );
         assert_eq!("60 minutes", format!("{}", HumanDuration(HOUR)));
         assert_eq!("24 hours", format!("{}", HumanDuration(DAY)));
         assert_eq!("7 days", format!("{}", HumanDuration(WEEK)));
@@ -733,7 +790,8 @@ mod tests {
     fn human_duration_less_than_one_and_a_half_unit() {
         // this one is actually done at 1.5 unit - half of the next smaller unit - epsilon
         // and should display the next smaller unit
-        let d = HumanDuration(MINUTE + MINUTE / 2 - SECOND / 2 - MILLI);
+        let d =
+            HumanDuration(MINUTE + MINUTE / 2 - SECOND / 2 - MILLI);
         assert_eq!("89 seconds", format!("{d}"));
         let d = HumanDuration(HOUR + HOUR / 2 - MINUTE / 2 - MILLI);
         assert_eq!("89 minutes", format!("{d}"));
@@ -763,8 +821,14 @@ mod tests {
 
     #[test]
     fn human_duration_two_units() {
-        assert_eq!("2 seconds", format!("{}", HumanDuration(2 * SECOND)));
-        assert_eq!("2 minutes", format!("{}", HumanDuration(2 * MINUTE)));
+        assert_eq!(
+            "2 seconds",
+            format!("{}", HumanDuration(2 * SECOND))
+        );
+        assert_eq!(
+            "2 minutes",
+            format!("{}", HumanDuration(2 * MINUTE))
+        );
         assert_eq!("2 hours", format!("{}", HumanDuration(2 * HOUR)));
         assert_eq!("2 days", format!("{}", HumanDuration(2 * DAY)));
         assert_eq!("2 weeks", format!("{}", HumanDuration(2 * WEEK)));
@@ -805,8 +869,14 @@ mod tests {
 
     #[test]
     fn human_duration_three_units() {
-        assert_eq!("3 seconds", format!("{}", HumanDuration(3 * SECOND)));
-        assert_eq!("3 minutes", format!("{}", HumanDuration(3 * MINUTE)));
+        assert_eq!(
+            "3 seconds",
+            format!("{}", HumanDuration(3 * SECOND))
+        );
+        assert_eq!(
+            "3 minutes",
+            format!("{}", HumanDuration(3 * MINUTE))
+        );
         assert_eq!("3 hours", format!("{}", HumanDuration(3 * HOUR)));
         assert_eq!("3 days", format!("{}", HumanDuration(3 * DAY)));
         assert_eq!("3 weeks", format!("{}", HumanDuration(3 * WEEK)));
@@ -818,7 +888,10 @@ mod tests {
         assert_eq!("42", format!("{}", HumanCount(42)));
         assert_eq!("7,654", format!("{}", HumanCount(7654)));
         assert_eq!("12,345", format!("{}", HumanCount(12345)));
-        assert_eq!("1,234,567,890", format!("{}", HumanCount(1234567890)));
+        assert_eq!(
+            "1,234,567,890",
+            format!("{}", HumanCount(1234567890))
+        );
     }
 
     #[test]
@@ -831,11 +904,26 @@ mod tests {
             format!("{}", HumanFloatCount(1234567890.0))
         );
         assert_eq!("42.5", format!("{}", HumanFloatCount(42.5)));
-        assert_eq!("42.5", format!("{}", HumanFloatCount(42.500012345)));
-        assert_eq!("42.502", format!("{}", HumanFloatCount(42.502012345)));
-        assert_eq!("7,654.321", format!("{}", HumanFloatCount(7654.321)));
-        assert_eq!("7,654.321", format!("{}", HumanFloatCount(7654.3210123456)));
-        assert_eq!("12,345.6789", format!("{}", HumanFloatCount(12345.6789)));
+        assert_eq!(
+            "42.5",
+            format!("{}", HumanFloatCount(42.500012345))
+        );
+        assert_eq!(
+            "42.502",
+            format!("{}", HumanFloatCount(42.502012345))
+        );
+        assert_eq!(
+            "7,654.321",
+            format!("{}", HumanFloatCount(7654.321))
+        );
+        assert_eq!(
+            "7,654.321",
+            format!("{}", HumanFloatCount(7654.3210123456))
+        );
+        assert_eq!(
+            "12,345.6789",
+            format!("{}", HumanFloatCount(12345.6789))
+        );
         assert_eq!(
             "1,234,567,890.1235",
             format!("{}", HumanFloatCount(1234567890.1234567))
@@ -844,10 +932,22 @@ mod tests {
             "1,234,567,890.1234",
             format!("{}", HumanFloatCount(1234567890.1234321))
         );
-        assert_eq!("1,234", format!("{:.0}", HumanFloatCount(1234.1234321)));
-        assert_eq!("1,234.1", format!("{:.1}", HumanFloatCount(1234.1234321)));
-        assert_eq!("1,234.12", format!("{:.2}", HumanFloatCount(1234.1234321)));
-        assert_eq!("1,234.123", format!("{:.3}", HumanFloatCount(1234.1234321)));
+        assert_eq!(
+            "1,234",
+            format!("{:.0}", HumanFloatCount(1234.1234321))
+        );
+        assert_eq!(
+            "1,234.1",
+            format!("{:.1}", HumanFloatCount(1234.1234321))
+        );
+        assert_eq!(
+            "1,234.12",
+            format!("{:.2}", HumanFloatCount(1234.1234321))
+        );
+        assert_eq!(
+            "1,234.123",
+            format!("{:.3}", HumanFloatCount(1234.1234321))
+        );
         assert_eq!(
             "1,234.1234320999999454215867445",
             format!("{:.25}", HumanFloatCount(1234.1234321))
@@ -870,8 +970,12 @@ pub struct RoundedDecimalBytes(pub u64);
 impl fmt::Display for RoundedDecimalBytes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match NumberPrefix::decimal(self.0 as f64) {
-            NumberPrefix::Standalone(number) => write!(f, "{number:.0} B"),
-            NumberPrefix::Prefixed(prefix, number) => write!(f, "{number:.0} {prefix}B"),
+            NumberPrefix::Standalone(number) => {
+                write!(f, "{number:.0} B")
+            }
+            NumberPrefix::Prefixed(prefix, number) => {
+                write!(f, "{number:.0} {prefix}B")
+            }
         }
     }
 }
@@ -890,8 +994,50 @@ pub struct RoundedBinaryBytes(pub u64);
 impl fmt::Display for RoundedBinaryBytes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match NumberPrefix::binary(self.0 as f64) {
-            NumberPrefix::Standalone(number) => write!(f, "{number:.0} B"),
-            NumberPrefix::Prefixed(prefix, number) => write!(f, "{number:.0} {prefix}B"),
+            NumberPrefix::Standalone(number) => {
+                write!(f, "{number:.0} B")
+            }
+            NumberPrefix::Prefixed(prefix, number) => {
+                write!(f, "{number:.0} {prefix}B")
+            }
         }
     }
+}
+
+pub fn format_bps(bps: f32) -> String {
+    const UNITS: [&str; 4] = ["Bps", "Kbps", "Mbps", "Gbps"];
+    const LAST: usize = UNITS.len() - 1;
+
+    let mut value = bps.max(0.0);
+    let mut unit = 0;
+
+    while unit < LAST && value >= 1000.0 {
+        value /= 1000.0;
+        unit += 1;
+    }
+
+    let rounded = (value * 10.0).round() / 10.0;
+    if rounded >= 1000.0 && unit < LAST {
+        value = rounded / 1000.0;
+        unit += 1;
+    }
+
+    let s = format!("{:.1}", value);
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+
+    format!("{} {}", s, UNITS[unit])
+}
+
+const MIN_BPS: f32 = 1_000.0;
+const MAX_BPS: f32 = 10_000_000_000.0;
+
+/// Exponential speed map (for speedlimit sliders)
+pub fn map_speed(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    MIN_BPS * (MAX_BPS / MIN_BPS).powf(t)
+}
+
+pub fn unmap_speed(bps: f32) -> f32 {
+    let bps = bps.clamp(MIN_BPS, MAX_BPS);
+    (bps / MIN_BPS).ln() / (MAX_BPS / MIN_BPS).ln()
 }

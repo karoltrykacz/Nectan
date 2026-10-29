@@ -7,6 +7,7 @@ import {
     IconButton,
     SvgIcon,
 } from "elements.slint";
+import { Icons } from "icons.slint";
 
 export enum LookupState {
     connection-failed,
@@ -74,7 +75,6 @@ component DisplayMode {
 
         HorizontalLayout {
             alignment: center;
-            spacing: 0px;
 
             Text {
                 text: "Copied";
@@ -127,15 +127,12 @@ component DisplayMode {
                         horizontal-alignment: center;
                         vertical-alignment: center;
                         read-only: true;
-                        single-line: true;
                         key-pressed(event) => {
                             EventResult.reject
                         }
                     }
 
                     touch := TouchArea {
-                        width: 100%;
-                        height: 100%;
                         mouse-cursor: pointer;
                         clicked => {
                             debug("Copied code");
@@ -165,7 +162,7 @@ component DisplayMode {
             cross-axis-self-alignment: center;
             width: 96px;
             text: @tr("Refresh");
-            image: @image-url("icons/refresh.svg");
+            image: Icons.refresh;
             clicked => {
                 AddDeviceBridge.time-left = 90;
                 AddDeviceBridge.request_code();
@@ -418,7 +415,6 @@ component InputMode inherits VerticalLayout {
             horizontal-alignment: center;
             vertical-alignment: center;
             input-type: InputType.number;
-            single-line: true;
 
             init => {
                 self.focus();
@@ -485,31 +481,31 @@ component AddRemoteHelp inherits GeneralModal {
     }
 }
 
-    // component QrCode inherits VerticalLayout {
-//     cross-axis-alignment: center;
-//     spacing: 20px;
-//     alignment: center;
-//
-//     Rectangle {
-//         width: 190px;
-//         height: 190px;
-//         border-radius: 16px;
-//         clip: true;
-//         Image {
-//             source: @image-url("./icons/qr-code.png");
-//             width: 200px;
-//             height: 200px;
-//         }
-//     }
-//
-//     Text {
-//         text: @tr("Scan with your mobile device to pair");
-//         color: Theme.colors.secondary-font;
-//         font-size: 13px;
-//         font-weight: 500;
-//         horizontal-alignment: center;
-//     }
-// }
+export component QrCode inherits VerticalLayout {
+    cross-axis-alignment: center;
+    spacing: 20px;
+    alignment: center;
+
+    Rectangle {
+        width: 190px;
+        height: 190px;
+        border-radius: 16px;
+        clip: true;
+        Image {
+            source: @image-url("./icons/qr-code.png");
+            width: 200px;
+            height: 200px;
+        }
+    }
+
+    Text {
+        text: @tr("Scan with your mobile device to pair");
+        color: Theme.colors.secondary-font;
+        font-size: 13px;
+        font-weight: 500;
+        horizontal-alignment: center;
+    }
+}
 
 enum AddMode { input, display }
 
@@ -606,7 +602,7 @@ export component AddDeviceModal inherits GeneralModal {
                         height: 28px;
                         inner-bg: help.hovered ? Theme.colors.secondary-font : Theme.colors.primary-font;
                         SvgIcon {
-                            source: @image-url("icons/help-circle.svg");
+                            source: Icons.help;
                             size: 16px;
                             fg: parent.hovered ? Theme.colors.primary-col : Theme.colors.fourth-col;
                         }
@@ -631,8 +627,7 @@ export component AddDeviceModal inherits GeneralModal {
                             ? @tr("Enter code")
                             : @tr("Show code");
                         image: root.code-mode == AddMode.display ?
-                            @image-url("icons/edit.svg") : @image-url("icons/eye.svg");
-                        animate-width: false;
+                            Icons.edit : Icons.eye;
                         clicked => {
                             if root.code-mode == AddMode.input {
                                 root.code-mode = AddMode.display;
@@ -689,8 +684,6 @@ export component ConnectionOfferModal inherits GeneralModal {
         clip: true;
 
         TouchArea {
-            width: 100%;
-            height: 100%;
             clicked => {}
         }
 

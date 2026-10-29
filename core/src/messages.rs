@@ -37,12 +37,21 @@ pub enum NetMessage {
 }
 
 pub trait StreamableMessage: Sized {
-    fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> impl Future<Output = Result<Self>>;
-    fn write<T: crate::stream::SendStream>(&self, tx: &mut T) -> impl Future<Output = Result<()>>;
+    fn read_async<R: crate::stream::RecvStream>(
+        rx: &mut R,
+    ) -> impl Future<Output = Result<Self>>;
+    fn write<T: crate::stream::SendStream>(
+        &self,
+        tx: &mut T,
+    ) -> impl Future<Output = Result<()>>;
 }
 
-impl<M: Serialize + serde::de::DeserializeOwned> StreamableMessage for M {
-    async fn read_async<R: crate::stream::RecvStream>(rx: &mut R) -> Result<Self> {
+impl<M: Serialize + serde::de::DeserializeOwned> StreamableMessage
+    for M
+{
+    async fn read_async<R: crate::stream::RecvStream>(
+        rx: &mut R,
+    ) -> Result<Self> {
         let mut len_buf = [0u8; 4];
         rx.recv_exact(&mut len_buf).await?;
 
@@ -53,7 +62,10 @@ impl<M: Serialize + serde::de::DeserializeOwned> StreamableMessage for M {
         Ok(postcard::from_bytes(&buf)?)
     }
 
-    async fn write<T: crate::stream::SendStream>(&self, tx: &mut T) -> Result<()> {
+    async fn write<T: crate::stream::SendStream>(
+        &self,
+        tx: &mut T,
+    ) -> Result<()> {
         let raw_msg = postcard::to_allocvec(self)?;
         let len = raw_msg.len() as u32;
         tx.send(&len.to_be_bytes()).await?;
@@ -76,24 +88,30 @@ pub enum AppEvent {
     Connected { device_id: DeviceId },
     ConnectionOffer { offer: ConnectionOffer },
     IncomingTransferOffer { offer: TransferOfferRequest },
-    TransferOfferDelivered,
     DeviceWentOffline { device_id: DeviceId },
     TransfersUpdated,
 }
 
 impl std::fmt::Debug for AppEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
-            Self::Autoaccepted { from } => {
-                f.debug_struct("Autoaccepted ").field("from", from).finish()
+            Self::Autoaccepted { from } => f
+                .debug_struct("Autoaccepted ")
+                .field("from", from)
+                .finish(),
+            Self::TransfersUpdated => {
+                f.debug_struct("transfer_updated").finish()
             }
-            Self::TransfersUpdated => f.debug_struct("transfer_updated").finish(),
             Self::DeviceWentOffline { device_id } => f
                 .debug_struct("DeviceWentOffline")
                 .field("device_id", device_id)
                 .finish(),
-            Self::TransferOfferDelivered => f.debug_struct("TransferOfferDelivered").finish(),
-            Self::FoundNearby => f.debug_struct("FoundNearby").finish(),
+            Self::FoundNearby => {
+                f.debug_struct("FoundNearby").finish()
+            }
             Self::Connected { device_id } => f
                 .debug_struct("Connected")
                 .field("device_id", &STANDARD.encode(device_id))
@@ -101,7 +119,10 @@ impl std::fmt::Debug for AppEvent {
             Self::ConnectionOffer { offer } => {
                 f.debug_struct("NewConnectionRequest")
                     .field("username", &offer.username.to_string())
-                    .field("remote_device_id", &STANDARD.encode(offer.remote_device_id))
+                    .field(
+                        "remote_device_id",
+                        &STANDARD.encode(offer.remote_device_id),
+                    )
                     .field("nearby", &offer.nearby)
                     .field("respond", &"Sender { .. }") // Optional placeholder
                     .finish()
@@ -126,7 +147,9 @@ impl From<UiResponse> for NetMessage {
         match resp {
             UiResponse::AcceptConnection => NetMessage::Accepted,
             UiResponse::AcceptOffer { .. } => NetMessage::Accepted,
-            UiResponse::Reject { reason } => NetMessage::Rejected { reason },
+            UiResponse::Reject { reason } => {
+                NetMessage::Rejected { reason }
+            }
         }
     }
 }

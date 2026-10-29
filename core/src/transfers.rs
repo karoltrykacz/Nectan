@@ -9,7 +9,9 @@ use anyhow::{Result, bail, ensure};
 use ed25519_dalek::VerifyingKey;
 use fixedbitset::FixedBitSet;
 use iroh::endpoint::Connection;
-use redb::{ReadableDatabase, ReadableTable, TableDefinition, TypeName, Value};
+use redb::{
+    ReadableDatabase, ReadableTable, TableDefinition, TypeName, Value,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -17,7 +19,9 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU32, AtomicU64, Ordering::Relaxed},
+        atomic::{
+            AtomicBool, AtomicU32, AtomicU64, Ordering::Relaxed,
+        },
     },
     time::Duration,
 };
@@ -25,7 +29,9 @@ use tokio::{
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
     sync::{OwnedSemaphorePermit, Semaphore, mpsc},
 };
-use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
+use tokio_util::sync::{
+    CancellationToken, WaitForCancellationFuture,
+};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -68,7 +74,9 @@ impl Value for TransferItem {
         postcard::from_bytes(data).unwrap()
     }
 
-    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+    fn as_bytes<'a, 'b: 'a>(
+        value: &'a Self::SelfType<'b>,
+    ) -> Self::AsBytes<'a>
     where
         Self: 'b,
     {
@@ -121,6 +129,7 @@ pub async fn send_contents(
     target: DeviceId,
     offer: TransferOffer,
     root_path: PathBuf,
+    delivered_offer: tokio::sync::oneshot::Sender<()>,
 ) -> Result<(), TransferOfferError> {
     // Get device
     let Some(device) = state.devices.get(&target) else {
@@ -147,11 +156,13 @@ pub async fn send_contents(
         return Err(TransferOfferError::ConnectionFailed);
     }
 
-    // Propagate app event (changes the send modal state)
-    state.emit(AppEvent::TransferOfferDelivered).await;
+    // // Propagate app event (changes the send modal state)
+    // state.emit(AppEvent::TransferOfferDelivered).await;
+    delivered_offer.send(());
 
     // Read remote device response
-    let Ok(offer_response) = NetMessage::read_async(&mut rx).await else {
+    let Ok(offer_response) = NetMessage::read_async(&mut rx).await
+    else {
         error!("Failed to read offer response.");
         return Err(TransferOfferError::ConnectionFailed);
     };
@@ -168,7 +179,13 @@ pub async fn send_contents(
     // Transfer accepted, start processing
     state
         .transfers
-        .add_transfer(target, device.username, Outcoming, root_path, *offer)
+        .add_transfer(
+            target,
+            device.username,
+            Outcoming,
+            root_path,
+            *offer,
+        )
         .await;
 
     Ok(())
@@ -242,9 +259,10 @@ enum TransferControl {
 impl PendingTransfer {
     pub fn test(total_items: u32) -> Self {
         let id = Uuid::new_v4();
-        let db =
-            redb::Database::create(std::env::temp_dir().join(id.to_string()))
-                .unwrap();
+        let db = redb::Database::create(
+            std::env::temp_dir().join(id.to_string()),
+        )
+        .unwrap();
         let txn = db.begin_write().unwrap();
         {
             let mut table = txn.open_table(DUMB_ITEMS).unwrap();
@@ -302,15 +320,15 @@ impl PendingTransfer {
         let id = offer.transfer_id;
         println!("Transfer root_path {root_path:?}");
 
-        let db_dir =
-            dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
+        let db_dir = dirs::data_dir()
+            .unwrap_or_else(|| dirs::runtime_dir().unwrap());
         let dir = match direction {
             TransferDirection::Outcoming => "out",
             TransferDirection::Incoming => "in",
         };
         let db_dir = db_dir.join(format!("Nectan/t-{id}-{}", dir));
-        let db =
-            redb::Database::create(db_dir).expect("Failed to create database");
+        let db = redb::Database::create(db_dir)
+            .expect("Failed to create database");
 
         let txn = db.begin_write().unwrap();
         {
@@ -421,7 +439,10 @@ impl PendingTransfer {
         let _ = tx.commit();
     }
 
-    pub fn get_item(&self, id: u32) -> Result<TransferItem, redb::Error> {
+    pub fn get_item(
+        &self,
+        id: u32,
+    ) -> Result<TransferItem, redb::Error> {
         let txn = self.db.begin_read()?;
         Ok(txn
             .open_table(DUMB_ITEMS)?
@@ -469,7 +490,10 @@ impl PendingTransfer {
     }
 
     /// Todo - make this know about the cancel token!
-    async fn start_sending(self: Arc<Self>, conn: Connection) -> Result<()> {
+    async fn start_sending(
+        self: Arc<Self>,
+        conn: Connection,
+    ) -> Result<()> {
         info!(
             "Starting sending [{}] [{} ITEMS]",
             &self.id.to_string()[0..8],
@@ -489,10 +513,12 @@ impl PendingTransfer {
             let item = match queue.pop() {
                 Some(id) => {
                     // TODO graceful err, file not found???
-                    self.get_item(id as u32).expect("Transfer database error.")
+                    self.get_item(id as u32)
+                        .expect("Transfer database error.")
                 }
                 None => {
-                    let processed = self.processed_items.load(Relaxed);
+                    let processed =
+                        self.processed_items.load(Relaxed);
                     let drained = processed == self.total_items;
 
                     if drained {
@@ -510,7 +536,10 @@ impl PendingTransfer {
                         queue.extend(unsent);
 
                         if unsent_len == 0 {
-                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            tokio::time::sleep(Duration::from_secs(
+                                1,
+                            ))
+                            .await;
                         }
                         continue;
                     }
@@ -558,7 +587,10 @@ impl PendingTransfer {
             }
         };
 
-        println!("Processing stream for {}", &self.id.to_string()[0..8]);
+        println!(
+            "Processing stream for {}",
+            &self.id.to_string()[0..8]
+        );
 
         ensure!(
             self.direction == TransferDirection::Incoming,
@@ -570,11 +602,15 @@ impl PendingTransfer {
 
         let id = header.id;
 
-        let r = match self.receive_item(header, &mut stream, permit).await {
+        let r = match self
+            .receive_item(header, &mut stream, permit)
+            .await
+        {
             Ok(()) => self.item_finished(id),
             Err(e) => {
                 println!("Failed to receive item [{e:?}]");
-                let _ = stream.write(&TransferControl::Error(e)).await;
+                let _ =
+                    stream.write(&TransferControl::Error(e)).await;
                 self.handle_item_err(id, e)
             }
         };
@@ -625,7 +661,10 @@ impl PendingTransfer {
         if std::fs::exists(&output_dir)
             .map_err(|_| TransferItemError::OpenFail)?
         {
-            error!("File [{}] already exsited.", output_dir.display());
+            error!(
+                "File [{}] already exsited.",
+                output_dir.display()
+            );
             return Err(TransferItemError::FileAlreadyExisted);
         }
 
@@ -785,9 +824,12 @@ impl PendingTransfer {
 
         let (mut rx, mut tx) = stream.into_split();
 
-        let (ctrl_tx, mut ctrl_rx) = mpsc::channel::<TransferControl>(8);
+        let (ctrl_tx, mut ctrl_rx) =
+            mpsc::channel::<TransferControl>(8);
         let reader = tokio::spawn(async move {
-            while let Ok(c) = TransferControl::read_async(&mut rx).await {
+            while let Ok(c) =
+                TransferControl::read_async(&mut rx).await
+            {
                 if ctrl_tx.send(c).await.is_err() {
                     break;
                 }
@@ -860,7 +902,8 @@ impl PendingTransfer {
                 self.processed_items.fetch_add(1, Relaxed) + 1
             }
             // Recoverable (Network) errors - nop
-            TransferItemError::StreamError | TransferItemError::Terminated => {
+            TransferItemError::StreamError
+            | TransferItemError::Terminated => {
                 if self.direction == TransferDirection::Outcoming {
                     // Move item back to the queue
                     unsafe {
@@ -882,7 +925,9 @@ impl PendingTransfer {
         let txn = self.db.begin_write()?;
         {
             let mut table = txn.open_table(DUMB_ITEMS)?;
-            let Some(mut meta) = table.get(item_id)?.map(|g| g.value()) else {
+            let Some(mut meta) =
+                table.get(item_id)?.map(|g| g.value())
+            else {
                 error!("Item not found.");
                 return Ok(());
             };
@@ -900,7 +945,9 @@ impl PendingTransfer {
         let txn = self.db.begin_write()?;
         {
             let mut table = txn.open_table(DUMB_ITEMS)?;
-            let Some(mut meta) = table.get(item_id)?.map(|g| g.value()) else {
+            let Some(mut meta) =
+                table.get(item_id)?.map(|g| g.value())
+            else {
                 error!("Item not found.");
                 return Ok(());
             };
@@ -1036,7 +1083,8 @@ impl Transfers {
         t.cancel();
         t.set_status(TransferStatus::CancelledByRemote);
 
-        let _ = self.event_tx.blocking_send(AppEvent::TransfersUpdated);
+        let _ =
+            self.event_tx.blocking_send(AppEvent::TransfersUpdated);
 
         Ok(())
     }
@@ -1060,12 +1108,15 @@ impl Transfers {
         if let Some(conn) = self.devices.get_connection(t.target) {
             tokio::spawn(async move {
                 let mut stream = StreamPair::open(&conn).await?;
-                let msg = NetMessage::TransferCancelled { transfer_id: t.id };
+                let msg = NetMessage::TransferCancelled {
+                    transfer_id: t.id,
+                };
                 stream.write(&msg).await
             });
         };
 
-        let _ = self.event_tx.blocking_send(AppEvent::TransfersUpdated);
+        let _ =
+            self.event_tx.blocking_send(AppEvent::TransfersUpdated);
 
         Ok(())
     }

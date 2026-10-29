@@ -89,7 +89,6 @@ impl Storage {
         let writer = DataWriter::new(path, "main_storage")
             .expect("Failed to initialize Storage writer.");
         let initial = writer.load::<Settings>().unwrap_or_default();
-
         Storage {
             inner: RwLock::new(initial),
             writer,
@@ -100,7 +99,10 @@ impl Storage {
         f(&self.inner.read().unwrap())
     }
 
-    pub fn update(&self, f: impl FnOnce(&mut Settings)) -> Result<()> {
+    pub fn update(
+        &self,
+        f: impl FnOnce(&mut Settings),
+    ) -> Result<()> {
         let mut guard = self.inner.write().unwrap();
         let mut next = guard.clone();
         f(&mut next);
@@ -176,7 +178,8 @@ impl Storage {
         parts: Vec<String>,
     ) -> Result<()> {
         self.update(|s| {
-            let entry = s.shortcuts.entry(id.to_string()).or_default();
+            let entry =
+                s.shortcuts.entry(id.to_string()).or_default();
             if is_primary {
                 entry.keys = parts;
             } else {

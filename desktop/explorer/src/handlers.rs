@@ -1,7 +1,9 @@
 use anyhow::bail;
 use ignore::WalkBuilder;
 use nectan_core::{
-    code_lookup::{CodeLookupError, gen_code, issue_code, lookup_code},
+    code_lookup::{
+        CodeLookupError, gen_code, issue_code, lookup_code,
+    },
     common::{common_parent, gen_transfer_name},
     devices::{Username, device_id_from_base64},
     format::{DecimalBytes, RoundedDecimalBytes},
@@ -10,8 +12,8 @@ use nectan_core::{
         ConnectionOffer, UiResponse,
     },
     protocol::{
-        ConnectStatus, NectanState, TransferOffer, TransferOfferRequest,
-        connect,
+        ConnectStatus, NectanState, TransferOffer,
+        TransferOfferRequest, connect,
     },
     storage::SpeedLimits,
     transfers::{TransferOfferError, send_contents},
@@ -24,7 +26,9 @@ use slint::{
 };
 use slint::{
     ToSharedString,
-    winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent},
+    winit_030::{
+        EventResult, WinitWindowAccessor, winit::event::WindowEvent,
+    },
 };
 use std::{
     fs::DirEntry,
@@ -38,13 +42,16 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::{
-    AddDeviceBridge, ConnectionOfferBridge, Error, IncomingTransferOffer,
-    IncomingTransferOfferBridge, LookupState, NectanWindow, OfferEntry,
-    OutcomingTransferModalBridge, SendModalState, SettingsBridge,
-    TransfersBridge, TreeNode, WindowBridge,
+    AddDeviceBridge, ConnectionOfferBridge, Error,
+    IncomingTransferOffer, IncomingTransferOfferBridge, LookupState,
+    NectanWindow, OfferEntry, OutcomingTransferModalBridge,
+    SendModalState, SettingsBridge, TransfersBridge, TreeNode,
+    WindowBridge,
     devices::update_devices,
     state::ui_state,
-    transfers::{format_speed, map_speed, unmap_speed, update_transfers},
+    transfers::{
+        format_speed, map_speed, unmap_speed, update_transfers,
+    },
 };
 
 pub const MB: f32 = 1024.0 * 1024.0;
@@ -188,7 +195,8 @@ pub fn handle_incoming_transfer_offer(
         let weak = weak.clone();
         let fut = async move {
             let weak = weak.clone();
-            let Some(h) = rfd::AsyncFileDialog::new().pick_folder().await
+            let Some(h) =
+                rfd::AsyncFileDialog::new().pick_folder().await
             else {
                 return;
             };
@@ -198,7 +206,9 @@ pub fn handle_incoming_transfer_offer(
 
             ui_state().set_save_to(&path);
             w.global::<IncomingTransferOfferBridge>()
-                .set_target_path(path.to_string_lossy().to_string().into());
+                .set_target_path(
+                    path.to_string_lossy().to_string().into(),
+                );
         };
         let _ = slint::spawn_local(fut);
     });
@@ -275,7 +285,10 @@ pub fn show_transfer_offer(
     });
 }
 
-pub fn show_connection_offer(w: &Weak<NectanWindow>, offer: ConnectionOffer) {
+pub fn show_connection_offer(
+    w: &Weak<NectanWindow>,
+    offer: ConnectionOffer,
+) {
     let _ = w.upgrade_in_event_loop(move |w| {
         let b = w.global::<ConnectionOfferBridge>();
         b.set_open(true);
@@ -283,7 +296,10 @@ pub fn show_connection_offer(w: &Weak<NectanWindow>, offer: ConnectionOffer) {
         // TODO
     });
 }
-pub fn handle_connection_offer(w: &NectanWindow, state: Arc<NectanState>) {
+pub fn handle_connection_offer(
+    w: &NectanWindow,
+    state: Arc<NectanState>,
+) {
     let bridge = w.global::<ConnectionOfferBridge>();
     bridge.on_accept(move |accept| {
         let state = state.clone();
@@ -291,7 +307,9 @@ pub fn handle_connection_offer(w: &NectanWindow, state: Arc<NectanState>) {
             if accept {
                 info!("Accepted connection offer.");
                 state
-                    .respond_connection_offer(UiResponse::AcceptConnection)
+                    .respond_connection_offer(
+                        UiResponse::AcceptConnection,
+                    )
                     .await;
             } else {
                 info!("Rejected connection offer.");
@@ -328,8 +346,11 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
     });
 
     bridge.on_format_code(|s| {
-        let digits: String =
-            s.chars().filter(|c| c.is_ascii_digit()).take(6).collect();
+        let digits: String = s
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .take(6)
+            .collect();
         if digits.len() > 3 {
             format!("{} {}", &digits[..3], &digits[3..]).into()
         } else {
@@ -348,8 +369,10 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                 let Some(w) = weak.upgrade() else {
                     return;
                 };
-                let time_left = w.global::<AddDeviceBridge>().get_time_left();
-                w.global::<AddDeviceBridge>().set_time_left(time_left - 1);
+                let time_left =
+                    w.global::<AddDeviceBridge>().get_time_left();
+                w.global::<AddDeviceBridge>()
+                    .set_time_left(time_left - 1);
 
                 if time_left == 0 {
                     let ui = ui_state();
@@ -376,8 +399,11 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                     let bridge = ui.global::<AddDeviceBridge>();
                     match result {
                         Ok(code) => {
-                            let code_split =
-                                format!("{} {}", &code[0..3], &code[3..6]);
+                            let code_split = format!(
+                                "{} {}",
+                                &code[0..3],
+                                &code[3..6]
+                            );
                             bridge.set_our_code(code_split.into());
                         }
                         Err(e) => {
@@ -416,14 +442,17 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                     CodeLookupError::NotFound => {
                         ui_weak.upgrade_in_event_loop(|ui| {
                             ui.global::<AddDeviceBridge>()
-                                .set_lookup_state(LookupState::CodeNotFound);
+                                .set_lookup_state(
+                                    LookupState::CodeNotFound,
+                                );
                         })?;
                     }
                     CodeLookupError::ConnectionFailed => {
                         ui_weak.upgrade_in_event_loop(|ui| {
-                            ui.global::<AddDeviceBridge>().set_lookup_state(
-                                LookupState::ConnectionFailed,
-                            );
+                            ui.global::<AddDeviceBridge>()
+                                .set_lookup_state(
+                                    LookupState::ConnectionFailed,
+                                );
                         })?;
                     }
                     CodeLookupError::NectanService => {
@@ -461,29 +490,36 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                         println!("User rejected");
                         ui_weak.upgrade_in_event_loop(move |ui| {
                             ui.global::<AddDeviceBridge>()
-                                .set_lookup_state(LookupState::Rejected);
+                                .set_lookup_state(
+                                    LookupState::Rejected,
+                                );
                         })?;
                     }
                     ConnectStatus::Accepted(_device) => {
                         println!("Accepted");
                         ui_weak.upgrade_in_event_loop(move |ui| {
                             ui.global::<AddDeviceBridge>()
-                                .set_lookup_state(LookupState::Connected);
+                                .set_lookup_state(
+                                    LookupState::Connected,
+                                );
                         })?;
                     }
                     ConnectStatus::AuthFailed => {
                         println!("AuthFailed");
                         ui_weak.upgrade_in_event_loop(move |ui| {
                             ui.global::<AddDeviceBridge>()
-                                .set_lookup_state(LookupState::Rejected);
+                                .set_lookup_state(
+                                    LookupState::Rejected,
+                                );
                         })?;
                     }
                     ConnectStatus::ConnectionFailed => {
                         println!("Conn failed");
                         ui_weak.upgrade_in_event_loop(move |ui| {
-                            ui.global::<AddDeviceBridge>().set_lookup_state(
-                                LookupState::ConnectionFailed,
-                            );
+                            ui.global::<AddDeviceBridge>()
+                                .set_lookup_state(
+                                    LookupState::ConnectionFailed,
+                                );
                         })?;
                     }
                     ConnectStatus::RequestDelivered
@@ -499,14 +535,18 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
                     ui_weak.upgrade_in_event_loop(move |ui| {
                         println!("Connection failed");
                         ui.global::<AddDeviceBridge>()
-                            .set_lookup_state(LookupState::ConnectionFailed);
+                            .set_lookup_state(
+                                LookupState::ConnectionFailed,
+                            );
                     })?;
                 }
                 ConnectStatus::AlreadyConnected => {
                     println!("Already connected");
                     ui_weak.upgrade_in_event_loop(move |ui| {
                         ui.global::<AddDeviceBridge>()
-                            .set_lookup_state(LookupState::AlreadyConnected);
+                            .set_lookup_state(
+                                LookupState::AlreadyConnected,
+                            );
                     })?;
                 }
                 _ => {
@@ -520,18 +560,20 @@ pub fn handle_add_device(w: &NectanWindow, state: Arc<NectanState>) {
 
 pub fn handle_scan_files(w: &NectanWindow) {
     let weak = w.as_weak();
-    w.global::<OutcomingTransferModalBridge>()
-        .on_select_files(move || {
+    w.global::<OutcomingTransferModalBridge>().on_select_files(
+        move || {
             let weak = weak.clone();
             tokio::spawn(async move {
-                if let Some(h) = rfd::AsyncFileDialog::new().pick_files().await
+                if let Some(h) =
+                    rfd::AsyncFileDialog::new().pick_files().await
                     && !h.is_empty()
                 {
                     let paths = filehandle_to_paths(h);
                     open_send_modal(weak, paths);
                 }
             });
-        });
+        },
+    );
 }
 pub fn handle_scan_folders(w: &NectanWindow) {
     let weak = w.as_weak();
@@ -539,7 +581,8 @@ pub fn handle_scan_folders(w: &NectanWindow) {
         .on_select_folders(move || {
             let weak = weak.clone();
             tokio::spawn(async move {
-                let Some(h) = rfd::AsyncFileDialog::new().pick_folders().await
+                let Some(h) =
+                    rfd::AsyncFileDialog::new().pick_folders().await
                 else {
                     return;
                 };
@@ -580,8 +623,11 @@ pub fn open_send_modal(w: Weak<NectanWindow>, paths: Vec<PathBuf>) {
     let _ = w.upgrade_in_event_loop(move |w| {
         {
             let state = ui_state();
-            *state.outcoming_transfer().match_builder.lock().unwrap() =
-                Some(builder);
+            *state
+                .outcoming_transfer()
+                .match_builder
+                .lock()
+                .unwrap() = Some(builder);
 
             let mut walker_lock = state.walker();
             if let Some(old_walker) = &*walker_lock {
@@ -631,17 +677,22 @@ fn spawn_walk_notifier(walker: Walker, w: Weak<NectanWindow>) {
             let total_size = walker.total_size();
 
             let _ = w.upgrade_in_event_loop(move |w| {
-                let bridge = w.global::<OutcomingTransferModalBridge>();
-                let size_str = RoundedDecimalBytes(total_size).to_string();
+                let bridge =
+                    w.global::<OutcomingTransferModalBridge>();
+                let size_str =
+                    RoundedDecimalBytes(total_size).to_string();
                 bridge.set_walk_total_entries(total_entries as i32);
                 bridge.set_walk_total_size(size_str.into());
             });
             if walker.finished() {
                 info!("Walker finished. Ready to send.");
                 let _ = w.upgrade_in_event_loop(move |w| {
-                    let bridge = w.global::<OutcomingTransferModalBridge>();
-                    let size_str = RoundedDecimalBytes(total_size).to_string();
-                    bridge.set_walk_total_entries(total_entries as i32);
+                    let bridge =
+                        w.global::<OutcomingTransferModalBridge>();
+                    let size_str =
+                        RoundedDecimalBytes(total_size).to_string();
+                    bridge
+                        .set_walk_total_entries(total_entries as i32);
                     bridge.set_walk_total_size(size_str.into());
                     bridge.set_walk_finished(true);
                 });
@@ -738,13 +789,15 @@ pub fn handle_drag_and_drop_files(w: &NectanWindow) {
                 let weak = weak.clone();
 
                 tokio::spawn(async move {
-                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    tokio::time::sleep(Duration::from_millis(10))
+                        .await;
                     let total = outcoming.total.load(Relaxed);
                     if me == total {
-                        let _ = weak.upgrade_in_event_loop(move |w| {
-                            let paths = ui_state().take_paths();
-                            open_send_modal(w.as_weak(), paths);
-                        });
+                        let _ =
+                            weak.upgrade_in_event_loop(move |w| {
+                                let paths = ui_state().take_paths();
+                                open_send_modal(w.as_weak(), paths);
+                            });
                     }
                 });
             }
@@ -756,11 +809,15 @@ pub fn handle_drag_and_drop_files(w: &NectanWindow) {
                 if !state.outcoming_transfer().ready.load(Relaxed) {
                     walker.stop();
                     if let Some(w) = weak.upgrade() {
-                        let b = w.global::<OutcomingTransferModalBridge>();
+                        let b = w
+                            .global::<OutcomingTransferModalBridge>();
                         b.set_open(false);
                     }
                 }
-                state.outcoming_transfer().ready.store(false, Relaxed);
+                state
+                    .outcoming_transfer()
+                    .ready
+                    .store(false, Relaxed);
                 state.take_paths();
             }
             WindowEvent::DroppedFile(_file) => {
@@ -783,7 +840,8 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
         let outcoming = ui_state().outcoming_transfer();
         let weak = weak.clone();
         let bridge = w.global::<OutcomingTransferModalBridge>();
-        let mut nodes: Vec<TreeNode> = bridge.get_nodes().iter().collect();
+        let mut nodes: Vec<TreeNode> =
+            bridge.get_nodes().iter().collect();
         if nodes[id].is_file {
             return;
         }
@@ -794,7 +852,8 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
 
             // Close the nodes
             let mut end = id + 1;
-            while end < nodes.len() && nodes[end].depth > parent_depth {
+            while end < nodes.len() && nodes[end].depth > parent_depth
+            {
                 end += 1;
             }
             nodes.drain(id + 1..end);
@@ -807,52 +866,69 @@ pub fn handle_outcoming_transfer(w: &NectanWindow) {
         nodes[id].expanded = true;
 
         // Need to build the walker beacuse the pathtree from walker is yielded after the walk is finished
-        std::thread::spawn(move || match std::fs::read_dir(path.clone()) {
-            Ok(dir) => {
-                let mut lock = outcoming.match_builder.lock().unwrap();
-                let builder = lock.as_mut().unwrap();
+        std::thread::spawn(move || {
+            match std::fs::read_dir(path.clone()) {
+                Ok(dir) => {
+                    let mut lock =
+                        outcoming.match_builder.lock().unwrap();
+                    let builder = lock.as_mut().unwrap();
 
-                let path = PathBuf::from(path.to_string());
-                builder.add(path);
-                let mut matchers = builder.build_matchers();
+                    let path = PathBuf::from(path.to_string());
+                    builder.add(path);
+                    let mut matchers = builder.build_matchers();
 
-                // Match children of the node with ignore patterns
-                let children: Vec<DirEntry> = dir.flatten().collect();
-                let mut result = Vec::new();
-                'outer: for entry in &children {
-                    let Ok(is_dir) = entry.file_type().map(|t| t.is_dir())
-                    else {
-                        continue;
-                    };
-                    for matcher in &mut matchers {
-                        if matcher.matched(entry.path(), is_dir).is_ignore() {
-                            break 'outer;
+                    // Match children of the node with ignore patterns
+                    let children: Vec<DirEntry> =
+                        dir.flatten().collect();
+                    let mut result = Vec::new();
+                    'outer: for entry in &children {
+                        let Ok(is_dir) =
+                            entry.file_type().map(|t| t.is_dir())
+                        else {
+                            continue;
+                        };
+                        for matcher in &mut matchers {
+                            if matcher
+                                .matched(entry.path(), is_dir)
+                                .is_ignore()
+                            {
+                                break 'outer;
+                            }
                         }
+
+                        let node = TreeNode {
+                            depth: parent_depth + 1,
+                            expanded: false,
+                            is_file: !is_dir,
+                            filename: entry
+                                .file_name()
+                                .to_string_lossy()
+                                .to_shared_string(),
+                            path: entry
+                                .path()
+                                .to_string_lossy()
+                                .to_shared_string(),
+                        };
+                        result.push(node);
                     }
+                    // Append the nodes to the tree
+                    nodes.splice((id + 1)..(id + 1), result);
 
-                    let node = TreeNode {
-                        depth: parent_depth + 1,
-                        expanded: false,
-                        is_file: !is_dir,
-                        filename: entry
-                            .file_name()
-                            .to_string_lossy()
-                            .to_shared_string(),
-                        path: entry.path().to_string_lossy().to_shared_string(),
-                    };
-                    result.push(node);
+                    let _ = weak.upgrade_in_event_loop(move |w| {
+                        let bridge = w
+                            .global::<OutcomingTransferModalBridge>();
+                        let model = VecModel::from(nodes);
+                        bridge
+                            .set_nodes(ModelRc::from(Rc::new(model)));
+                    });
                 }
-                // Append the nodes to the tree
-                nodes.splice((id + 1)..(id + 1), result);
-
-                let _ = weak.upgrade_in_event_loop(move |w| {
-                    let bridge = w.global::<OutcomingTransferModalBridge>();
-                    let model = VecModel::from(nodes);
-                    bridge.set_nodes(ModelRc::from(Rc::new(model)));
-                });
-            }
-            Err(e) => {
-                show_error(&weak, "Failed to read directory", e.to_string());
+                Err(e) => {
+                    show_error(
+                        &weak,
+                        "Failed to read directory",
+                        e.to_string(),
+                    );
+                }
             }
         });
     });
@@ -912,7 +988,9 @@ pub fn handle_username_change(w: &NectanWindow, s: Arc<NectanState>) {
 
         match Username::new(username) {
             Ok(u) => {
-                if let Err(e) = s.storage.update(|s| s.username = Some(u)) {
+                if let Err(e) =
+                    s.storage.update(|s| s.username = Some(u))
+                {
                     show_error(&weak, "Error", e.to_string());
                 }
             }
@@ -935,10 +1013,16 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
     let st = &s.storage;
 
     b.set_self_accept_nearby(st.read(|s| s.autoaccept_from_nearby));
-    b.set_self_accept_favourites(st.read(|s| s.autoaccept_from_nearby));
+    b.set_self_accept_favourites(
+        st.read(|s| s.autoaccept_from_nearby),
+    );
     b.set_devices_notifications(st.read(|s| s.device_notifications));
-    b.set_transfers_notifications(st.read(|s| s.device_notifications));
-    b.set_connection_notifications(st.read(|s| s.connection_notifications));
+    b.set_transfers_notifications(
+        st.read(|s| s.device_notifications),
+    );
+    b.set_connection_notifications(
+        st.read(|s| s.connection_notifications),
+    );
 
     let state = s.clone();
     let weak = w.as_weak();
@@ -946,38 +1030,44 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
         let weak = weak.clone();
         let s = state.clone();
         tokio::spawn(async move {
-            let Some(h) = rfd::AsyncFileDialog::new().pick_folder().await
+            let Some(h) =
+                rfd::AsyncFileDialog::new().pick_folder().await
             else {
                 return;
             };
             let path = h.path();
             // Ensure if has writing permission
-            if let Err(e) =
-                std::fs::write(path.join("test.txt"), b"Permission check")
-            {
+            if let Err(e) = std::fs::write(
+                path.join("test.txt"),
+                b"Permission check",
+            ) {
                 show_error(&weak, "Error", e.to_string());
                 return;
             }
             let _ = std::fs::remove_file(path);
-            let _ = s.storage.update(|s| s.default_destination = path.into());
+            let _ = s
+                .storage
+                .update(|s| s.default_destination = path.into());
             let path = path.to_string_lossy().to_shared_string();
             let _ = weak.upgrade_in_event_loop(move |w| {
-                w.global::<SettingsBridge>().set_default_download_dir(path);
+                w.global::<SettingsBridge>()
+                    .set_default_download_dir(path);
             });
         });
     });
 
     let state = s.clone();
     b.on_toggle_accept_nearby(move || {
-        let _ = state
-            .storage
-            .update(|s| s.autoaccept_from_nearby = !s.autoaccept_from_nearby);
+        let _ = state.storage.update(|s| {
+            s.autoaccept_from_nearby = !s.autoaccept_from_nearby
+        });
     });
 
     let state = s.clone();
     b.on_toggle_accept_favourites(move || {
         let _ = state.storage.update(|s| {
-            s.autoaccept_from_favourites = !s.autoaccept_from_favourites
+            s.autoaccept_from_favourites =
+                !s.autoaccept_from_favourites
         });
     });
 
@@ -993,7 +1083,9 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
         let _ = open::that("https://nectan.co/privacy");
     });
 
-    b.on_format_speed(move |speed| format_speed(map_speed(speed)).into());
+    b.on_format_speed(move |speed| {
+        format_speed(map_speed(speed)).into()
+    });
 
     let l = s.storage.speed_limits();
     if let Some(l) = l {
@@ -1018,7 +1110,8 @@ pub fn handle_settings(w: &NectanWindow, s: Arc<NectanState>) {
             info!("Disabled limits");
             None
         };
-        let _ = state.storage.update(|s| s.speed_limits = speed_limits);
+        let _ =
+            state.storage.update(|s| s.speed_limits = speed_limits);
         // TODO update transfers
     });
 

@@ -62,8 +62,6 @@ export component TransferTile inherits Rectangle {
     height: 81px;
 
     touch := TouchArea {
-        width: 100%;
-        height: 100%;
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
@@ -78,7 +76,6 @@ export component TransferTile inherits Rectangle {
             spacing: 8px;
             cross-axis-alignment: center;
             Image {
-                vertical-alignment: center;
                 source: @image-url("icons/download.svg");
                 width: 13px;
                 height: 13px;
@@ -175,7 +172,6 @@ component FileRow inherits Rectangle {
     HorizontalLayout {
         padding-left: row-padding-left;
         padding-right: row-padding-right;
-        alignment: stretch;
 
         Image {
             source: @image-url("icons/file.svg");
@@ -295,7 +291,6 @@ export component TransferDetails inherits Rectangle {
                 color: Theme.colors.primary-font;
                 font-weight: 700;
                 font-size: 20px;
-                vertical-alignment: top;
                 horizontal-alignment: right;
             }
         }
@@ -444,57 +439,49 @@ export component TransferDetails inherits Rectangle {
 }
 
 export component Transfers inherits Rectangle {
-
     background: Theme.colors.secondary-col;
     border-radius: 12px;
     border-corner-shape: superellipse(WindowBridge.edges-shape);
+    clip: true;
 
-    forward-focus: fs;
-
-    init => { fs.focus() };
-
-    fs := FocusScope {
-        key-pressed(event) => {
-            EventResult.reject
+    Timer {
+        interval: 41ms;
+        triggered() => {
+            TransfersBridge.refresh-transfers();
         }
+    }
 
-        Timer {
-            interval: 41ms;
-            running: true;
-            triggered() => {
-                TransfersBridge.refresh-transfers();
-            }
-        }
-
-        if TransfersBridge.selected-transfer < 0: VerticalLayout {
-            padding: 8px;
-            ListView {
-                vertical-scrollbar-policy: as-needed;
-                horizontal-scrollbar-policy: always-off;
-                for item[i] in TransfersBridge.transfers: VerticalLayout {
-                    TransferTile {
-                        self: item;
-                        clicked => {
-                            TransfersBridge.selected-transfer = i;
-                            TransfersBridge.selected-lazyfiles-source(item.id);
-                        }
+    if TransfersBridge.selected-transfer < 0: VerticalLayout {
+        padding: 8px;
+        ListView {
+            vertical-scrollbar-policy: as-needed;
+            horizontal-scrollbar-policy: always-off;
+            for item[i] in TransfersBridge.transfers: VerticalLayout {
+                TransferTile {
+                    self: item;
+                    clicked => {
+                        TransfersBridge.selected-transfer = i;
+                        TransfersBridge.selected-lazyfiles-source(item.id);
                     }
+                }
 
-                    Rectangle {
-                        height: 10px;
-                    }
+                Rectangle {
+                    height: 10px;
                 }
             }
         }
+    }
 
-        if TransfersBridge.transfers.length == 0: Text {
+    if TransfersBridge.transfers.length == 0: Rectangle {
+
+        Text {
             text: @tr("No ongoing transfers.");
             color: Theme.colors.primary-font;
         }
+    }
 
-        if TransfersBridge.selected-transfer >= 0: TransferDetails {
-            transfer: TransfersBridge.transfers[TransfersBridge.selected-transfer];
-            back => { TransfersBridge.selected-transfer = -1; }
-        }
+    if TransfersBridge.selected-transfer >= 0: TransferDetails {
+        transfer: TransfersBridge.transfers[TransfersBridge.selected-transfer];
+        back => { TransfersBridge.selected-transfer = -1; }
     }
 }

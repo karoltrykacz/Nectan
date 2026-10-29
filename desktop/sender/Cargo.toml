@@ -31,6 +31,9 @@ slint = {
         "raw-window-handle-06",
     ],
 }
+uuid = { version = "1.29.0", features = ["v4"] }
+notify-rust = { version = "4.18.2", features = ["z-with-tokio"] }
+tracing-subscriber = "0.3.23"
 
 [build-dependencies]
 slint-build = {
