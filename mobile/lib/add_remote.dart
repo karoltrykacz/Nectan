@@ -8,6 +8,7 @@ import 'package:nectan_mobile/elements.dart';
 import 'package:nectan_mobile/connectivity.dart';
 import 'package:nectan_mobile/main.dart';
 import 'package:nectan_mobile/src/rust/api/simple.dart';
+import 'package:nectan_mobile/themes.dart';
 import 'package:qr_flutter/qr_flutter.dart' show QrImageView, QrVersions;
 
 class CodeTimerNotifier extends Notifier<int> {
@@ -252,9 +253,9 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
   Widget _buildModeToggle() {
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: context.colors.thirdCol,
-        borderRadius: BorderRadius.circular(14),
+        shape: sq(14),
       ),
       child: Row(
         children: [
@@ -286,9 +287,9 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
+          decoration: ShapeDecoration(
             color: selected ? context.colors.primaryFont : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            shape: sq(12),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -818,14 +819,14 @@ class QrScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ClipRRect(
+            ClipRSuperellipse(
               borderRadius: BorderRadius.circular(20),
               child: QrImageView(
                 data: ticket,
                 version: QrVersions.auto,
                 size: 240,
                 backgroundColor: Colors.white,
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
               ),
             ),
             const SizedBox(height: 36),
@@ -1021,9 +1022,7 @@ class _ConnectionRequestDialogState extends State<ConnectionRequestDialog> {
                             backgroundColor: const Color(0xffDC3545),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                            shape: sq(12),
                           ),
                           child: const Text(
                             'Reject',
@@ -1048,9 +1047,7 @@ class _ConnectionRequestDialogState extends State<ConnectionRequestDialog> {
                             backgroundColor: context.colors.primaryFont,
                             foregroundColor: context.colors.primaryCol,
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                            shape: sq(12),
                           ),
                           child: const Text(
                             'Accept',

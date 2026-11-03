@@ -8,24 +8,22 @@ use std::{
 
 use clipboard_rs::ClipboardContext;
 use nectan_core::{transfers::Transfers, walker::Walker};
-use slint::{Global, ModelRc, Timer};
+use slint::{Global, Image, ModelExt, ModelRc, Timer, VecModel};
 
 use crate::{
-    DevicesBridge, NectanSender,
+    App, DeviceFolder, DeviceStatus, DevicesBridge, SenderWindow,
     devices::DevicesModel,
     transfers::{OutcomingTransfer, TransfersModel},
 };
 
 pub struct SenderState {
-    paths: RefCell<HashSet<PathBuf>>,
     devices_model: Rc<DevicesModel>,
-    transfers_model: OnceCell<Rc<TransfersModel>>,
+    pub transfers_model: OnceCell<Rc<TransfersModel>>,
     outcoming_transfer: Arc<OutcomingTransfer>,
     clipboard: ClipboardContext,
     save_destination: RefCell<PathBuf>,
     code_timer: RefCell<Timer>,
-    pub dnd_init_timer: RefCell<Timer>,
-    pub dnd_pump_timer: RefCell<Timer>,
+    pub dnd_timer: RefCell<Timer>,
 }
 
 impl SenderState {
@@ -58,13 +56,13 @@ impl SenderState {
         self.outcoming_transfer.clone()
     }
 
-    pub fn insert_path(&self, p: PathBuf) {
-        self.paths.borrow_mut().insert(p);
-    }
-
-    pub fn take_paths(&self) -> Vec<PathBuf> {
-        self.paths.replace(HashSet::new()).drain().collect()
-    }
+    // pub fn insert_path(&self, p: PathBuf) {
+    //     self.paths.borrow_mut().insert(p);
+    // }
+    //
+    // pub fn take_paths(&self) -> Vec<PathBuf> {
+    //     self.paths.replace(HashSet::new()).drain().collect()
+    // }
 
     pub fn clipboard(&self) -> &ClipboardContext {
         &self.clipboard
@@ -83,8 +81,55 @@ pub fn ui_state() -> Rc<SenderState> {
     })
 }
 
-pub fn init_app_state(w: &NectanSender) {
+pub fn init_app_state(w: &App) {
     let devices_model = Rc::new(DevicesModel::new());
+
+    let folders = vec![
+        DeviceFolder {
+            id: "favourite".into(),
+            title: "Favourite".into(),
+            icon: Image::load_from_svg_data(include_bytes!(
+                "../../shared/icons/star_filled.svg"
+            ))
+            .unwrap(),
+            devices: ModelRc::new(
+                devices_model.clone().filter(|d| d.favourite),
+            ),
+        },
+        DeviceFolder {
+            id: "nearby".into(),
+            title: "Nearby".into(),
+            icon: Image::default(),
+            devices: ModelRc::new(
+                devices_model
+                    .clone()
+                    .filter(|d| d.status == DeviceStatus::Nearby),
+            ),
+        },
+        DeviceFolder {
+            id: "Online".into(),
+            title: "Online".into(),
+            icon: Image::default(),
+            devices: ModelRc::new(
+                devices_model
+                    .clone()
+                    .filter(|d| d.status == DeviceStatus::Online),
+            ),
+        },
+        DeviceFolder {
+            id: "offline".into(),
+            title: "Offline".into(),
+            icon: Image::default(),
+            devices: ModelRc::new(
+                devices_model
+                    .clone()
+                    .filter(|d| d.status == DeviceStatus::Offline),
+            ),
+        },
+    ];
+
+    SenderWindow::get(w)
+        .set_folders(ModelRc::new(VecModel::from(folders)));
 
     DevicesBridge::get(w)
         .set_devices(ModelRc::from(devices_model.clone()));
@@ -95,28 +140,16 @@ pub fn init_app_state(w: &NectanSender) {
         .expect("Failed to select download path.");
 
     let ui = Rc::new(SenderState {
-        paths: RefCell::new(HashSet::new()),
         devices_model,
         transfers_model: OnceCell::new(),
         outcoming_transfer: Arc::new(OutcomingTransfer::default()),
         clipboard: ClipboardContext::new().expect("Clipboard error."),
         save_destination: RefCell::new(save_destination),
         code_timer: RefCell::new(Timer::default()),
-        dnd_init_timer: RefCell::new(Timer::default()),
-        dnd_pump_timer: RefCell::new(Timer::default()),
+        dnd_timer: RefCell::new(Timer::default()),
     });
 
     UI.with(|c| {
         c.set(ui).ok().expect("UiState already initialized.")
     });
 }
-// pub fn init_transfers(w: &NectanSender, transfers: Arc<Transfers>) {
-//     let model = Rc::new(TransfersModel::new(transfers));
-//     TransfersBridge::get(w)
-//         .set_transfers(ModelRc::from(model.clone()));
-//     ui_state()
-//         .transfers_model
-//         .set(model)
-//         .ok()
-//         .expect("TransfersModel already initialized.");
-// }

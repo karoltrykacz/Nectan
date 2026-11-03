@@ -1,7 +1,3 @@
-//! text/uri-list helpers shared by the Wayland and X11 backends.
-//!
-//! This is fucking shit and temp only!!!
-
 pub fn file_uri(path: &std::path::Path) -> String {
     let mut out = String::from("file://");
     for b in path.to_string_lossy().bytes() {
@@ -32,7 +28,9 @@ pub fn decode_uri_list(s: &str) -> Vec<String> {
             let mut i = 0;
             while i < b.len() {
                 if b[i] == b'%' && i + 2 < b.len() {
-                    if let Ok(v) = u8::from_str_radix(&l[i + 1..i + 3], 16) {
+                    if let Ok(v) =
+                        u8::from_str_radix(&l[i + 1..i + 3], 16)
+                    {
                         out.push(v);
                         i += 3;
                         continue;

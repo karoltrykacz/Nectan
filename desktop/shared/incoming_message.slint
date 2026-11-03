@@ -1,0 +1,176 @@
+import {
+    GeneralModal,
+    Spinner,
+    IconButton,
+    SvgIcon,
+    ToolTip,
+    PrimaryButton,
+} from "elements.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { VerticalBox, TextEdit, ListView } from "std-widgets.slint";
+import { ConnectionOfferBridge } from "add_remote_modal.slint";
+
+export global MessageBridge {
+    in-out property <bool> open: true;
+    in-out property <string> text-size: "123 KB";
+    in-out property <[string]> lines: ["Document.txt"];
+
+    in-out property <length> font-size: 14px;
+
+    public function smaller() {
+        font-size = (font-size - 1px).max(8px);
+        debug(font-size);
+    }
+    public function bigger() {
+        font-size += 1px;
+    }
+}
+
+export component TextPreview inherits GeneralModal {
+
+    in property <bool> printable;
+
+    on-close => { MessageBridge.open = false; }
+
+    Rectangle {
+        width: min(820px, parent.width - 40px);
+        height: min(560px,parent.height - 40px);
+        clip: true;
+
+        background: Theme.colors.primary-col;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.fourth-col.with-alpha(0.5);
+        TouchArea { }
+
+        fs := FocusScope {
+
+            KeyBinding {
+                keys: @keys(LeftArrow);
+                activated => { MessageBridge.smaller(); }
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 14px;
+
+                HorizontalLayout {
+                    height: 20px;
+                    z: 1;
+
+                    VerticalLayout {
+
+                        Text {
+                            text: "TODO";
+                            color: Theme.colors.primary-font;
+                            font-size: 16px;
+                            font-weight: 500;
+                            overflow: elide;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: "TODO";
+                            font-size: 13px;
+                            color: Theme.colors.third-font;
+                            font-weight: 400;
+                        }
+                    }
+
+                    Rectangle { }
+
+                    Rectangle {
+                        width: 12px;
+                    }
+
+                    if printable: IconButton {
+                        height: 28px;
+                        width: 28px;
+                        border-radius: 8px;
+                        background: Theme.colors.third-col;
+                        private property <bool> btn-hovered;
+
+                        SvgIcon {
+                            size: 15px;
+                            fg: Theme.colors.primary-font;
+                            source: @image-url("icons/printer.svg");
+                            ToolTip {
+                                y: 32px;
+                                text: @tr("Print");
+                                opacity: btn-hovered ? 1.0 : 0.0;
+                            }
+                        }
+
+                        clicked => {}
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                    }
+
+                    smaller-btn := IconButton {
+                        height: 28px;
+                        width: 28px;
+                        border-radius: 8px;
+                        background: Theme.colors.third-col;
+
+                        SvgIcon {
+                            size: 16px;
+                            fg: Theme.colors.primary-font;
+                            source: Icons.zoom-out;
+
+                            ToolTip {
+                                y: 32px;
+                                text: @tr("Smaller");
+                                opacity: smaller-btn.hovered ? 1.0 : 0.0;
+                            }
+                        }
+
+                        clicked => { MessageBridge.smaller(); }
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                    }
+
+                    bigger-btn := IconButton {
+                        height: 28px;
+                        width: 28px;
+                        border-radius: 8px;
+                        background: Theme.colors.third-col;
+
+                        SvgIcon {
+                            size: 16px;
+                            fg: Theme.colors.primary-font;
+                            source: Icons.zoom-in;
+
+                            ToolTip {
+                                y: 32px;
+                                text: @tr("Bigger");
+                                opacity: bigger-btn.hovered ? 1.0 : 0.0;
+                            }
+                        }
+
+                        clicked => { MessageBridge.bigger(); }
+                    }
+                }
+
+                Rectangle {
+                    height: 24px;
+                }
+
+                Rectangle {
+                    background: Theme.colors.secondary-col;
+                    z: 0;
+                    border-radius: 8px;
+                    HorizontalLayout {
+                        padding-top: 4px;
+                        padding: 8px;
+			// TODO text
+                    }
+                }
+            }
+        }
+    }
+}

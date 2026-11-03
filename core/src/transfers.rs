@@ -5,7 +5,7 @@ use crate::{
     stream::StreamPair,
     transfers::TransferDirection::Outcoming,
 };
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use ed25519_dalek::VerifyingKey;
 use fixedbitset::FixedBitSet;
 use iroh::endpoint::Connection;
@@ -147,7 +147,7 @@ pub async fn send_contents(
     };
 
     // Get root path (will be needed later)
-    // Write compressed offer
+    // Write offer
     let offer = Box::new(offer);
     let msg = NetMessage::TransferOfferMsg {
         offer: offer.clone(),
@@ -227,7 +227,7 @@ impl TransferStatus {
 pub struct PendingTransfer {
     pub id: Uuid,
     pub target_name: Username,
-    target: DeviceId,
+    pub target: DeviceId,
     pub direction: TransferDirection,
     items_queue: Mutex<FixedBitSet>,
     pub name: String,
@@ -245,7 +245,7 @@ pub struct PendingTransfer {
     pub root_path: PathBuf,
     cancel_token: CancellationToken,
     sem: Arc<Semaphore>,
-    status: Mutex<TransferStatus>, // Can be coerced to simple atomic bool
+    status: Mutex<TransferStatus>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -326,7 +326,7 @@ impl PendingTransfer {
             TransferDirection::Outcoming => "out",
             TransferDirection::Incoming => "in",
         };
-        let db_dir = db_dir.join(format!("Nectan/t-{id}-{}", dir));
+        let db_dir = db_dir.join(format!("Nectan/t-{id}-{dir}"));
         let db = redb::Database::create(db_dir)
             .expect("Failed to create database");
 
@@ -1074,7 +1074,7 @@ impl Transfers {
     }
 
     /// Called when remote device cancelled the transfer
-    pub fn transfer_cancelled(&self, id: Uuid) -> Result<()> {
+    pub async fn transfer_cancelled(&self, id: Uuid) -> Result<()> {
         let Some(t) = self.get(id) else {
             error!("Transfer not found");
             bail!("Transfer not found")
@@ -1083,27 +1083,19 @@ impl Transfers {
         t.cancel();
         t.set_status(TransferStatus::CancelledByRemote);
 
-        let _ =
-            self.event_tx.blocking_send(AppEvent::TransfersUpdated);
+        self.event_tx.send(AppEvent::TransfersUpdated).await;
 
         Ok(())
     }
 
-    pub fn delete_transfer(&self, id: Uuid) -> Result<()> {
-        let mut lock = self.pending_transfers().write().unwrap();
-        let Some(t) = lock.remove(&id) else {
-            bail!("Transfer not found")
+    pub async fn delete_transfer(&self, id: Uuid) -> Result<()> {
+        let t = {
+            let mut lock = self.pending_transfers().write().unwrap();
+            lock.remove(&id).context("Transfer not found")?
         };
 
         t.cancel();
         info!("Deleted transfer.");
-
-        // Send info to remote device
-        // Error while notifying remote device is harmless because
-        // transfers are not supposed to survive hard connection change
-        // (connection changes like change wifi to mobile will still work)
-        // Outgoing Transfer will automatically kill itself if the connection failed
-        // Vaults should be used for robust and recoverable transfers
 
         if let Some(conn) = self.devices.get_connection(t.target) {
             tokio::spawn(async move {
@@ -1115,8 +1107,7 @@ impl Transfers {
             });
         };
 
-        let _ =
-            self.event_tx.blocking_send(AppEvent::TransfersUpdated);
+        self.event_tx.send(AppEvent::TransfersUpdated).await?;
 
         Ok(())
     }

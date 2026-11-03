@@ -1,0 +1,5 @@
+export enum CurrentWindow { transfers, explorer }
+
+export global AppBridge {
+    in-out property <CurrentWindow> current-window;
+}

@@ -1,15 +1,4 @@
-const btn = document.querySelector("#theme-toggle");
 const html = document.documentElement;
-
-const saved = localStorage.getItem("theme");
-const osDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-html.dataset.theme = saved || (osDark ? "dark" : "light");
-
-btn.addEventListener("click", () => {
-  const next = html.dataset.theme === "dark" ? "light" : "dark";
-  html.dataset.theme = next;
-  localStorage.setItem("theme", next);
-});
 
 const LOCALES = [
   {
@@ -27,7 +16,6 @@ const LOCALES = [
     currencyCode: "PLN",
   },
 
-  // TODO translations
   // { code: "zh", name: "中文", englishName: "Chinese", currency: "¥", currencyCode: "CNY" },
   // { code: "ja", name: "日本語", englishName: "Japanese", currency: "¥", currencyCode: "JPY" },
   // { code: "hi", name: "हिन्दी", englishName: "Hindi", currency: "₹", currencyCode: "INR" },

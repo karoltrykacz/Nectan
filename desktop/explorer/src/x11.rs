@@ -1,4 +1,4 @@
-use crate::NectanWindow;
+use crate::App;
 use crate::drag_and_drop_handler::{MIME, UiEvent};
 use crate::uri::file_uri;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -40,24 +40,27 @@ pub struct X11Drag {
 }
 
 impl X11Drag {
-    pub fn new(app: &NectanWindow) -> Result<Self, String> {
+    pub fn new(app: &App) -> Result<Self, String> {
         let h = app.window().window_handle();
-        let window_id =
-            match h.window_handle().map_err(|e| e.to_string())?.as_raw() {
-                RawWindowHandle::Xlib(x) => x.window as u32,
-                RawWindowHandle::Xcb(x) => x.window.get(),
-                _ => panic!("Wtf"),
-            };
+        let window_id = match h
+            .window_handle()
+            .map_err(|e| e.to_string())?
+            .as_raw()
+        {
+            RawWindowHandle::Xlib(x) => x.window as u32,
+            RawWindowHandle::Xcb(x) => x.window.get(),
+            _ => panic!("Wtf"),
+        };
 
-        let (conn, screen_num) =
-            RustConnection::connect(None).map_err(|e| e.to_string())?;
+        let (conn, screen_num) = RustConnection::connect(None)
+            .map_err(|e| e.to_string())?;
         let root = conn.setup().roots[screen_num].root;
         let win = conn.generate_id().map_err(|e| e.to_string())?;
         conn.create_window(
             COPY_DEPTH_FROM_PARENT,
             win,
             root,
-            0, // sussy ??? TODO CHECK THIS SHIT
+            0,
             0,
             1,
             1,
@@ -118,7 +121,8 @@ impl X11Drag {
             .ok()
             .and_then(|c| c.reply().ok())
             .is_some_and(|q| {
-                u16::from(q.mask) & u16::from(KeyButMask::BUTTON1) != 0
+                u16::from(q.mask) & u16::from(KeyButMask::BUTTON1)
+                    != 0
             })
     }
 
@@ -131,13 +135,25 @@ impl X11Drag {
 
     fn send(&self, target: Window, ty: u32, data: [u32; 5]) {
         let ev = ClientMessageEvent::new(32, target, ty, data);
-        let _ = self.conn.send_event(false, target, EventMask::NO_EVENT, ev);
+        let _ = self.conn.send_event(
+            false,
+            target,
+            EventMask::NO_EVENT,
+            ev,
+        );
     }
 
     fn aware_version(&self, w: Window) -> Option<u32> {
         let r = self
             .conn
-            .get_property(false, w, self.atoms.XdndAware, AtomEnum::ATOM, 0, 1)
+            .get_property(
+                false,
+                w,
+                self.atoms.XdndAware,
+                AtomEnum::ATOM,
+                0,
+                1,
+            )
             .ok()?
             .reply()
             .ok()?;
@@ -149,7 +165,8 @@ impl X11Drag {
     fn find_target(&self) -> Option<(Window, u32)> {
         let mut win = self.root;
         for _ in 0..16 {
-            let q = self.conn.query_pointer(win).ok()?.reply().ok()?;
+            let q =
+                self.conn.query_pointer(win).ok()?.reply().ok()?;
             if q.child == 0 {
                 return None;
             }
@@ -187,7 +204,10 @@ impl X11Drag {
                             e.requestor,
                             prop,
                             AtomEnum::ATOM,
-                            &[self.atoms.TEXT_URI_LIST, self.atoms.TARGETS],
+                            &[
+                                self.atoms.TEXT_URI_LIST,
+                                self.atoms.TARGETS,
+                            ],
                         );
                     } else {
                         ok = false;
@@ -207,9 +227,13 @@ impl X11Drag {
                         EventMask::NO_EVENT,
                         notify,
                     );
-                    eprintln!("x11: served selection request (ok={ok})");
+                    eprintln!(
+                        "x11: served selection request (ok={ok})"
+                    );
                 }
-                Event::ClientMessage(m) if m.type_ == self.atoms.XdndStatus => {
+                Event::ClientMessage(m)
+                    if m.type_ == self.atoms.XdndStatus =>
+                {
                     let d = m.data.as_data32();
                     if let Some(s) = self.session.as_mut() {
                         if s.target == Some(d[0]) {
@@ -243,18 +267,25 @@ impl X11Drag {
             return;
         }
 
-        let Ok(Ok(q)) = self.conn.query_pointer(self.root).map(|c| c.reply())
+        let Ok(Ok(q)) =
+            self.conn.query_pointer(self.root).map(|c| c.reply())
         else {
             self.session = Some(s);
             return;
         };
-        let pressed = u16::from(q.mask) & u16::from(KeyButMask::BUTTON1) != 0;
-        let (target, ver) =
-            self.find_target().map_or((None, 0), |(w, v)| (Some(w), v));
+        let pressed =
+            u16::from(q.mask) & u16::from(KeyButMask::BUTTON1) != 0;
+        let (target, ver) = self
+            .find_target()
+            .map_or((None, 0), |(w, v)| (Some(w), v));
 
         if target != s.target {
             if let Some(old) = s.target {
-                self.send(old, self.atoms.XdndLeave, [self.win, 0, 0, 0, 0]);
+                self.send(
+                    old,
+                    self.atoms.XdndLeave,
+                    [self.win, 0, 0, 0, 0],
+                );
             }
             s.target = target;
             s.target_ver = ver;
@@ -309,7 +340,11 @@ impl X11Drag {
                     eprintln!("x11: drop sent");
                 }
                 Some(t) => {
-                    self.send(t, self.atoms.XdndLeave, [self.win, 0, 0, 0, 0]);
+                    self.send(
+                        t,
+                        self.atoms.XdndLeave,
+                        [self.win, 0, 0, 0, 0],
+                    );
                     eprintln!(
                         "x11: released over a target that did not accept"
                     );

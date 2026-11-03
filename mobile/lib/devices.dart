@@ -10,6 +10,7 @@ import 'package:nectan_mobile/main.dart';
 import 'package:nectan_mobile/media_picker.dart';
 import 'package:nectan_mobile/src/rust/api/simple.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:nectan_mobile/themes.dart';
 import 'package:nectan_mobile/transfers.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -319,17 +320,19 @@ class _FoundNearbyScreenState extends State<FoundNearbyScreen>
                       duration: const Duration(milliseconds: 100),
                       width: 20,
                       height: 20,
-                      decoration: BoxDecoration(
+                      decoration: ShapeDecoration(
                         color: _dontShowAgain
                             ? context.colors.primaryFont
                             : Colors.transparent,
-                        border: Border.all(
-                          color: _dontShowAgain
-                              ? context.colors.primaryCol
-                              : context.colors.classicBorderActive,
-                          width: 1,
+                        shape: sq(
+                          6,
+                          side: BorderSide(
+                            color: _dontShowAgain
+                                ? context.colors.primaryCol
+                                : context.colors.classicBorderActive,
+                            width: 1,
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: _dontShowAgain
                           ? Icon(
@@ -380,10 +383,45 @@ class _DevicesListContentState extends ConsumerState<_DevicesListContent> {
     super.dispose();
   }
 
+  Widget _deviceSliver(List<DeviceDto> list) => SliverPadding(
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    sliver: SliverList.separated(
+      itemCount: list.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (context, i) => _DeviceTile(device: list[i]),
+    ),
+  );
+
+  Widget _offlineHeader(BuildContext context) => SliverPadding(
+    padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+    sliver: SliverToBoxAdapter(
+      child: Row(
+        children: [
+          Text(
+            'Offline',
+            style: TextStyle(
+              fontFamily: 'Rubik',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: context.colors.thirdFont,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final devices = ref.watch(devicePoolProvider);
     final isOnline = globalConnectivity.getLastStatus();
+
+    final reachable = devices
+        .where((d) => d.status != DeviceStatus.offline)
+        .toList();
+    final offline = devices
+        .where((d) => d.status == DeviceStatus.offline)
+        .toList();
 
     return Scaffold(
       backgroundColor: context.colors.primaryCol,
@@ -442,11 +480,7 @@ class _DevicesListContentState extends ConsumerState<_DevicesListContent> {
                             backgroundColor: WidgetStateProperty.all(
                               context.colors.primaryFont,
                             ),
-                            shape: WidgetStateProperty.all(
-                              RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
+                            shape: WidgetStateProperty.all(sq(12)),
                           ),
                         ),
                       ],
@@ -492,20 +526,10 @@ class _DevicesListContentState extends ConsumerState<_DevicesListContent> {
                           },
                           child: CustomScrollView(
                             slivers: [
-                              SliverPadding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
-                                sliver: SliverList.separated(
-                                  itemCount: devices.length,
-                                  separatorBuilder: (_, _) =>
-                                      const SizedBox(height: 8),
-                                  itemBuilder: (context, i) {
-                                    final device = devices[i];
-                                    return _DeviceTile(device: device);
-                                  },
-                                ),
-                              ),
+                              _deviceSliver(reachable),
+                              if (reachable.isNotEmpty && offline.isNotEmpty)
+                                _offlineHeader(context),
+                              _deviceSliver(offline),
                             ],
                           ),
                         ),
@@ -527,7 +551,9 @@ class _OfflineSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: context.colors.primaryCol,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      shape: const RoundedSuperellipseBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+      ),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -602,10 +628,9 @@ class _ExpandableTipState extends State<ExpandableTip> {
           : null,
       child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
+        decoration: ShapeDecoration(
           color: context.colors.secondaryCol,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: context.colors.classicBorder),
+          shape: sq(12, side: BorderSide(color: context.colors.classicBorder)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -694,7 +719,7 @@ Widget buildTip(String title, String tip, [bool expandable = false]) {
 
 class _DeviceTile extends ConsumerWidget {
   final DeviceDto device;
-  // final VoidCallback? onTap;
+
   const _DeviceTile({required this.device});
 
   String get _statusLabel => switch (device.status) {
@@ -703,14 +728,9 @@ class _DeviceTile extends ConsumerWidget {
     DeviceStatus.offline => 'Offline',
   };
 
-  Color get _statusColor => switch (device.status) {
-    DeviceStatus.online => const Color(0xFF23a3ec),
-    DeviceStatus.localNetwork => const Color(0xFF23a3ec),
-    DeviceStatus.offline => const Color(0xFF9E9E9E),
-  };
-
   void _showSendOptions(BuildContext context, WidgetRef ref) {
     debugPrint("Clicked on ${device.username}");
+
     if (device.status == DeviceStatus.offline) {
       showModalBottomSheet(
         context: context,
@@ -730,13 +750,16 @@ class _DeviceTile extends ConsumerWidget {
     }
   }
 
-  void _openSendSheet(BuildContext context, WidgetRef ref) async {
+  Future<void> _openSendSheet(BuildContext context, WidgetRef ref) async {
     bool granted = true;
 
     if (!Platform.isLinux) {
       final status = await Permission.manageExternalStorage.status;
+
       if (!context.mounted) return;
+
       granted = status == PermissionStatus.granted;
+
       if (!granted) {
         granted = await showStoragePermissionDialog(context, status);
       }
@@ -755,58 +778,78 @@ class _DeviceTile extends ConsumerWidget {
     }
   }
 
+  bool get _isReachable =>
+      device.status == DeviceStatus.online ||
+      device.status == DeviceStatus.localNetwork;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // final emoji = ref.watch(
+    //   deviceEmojisProvider.select((emojis) => emojis[device.id] ?? '💻'),
+    // );
+
     return SizedBox(
-      height: 72,
+      height: 64,
       child: Material(
-        borderRadius: BorderRadius.circular(12),
-        color: context.colors.secondaryCol,
+        shape: sq(
+          20,
+          side: BorderSide(
+            color: context.colors.thirdFont.withAlpha(_isReachable ? 64 : 0),
+            width: 1,
+          ),
+        ),
+        color: context.colors.thirdCol,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
+          customBorder: sq(20),
           onLongPress: () => _showDeviceOptions(context, device),
-          onTap: () {
-            _showSendOptions(context, ref);
-          },
+          onTap: () => _showSendOptions(context, ref),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding: const EdgeInsets.only(left: 18, right: 20),
             child: Row(
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        device.username,
-                        style: TextStyle(
-                          color: context.colors.primaryFont,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          fontFamily: "Rubik",
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Text(
-                            _statusLabel,
-                            style: TextStyle(
-                              color: _statusColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: "Rubik",
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              device.username,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: context.colors.primaryFont,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                fontFamily: "Rubik",
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 3),
+                            Text(
+                              _statusLabel,
+                              style: TextStyle(
+                                color: context.colors.thirdFont,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: "Rubik",
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right,
-                  color: context.colors.thirdFont,
-                  size: 20,
-                ),
+
+                if (_isReachable == true)
+                  Icon(
+                    Icons.chevron_right,
+                    color: context.colors.thirdFont,
+                    size: 20,
+                  ),
               ],
             ),
           ),
@@ -815,6 +858,184 @@ class _DeviceTile extends ConsumerWidget {
     );
   }
 }
+
+// class _DeviceTile extends ConsumerWidget {
+//   final DeviceDto device;
+//   // final VoidCallback? onTap;
+//   const _DeviceTile({required this.device});
+//
+//   String get _statusLabel => switch (device.status) {
+//     DeviceStatus.online => 'Online',
+//     DeviceStatus.localNetwork => 'Nearby',
+//     DeviceStatus.offline => 'Offline',
+//   };
+//
+//   Color get _statusColor => switch (device.status) {
+//     DeviceStatus.online => const Color(0xFF23a3ec),
+//     DeviceStatus.localNetwork => const Color(0xFF23a3ec),
+//     DeviceStatus.offline => const Color(0xFF9E9E9E),
+//   };
+//
+//   void _showSendOptions(BuildContext context, WidgetRef ref) {
+//     debugPrint("Clicked on ${device.username}");
+//     if (device.status == DeviceStatus.offline) {
+//       showModalBottomSheet(
+//         context: context,
+//         backgroundColor: Colors.transparent,
+//         useRootNavigator: true,
+//         sheetAnimationStyle: AnimationStyle(
+//           duration: const Duration(milliseconds: 150),
+//         ),
+//         builder: (_) => _OfflineSheet(device: device),
+//       );
+//       return;
+//     }
+//
+//     if (device.status == DeviceStatus.online ||
+//         device.status == DeviceStatus.localNetwork) {
+//       _openSendSheet(context, ref);
+//     }
+//   }
+//
+//   void _openSendSheet(BuildContext context, WidgetRef ref) async {
+//     bool granted = true;
+//
+//     if (!Platform.isLinux) {
+//       final status = await Permission.manageExternalStorage.status;
+//       if (!context.mounted) return;
+//       granted = status == PermissionStatus.granted;
+//       if (!granted) {
+//         granted = await showStoragePermissionDialog(context, status);
+//       }
+//     }
+//
+//     if (granted && context.mounted) {
+//       showModalBottomSheet(
+//         context: context,
+//         backgroundColor: Colors.transparent,
+//         useRootNavigator: true,
+//         sheetAnimationStyle: AnimationStyle(
+//           duration: const Duration(milliseconds: 150),
+//         ),
+//         builder: (_) => SendOptionsSheet(device: device, ref: ref),
+//       );
+//     }
+//   }
+//
+//   void _editEmoji(BuildContext context, WidgetRef ref) {
+//     final emojis = ref.read(deviceEmojisProvider.notifier);
+//     final currentEmoji = emojis.emojiFor(device.id);
+//
+//     DeviceEmojiPicker.show(
+//       context,
+//       selectedEmoji: currentEmoji,
+//       onSelected: (emoji) {
+//         emojis.setEmoji(device.id, emoji);
+//       },
+//       onReset: () {
+//         emojis.resetEmoji(device.id);
+//       },
+//     );
+//   }
+//
+//   @override
+//   Widget build(BuildContext context, WidgetRef ref) {
+//     return SizedBox(
+//       height: 64,
+//       child: Material(
+//         shape: sq(
+//           20,
+//           side: BorderSide(
+//             color: context.colors.thirdFont.withAlpha(32),
+//             width: 1.0,
+//           ),
+//         ),
+//         color: context.colors.thirdCol,
+//         clipBehavior: Clip.antiAlias,
+//         child: InkWell(
+//           customBorder: sq(20),
+//           onLongPress: () => _showDeviceOptions(context, device),
+//           onTap: () {
+//             _showSendOptions(context, ref);
+//           },
+//           child: Padding(
+//             padding: const EdgeInsets.symmetric(horizontal: 20),
+//             child: Row(
+//               children: [
+//                 Expanded(
+//                   child: Row(
+//                     children: [
+//                       GestureDetector(
+//                         behavior: HitTestBehavior.opaque,
+//                         onTap: () => _editEmoji(context, ref),
+//                         child: Padding(
+//                           padding: const EdgeInsets.only(right: 0),
+//                           child: Consumer(
+//                             builder: (context, ref, _) {
+//                               final emoji = ref.watch(
+//                                 deviceEmojisProvider.select(
+//                                   (emojis) => emojis[device.id] ?? '💻',
+//                                 ),
+//                               );
+//
+//                               return SizedBox(
+//                                 width: 24,
+//                                 height: 24,
+//                                 child: Center(
+//                                   child: Text(
+//                                     emoji,
+//                                     style: const TextStyle(fontSize: 20),
+//                                   ),
+//                                 ),
+//                               );
+//                             },
+//                           ),
+//                         ),
+//                       ),
+//
+//                       Expanded(
+//                         child: Column(
+//                           crossAxisAlignment: CrossAxisAlignment.start,
+//                           mainAxisAlignment: MainAxisAlignment.center,
+//                           children: [
+//                             Text(
+//                               device.username,
+//                               style: TextStyle(
+//                                 color: context.colors.primaryFont,
+//                                 fontWeight: FontWeight.w600,
+//                                 fontSize: 14,
+//                                 fontFamily: "Rubik",
+//                               ),
+//                             ),
+//                             const SizedBox(height: 3),
+//                             Text(
+//                               _statusLabel,
+//                               style: TextStyle(
+//                                 color: _statusColor,
+//                                 fontSize: 12,
+//                                 fontWeight: FontWeight.w600,
+//                                 fontFamily: "Rubik",
+//                               ),
+//                             ),
+//                           ],
+//                         ),
+//                       ),
+//                     ],
+//                   ),
+//                 ),
+//                 Icon(
+//                   Icons.chevron_right,
+//                   color: context.colors.thirdFont,
+//                   size: 20,
+//                 ),
+//               ],
+//             ),
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }
 
 void _showDeviceOptions(BuildContext context, DeviceDto device) {
   showModalBottomSheet(
@@ -833,7 +1054,9 @@ class _DeviceOptionsSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Material(
       color: context.colors.primaryCol,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      shape: const RoundedSuperellipseBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -845,9 +1068,9 @@ class _DeviceOptionsSheet extends ConsumerWidget {
                 width: 36,
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
+                decoration: ShapeDecoration(
                   color: context.colors.primaryFont,
-                  borderRadius: BorderRadius.circular(2),
+                  shape: sq(2),
                 ),
               ),
               Text(
@@ -904,7 +1127,6 @@ Future<void> requestStoragePermissions() async {
     return;
   }
 
-  // Just request! No shouldShowRvalueequestRationale check needed here
   final result = await permission.request();
 
   if (result.isGranted) {
@@ -1049,7 +1271,9 @@ class SendOptionsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: context.colors.primaryCol,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      shape: const RoundedSuperellipseBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+      ),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -1269,6 +1493,7 @@ class _Actions extends StatelessWidget {
     return switch (state) {
       null || SendState.scanning || SendState.sending => TextButton(
         onPressed: onClose,
+        style: TextButton.styleFrom(shape: sq(12)),
         child: const Text('Cancel'),
       ),
       SendState.accepted => PrimaryWideButton(
@@ -1280,6 +1505,7 @@ class _Actions extends StatelessWidget {
         children: [
           TextButton(
             onPressed: onClose,
+            style: TextButton.styleFrom(shape: sq(12)),
             child: Text(
               'Close',
               style: TextStyle(
@@ -1290,7 +1516,11 @@ class _Actions extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          FilledButton(onPressed: onRetry, child: const Text('Try again')),
+          FilledButton(
+            onPressed: onRetry,
+            style: FilledButton.styleFrom(shape: sq(12)),
+            child: const Text('Try again'),
+          ),
         ],
       ),
     };
@@ -1345,16 +1575,18 @@ class _ToggleRow extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
+        decoration: ShapeDecoration(
           color: selected
               ? context.colors.thirdCol
               : context.colors.secondaryCol,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected
-                ? context.colors.classicBorderActive
-                : Colors.transparent,
-            width: 1,
+          shape: sq(
+            12,
+            side: BorderSide(
+              color: selected
+                  ? context.colors.classicBorderActive
+                  : Colors.transparent,
+              width: 1,
+            ),
           ),
         ),
         child: Row(

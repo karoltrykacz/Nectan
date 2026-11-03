@@ -1,11 +1,13 @@
-import { Theme } from "theme.slint";
+import { Theme } from "../../shared/theme.slint";
 import {
     PrimaryButton,
     GeneralModal,
     SvgIcon,
     IconButton,
-} from "elements.slint";
-import { OutcomingTransferModalBridge } from "transfer_offer_modal.slint";
+} from "../../shared/elements.slint";
+import {
+    OutcomingTransferModalBridge,
+} from "../../shared/transfer_offer_modal.slint";
 
 export enum DeviceStatus {
     online,
@@ -98,8 +100,6 @@ export component DeviceRow inherits Rectangle {
     }
 
     area := TouchArea {
-        width: 100%;
-        height: 100%;
         clicked => { clicked(); }
         pointer-event(event) => {
 
@@ -211,7 +211,6 @@ export component DeviceScreen inherits Rectangle {
                     width: 142px;
                     text: @tr("Send folder");
                     image: @image-url("icons/folder-nofill.svg");
-                    animate-width: false;
                     clicked => {
                         OutcomingTransferModalBridge.select-folders();
                         OutcomingTransferModalBridge.sending-destination-id = device.id;
@@ -223,7 +222,6 @@ export component DeviceScreen inherits Rectangle {
                     width: 142px;
                     text: @tr("Send files");
                     image: @image-url("icons/file-nofill.svg");
-                    animate-width: false;
                     clicked => {
                         OutcomingTransferModalBridge.select-files();
                         OutcomingTransferModalBridge.sending-destination-id = device.id;
@@ -260,8 +258,6 @@ export component DeviceOptionsModal inherits Rectangle {
             border-color: Theme.colors.border-col;
 
             TouchArea {
-                width: 100%;
-                height: 100%;
                 clicked => {}
             }
 

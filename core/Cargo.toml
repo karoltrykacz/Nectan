@@ -29,5 +29,3 @@ redb = "4.3.0"
 n0-error = { version = "1.0.1", features = ["anyhow"] }
 ed25519-dalek = { version = "3.0.0", features = ["rand_core", "serde"] }
 
-[features]
-transfers = []

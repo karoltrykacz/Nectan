@@ -1,5 +1,5 @@
 use crate::state::ui_state;
-use crate::{HoverBridge, NectanWindow, wayland, x11};
+use crate::{App, HoverBridge, wayland, x11};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::TimerMode;
 use slint::winit_030::WinitWindowAccessor;
@@ -26,9 +26,13 @@ enum Dnd {
 }
 
 impl Dnd {
-    fn new(window: &NectanWindow) -> Result<Self, String> {
+    fn new(window: &App) -> Result<Self, String> {
         let handle = window.window().window_handle();
-        match handle.window_handle().map_err(|e| e.to_string())?.as_raw() {
+        match handle
+            .window_handle()
+            .map_err(|e| e.to_string())?
+            .as_raw()
+        {
             RawWindowHandle::Wayland(_) => {
                 println!("wayland");
                 Ok(Dnd::Wayland(wayland::Wl::new(window)?))
@@ -37,7 +41,9 @@ impl Dnd {
                 println!("x11");
                 Ok(Dnd::X11(x11::X11Drag::new(window)?))
             }
-            other => Err(format!("unsupported window system: {other:?}")),
+            other => {
+                Err(format!("unsupported window system: {other:?}"))
+            }
         }
     }
     fn pump(&mut self) {
@@ -66,7 +72,7 @@ impl Dnd {
     }
 }
 
-fn hook_winit_drops(w: &NectanWindow) {
+fn hook_winit_drops(w: &App) {
     let weak = w.as_weak();
     w.window().on_winit_window_event(move |_w, event| {
         use winit::event::WindowEvent as WE;
@@ -92,7 +98,7 @@ fn hook_winit_drops(w: &NectanWindow) {
         EventResult::Propagate
     });
 }
-pub fn handle_drag_drop(w: &NectanWindow) {
+pub fn handle_drag_drop(w: &App) {
     hook_winit_drops(&w);
 
     let dnd: Rc<RefCell<Option<Dnd>>> = Rc::new(RefCell::new(None));
@@ -145,7 +151,8 @@ pub fn handle_drag_drop(w: &NectanWindow) {
             let b = w.global::<HoverBridge>();
 
             // X11: winit gives no drag position, so read it from the X server while hovering.
-            if let (Some((px, py)), true) = (x11pos, b.get_hovering()) {
+            if let (Some((px, py)), true) = (x11pos, b.get_hovering())
+            {
                 println!("Hovering (x11) {} {}", px, py);
                 let sf = w.window().scale_factor();
                 b.set_hover_x(px / sf);
@@ -162,7 +169,9 @@ pub fn handle_drag_drop(w: &NectanWindow) {
                         b.set_hover_y(y as f32);
                     }
                     UiEvent::Received(text, x, y) => {
-                        eprintln!("dropped at ({x:.0}, {y:.0}): {text}");
+                        eprintln!(
+                            "dropped at ({x:.0}, {y:.0}): {text}"
+                        );
                         // TODO!
                         // app.invoke_accept(text.into(), x as f32, y as f32);
                     }

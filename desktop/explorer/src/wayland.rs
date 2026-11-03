@@ -1,7 +1,8 @@
-use crate::NectanWindow;
+use crate::App;
 use crate::drag_and_drop_handler::{MIME, UiEvent};
 use raw_window_handle::{
-    HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
+    HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
+    RawWindowHandle,
 };
 
 use slint::ComponentHandle;
@@ -11,14 +12,18 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use wayland_client::backend::{Backend, ObjectId};
-use wayland_client::globals::{GlobalListContents, registry_queue_init};
+use wayland_client::globals::{
+    GlobalListContents, registry_queue_init,
+};
 use wayland_client::protocol::wl_data_device::{self, WlDataDevice};
 use wayland_client::protocol::wl_data_device_manager::{
     DndAction, WlDataDeviceManager,
 };
 use wayland_client::protocol::wl_data_offer::{self, WlDataOffer};
 use wayland_client::protocol::wl_data_source::{self, WlDataSource};
-use wayland_client::protocol::wl_pointer::{self, ButtonState, WlPointer};
+use wayland_client::protocol::wl_pointer::{
+    self, ButtonState, WlPointer,
+};
 use wayland_client::protocol::wl_registry::WlRegistry;
 use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::protocol::wl_surface::WlSurface;
@@ -62,42 +67,60 @@ pub struct Wl {
 }
 
 impl Wl {
-    pub fn new(window: &NectanWindow) -> Result<Self, String> {
+    pub fn new(window: &App) -> Result<Self, String> {
         let slint_handle = window.window().window_handle();
 
-        let display_ptr = match HasDisplayHandle::display_handle(&slint_handle)
-            .map_err(|e| e.to_string())?
-            .as_raw()
-        {
-            RawDisplayHandle::Wayland(h) => h.display.as_ptr(),
-            _ => return Err("not running on Wayland (X11 session?)".into()),
+        let display_ptr =
+            match HasDisplayHandle::display_handle(&slint_handle)
+                .map_err(|e| e.to_string())?
+                .as_raw()
+            {
+                RawDisplayHandle::Wayland(h) => h.display.as_ptr(),
+                _ => {
+                    return Err(
+                        "not running on Wayland (X11 session?)"
+                            .into(),
+                    );
+                }
+            };
+        let backend = unsafe {
+            Backend::from_foreign_display(display_ptr.cast())
         };
-        let backend =
-            unsafe { Backend::from_foreign_display(display_ptr.cast()) };
         let conn = Connection::from_backend(backend);
 
-        let surface_ptr = match HasWindowHandle::window_handle(&slint_handle)
-            .map_err(|e| e.to_string())?
-            .as_raw()
-        {
-            RawWindowHandle::Wayland(h) => h.surface.as_ptr(),
-            _ => return Err("window is not a Wayland window".into()),
-        };
+        let surface_ptr =
+            match HasWindowHandle::window_handle(&slint_handle)
+                .map_err(|e| e.to_string())?
+                .as_raw()
+            {
+                RawWindowHandle::Wayland(h) => h.surface.as_ptr(),
+                _ => {
+                    return Err(
+                        "window is not a Wayland window".into()
+                    );
+                }
+            };
         let id = unsafe {
-            ObjectId::from_ptr(WlSurface::interface(), surface_ptr.cast())
+            ObjectId::from_ptr(
+                WlSurface::interface(),
+                surface_ptr.cast(),
+            )
         }
         .map_err(|e| e.to_string())?;
 
-        let window =
-            WlSurface::from_id(&conn, id).map_err(|e| e.to_string())?;
+        let window = WlSurface::from_id(&conn, id)
+            .map_err(|e| e.to_string())?;
 
         let (globals, mut queue) =
-            registry_queue_init::<State>(&conn).map_err(|e| e.to_string())?;
+            registry_queue_init::<State>(&conn)
+                .map_err(|e| e.to_string())?;
         let qh = queue.handle();
-        let seat: WlSeat =
-            globals.bind(&qh, 1..=7, ()).map_err(|e| e.to_string())?;
-        let manager: WlDataDeviceManager =
-            globals.bind(&qh, 1..=3, ()).map_err(|e| e.to_string())?;
+        let seat: WlSeat = globals
+            .bind(&qh, 1..=7, ())
+            .map_err(|e| e.to_string())?;
+        let manager: WlDataDeviceManager = globals
+            .bind(&qh, 1..=3, ())
+            .map_err(|e| e.to_string())?;
         let pointer = seat.get_pointer(&qh, ());
         let device = manager.get_data_device(&seat, &qh, ());
 
@@ -139,7 +162,10 @@ impl Wl {
                         break;
                     }
                     Ok(n) => r.data.extend_from_slice(&buf[..n]),
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    Err(e)
+                        if e.kind()
+                            == std::io::ErrorKind::WouldBlock =>
+                    {
                         break;
                     }
                     Err(_) => {
@@ -150,7 +176,8 @@ impl Wl {
             }
             if done {
                 let r = self.state.reads.remove(i);
-                let text = String::from_utf8_lossy(&r.data).to_string();
+                let text =
+                    String::from_utf8_lossy(&r.data).to_string();
                 let paths = decode_uri_list(&text);
                 self.state.ui.push(UiEvent::Received(
                     paths.join(", "),
@@ -275,7 +302,10 @@ impl Dispatch<WlDataDevice, ()> for State {
                 if let (Some(offer), true) = (id, wants) {
                     offer.accept(serial, Some(MIME.to_string()));
                     if offer.version() >= 3 {
-                        offer.set_actions(DndAction::Copy, DndAction::Copy);
+                        offer.set_actions(
+                            DndAction::Copy,
+                            DndAction::Copy,
+                        );
                     }
                     state.offer = Some(offer);
                     state.last_pos = (x, y);
@@ -299,7 +329,10 @@ impl Dispatch<WlDataDevice, ()> for State {
                 if let Some(offer) = state.offer.take() {
                     state.ui.push(UiEvent::Hover(false));
                     if let Ok((ours, theirs)) = UnixStream::pair() {
-                        offer.receive(MIME.to_string(), theirs.as_fd());
+                        offer.receive(
+                            MIME.to_string(),
+                            theirs.as_fd(),
+                        );
                         drop(theirs);
                         let _ = ours.set_nonblocking(true);
                         let pos = state.last_pos;
@@ -347,7 +380,9 @@ impl Dispatch<WlDataSource, ()> for State {
                 eprintln!("data requested as {mime_type}");
                 if mime_type == MIME {
                     let mut f = std::fs::File::from(fd);
-                    let _ = f.write_all(file_uri(&state.drag_path).as_bytes());
+                    let _ = f.write_all(
+                        file_uri(&state.drag_path).as_bytes(),
+                    );
                 }
             }
             wl_data_source::Event::Cancelled => {

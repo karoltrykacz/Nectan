@@ -1,15 +1,19 @@
 use nectan_core::format::DecimalBytes;
 use nectan_core::protocol::NectanState;
-use nectan_core::transfers::{PendingTransfer, TransferStatus, Transfers};
-use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, ToSharedString, Weak};
+use nectan_core::transfers::{
+    PendingTransfer, TransferStatus, Transfers,
+};
+use slint::{
+    ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker,
+    ToSharedString, Weak,
+};
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::{cell::RefCell, sync::Arc};
 use uuid::Uuid;
 
-use crate::handlers::show_error;
 use crate::state::ui_state;
-use crate::{NectanWindow, TransfersBridge};
+use crate::{App, TransfersBridge};
 use crate::{SidebarBridge, Transfer};
 
 /// Lazy loader for the contents of ONE selected transfer.
@@ -102,9 +106,13 @@ fn build_row(p: &PendingTransfer) -> Transfer {
 
     let receiver_name = p.target_name.to_string().into();
     let status = match p.status() {
-        TransferStatus::Downloading => crate::TransferStatus::Processing,
+        TransferStatus::Downloading => {
+            crate::TransferStatus::Processing
+        }
         TransferStatus::Finished => crate::TransferStatus::Finished,
-        TransferStatus::CancelledByRemote => crate::TransferStatus::Cancelled,
+        TransferStatus::CancelledByRemote => {
+            crate::TransferStatus::Cancelled
+        }
     };
 
     let bps = p.speed.load(Relaxed);
@@ -207,13 +215,13 @@ impl Model for TransfersModel {
     }
 }
 
-pub fn update_transfers(w: &Weak<NectanWindow>) {
+pub fn update_transfers(w: &Weak<App>) {
     let _ = w.upgrade_in_event_loop(move |_w| {
         ui_state().transfers().update_all();
     });
 }
 
-pub fn set_transfers(w: &Weak<NectanWindow>, _state: &NectanState) {
+pub fn set_transfers(w: &Weak<App>, _state: &NectanState) {
     tracing::info!("Updating transfers.");
     let _ = w.upgrade_in_event_loop(move |_w| {
         ui_state().transfers().update_all();
@@ -221,25 +229,27 @@ pub fn set_transfers(w: &Weak<NectanWindow>, _state: &NectanState) {
 }
 
 /// UI picked transfer whose files to show.
-pub fn handle_lazyfiles_source(w: &NectanWindow) {
-    w.global::<TransfersBridge>()
-        .on_selected_lazyfiles_source(|id| {
+pub fn handle_lazyfiles_source(w: &App) {
+    w.global::<TransfersBridge>().on_selected_lazyfiles_source(
+        |id| {
             ui_state().transfers().select_files(id.as_str());
-        });
+        },
+    );
 }
 
 /// Updates range of the transfer's contents list.
-pub fn handle_refresh_items_list(w: &NectanWindow) {
-    w.global::<TransfersBridge>()
-        .on_refresh_range(move |first, count| {
-            ui_state()
-                .transfers()
-                .files
-                .refresh_range(first.max(0) as usize, count.max(0) as usize);
-        });
+pub fn handle_refresh_items_list(w: &App) {
+    w.global::<TransfersBridge>().on_refresh_range(
+        move |first, count| {
+            ui_state().transfers().files.refresh_range(
+                first.max(0) as usize,
+                count.max(0) as usize,
+            );
+        },
+    );
 }
 
-pub fn handle_refresh_transfers_list(w: &NectanWindow) {
+pub fn handle_refresh_transfers_list(w: &App) {
     w.global::<TransfersBridge>().on_refresh_transfers(move || {
         let transfers = ui_state().transfers();
         for i in 0..transfers.row_count() {
@@ -248,7 +258,7 @@ pub fn handle_refresh_transfers_list(w: &NectanWindow) {
     });
 }
 
-pub fn init_models(w: &NectanWindow) {
+pub fn init_models(w: &App) {
     let m = ui_state().transfers();
 
     w.global::<TransfersBridge>()
@@ -256,26 +266,21 @@ pub fn init_models(w: &NectanWindow) {
 
     w.global::<TransfersBridge>()
         .set_files(ModelRc::from(m.files()));
-
-    // w.global::<SidebarBridge>()
-    //     .set_files(ModelRc::from(m.files()));
 }
-
-pub fn handle_transfer_controls(w: &NectanWindow, state: Arc<NectanState>) {
-    let b = w.global::<TransfersBridge>();
-
-    let s = state.clone();
-    let weak = w.as_weak();
-    b.on_delete_transfer(move |id| {
-        let id = Uuid::parse_str(&id).unwrap();
-        ui_state().transfers().remove(id);
-
-        if let Err(e) = s.transfers.delete_transfer(id) {
-            show_error(&weak, "Failed to delete", e.to_string());
-        }
-    });
-}
-
+// pub fn handle_transfer_controls(w: &App, state: Arc<NectanState>) {
+//     let b = w.global::<TransfersBridge>();
+//
+//     let s = state.clone();
+//     let weak = w.as_weak();
+//     b.on_delete_transfer(move |id| {
+//         let id = Uuid::parse_str(&id).unwrap();
+//         ui_state().transfers().remove(id);
+//
+//         if let Err(e) = s.transfers.delete_transfer(id) {
+//             show_error(&weak, "Failed to delete", e.to_string());
+//         }
+//     });
+// }
 const MIN_BPS: f32 = 1_000.0;
 const MAX_BPS: f32 = 10_000_000_000.0;
 

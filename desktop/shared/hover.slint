@@ -1,3 +1,5 @@
+import { GeneralModal, SvgIcon } from "elements.slint";
+import { Theme } from "theme.slint";
 
 export global HoverBridge {
     in property <bool> hovering;
@@ -6,10 +8,58 @@ export global HoverBridge {
 
     // Absolute pos!
     public pure function is-hovered(pos: Point, width: length, height: length) -> bool {
-        hovering
-            && hover-x >= pos.x && hover-x <= pos.x + width
+        hover-x >= pos.x && hover-x <= pos.x + width
             && hover-y >= pos.y && hover-y <= pos.y + height
     }
 
-    callback dropped();
+    callback dropped(string);
+}
+
+export component HoverModal inherits GeneralModal {
+    Rectangle {
+        background: Theme.colors.primary-col;
+        border-radius: 24px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        Rectangle {
+
+            VerticalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+
+                Text {
+                    text: HoverBridge.hover-x / 1px;
+                    font-size: 20px;
+                    color: Theme.colors.primary-font;
+                    font-weight: 600;
+                }
+
+                Text {
+                    text: HoverBridge.hover-y / 1px;
+                    font-size: 20px;
+                    color: Theme.colors.primary-font;
+                    font-weight: 600;
+                }
+
+                Text {
+                    text: @tr("Drop files");
+                    font-size: 20px;
+                    color: Theme.colors.primary-font;
+                    font-weight: 600;
+                }
+
+                Rectangle {
+                    height: 20px;
+                }
+
+                SvgIcon {
+                    source: @image-url("icons/download.svg");
+                    size: 36px;
+                }
+            }
+        }
+    }
 }

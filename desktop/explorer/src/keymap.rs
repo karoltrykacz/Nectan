@@ -3,9 +3,9 @@ use std::sync::Arc;
 use nectan_core::storage::{Storage, default_shortcut};
 use slint::{ComponentHandle, Keys as SlintKeys};
 
-use crate::{KeyMap, Keys, NectanWindow, Shortcut};
+use crate::{App, KeyMap, Keys, Shortcut};
 
-pub fn handle_keys(w: &NectanWindow, storage: Arc<Storage>) {
+pub fn handle_keys(w: &App, storage: Arc<Storage>) {
     let keys = w.global::<Keys>();
 
     keys.set_map(build_keymap(&storage));
@@ -15,7 +15,8 @@ pub fn handle_keys(w: &NectanWindow, storage: Arc<Storage>) {
     let s = storage.clone();
     keys.on_save_shortcut(move |id, k, is_primary| {
         let storage = s.clone();
-        let parts: Vec<String> = k.to_parts().map(|p| p.to_string()).collect();
+        let parts: Vec<String> =
+            k.to_parts().map(|p| p.to_string()).collect();
         if let Err(e) = storage.set_shortcut(&id, is_primary, parts) {
             return;
         }
@@ -58,9 +59,9 @@ pub fn handle_keys(w: &NectanWindow, storage: Arc<Storage>) {
     }
 
     const F_KEYS: [&str; 24] = [
-        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11",
-        "F12", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21",
-        "F22", "F23", "F24",
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10",
+        "F11", "F12", "F13", "F14", "F15", "F16", "F17", "F18",
+        "F19", "F20", "F21", "F22", "F23", "F24",
     ];
 
     fn record_keys(
@@ -105,7 +106,9 @@ pub fn handle_keys(w: &NectanWindow, storage: Arc<Storage>) {
         match SlintKeys::from_parts(parts) {
             Ok(k) => k,
             Err(e) => {
-                tracing::warn!("couldn't build keys from {text:?}: {e:?}");
+                tracing::warn!(
+                    "couldn't build keys from {text:?}: {e:?}"
+                );
                 SlintKeys::default()
             }
         }
@@ -139,7 +142,8 @@ fn parts_to_keys(parts: &[String]) -> SlintKeys {
     if parts.is_empty() {
         return SlintKeys::default();
     }
-    SlintKeys::from_parts(parts.iter().map(String::as_str)).unwrap_or_default()
+    SlintKeys::from_parts(parts.iter().map(String::as_str))
+        .unwrap_or_default()
 }
 
 fn build_keymap(storage: &Storage) -> KeyMap {

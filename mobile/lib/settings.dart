@@ -7,6 +7,10 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nectan_mobile/transfers.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:nectan_mobile/themes.dart';
+
+RoundedSuperellipseBorder sq(double radius) =>
+    RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(radius));
 
 class _SectionLabel extends StatelessWidget {
   const _SectionLabel(this.text);
@@ -18,8 +22,8 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 0, 0, 8),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(
-          color: Color(0xff888888),
+        style: TextStyle(
+          color: context.colors.secondaryFont,
           fontSize: 12,
           fontFamily: 'Rubik',
           fontWeight: FontWeight.w600,
@@ -49,7 +53,7 @@ class _SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      customBorder: sq(20),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
@@ -65,7 +69,7 @@ class _SettingsRow extends StatelessWidget {
                           ? const Color(0xffff3b30)
                           : context.colors.primaryFont,
                       fontSize: 15,
-                      fontWeight: FontWeight(500),
+                      fontWeight: FontWeight.w500,
                       fontFamily: "Rubik",
                     ),
                   ),
@@ -119,12 +123,12 @@ class _SettingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: context.colors.secondaryCol,
-        borderRadius: BorderRadius.circular(12),
+        shape: sq(20),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+      child: ClipRSuperellipse(
+        borderRadius: BorderRadius.circular(20),
         child: Column(children: children),
       ),
     );
@@ -152,9 +156,9 @@ class _PromoCard extends StatelessWidget {
         width: double.infinity,
         height: 80,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(
+        decoration: ShapeDecoration(
           color: const Color(0xff272727),
-          borderRadius: BorderRadius.circular(12),
+          shape: sq(12),
         ),
         child: Row(
           children: [
@@ -209,9 +213,9 @@ void showActionSheet({
     builder: (_) => Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16 + 32),
       child: Container(
-        decoration: BoxDecoration(
+        decoration: ShapeDecoration(
           color: const Color(0xff1e1e1e),
-          borderRadius: BorderRadius.circular(16),
+          shape: sq(16),
         ),
         padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
         child: Column(
@@ -248,9 +252,7 @@ void showActionSheet({
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xffff4d4d),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: sq(12),
                   elevation: 0,
                 ),
                 child: Text(
@@ -270,17 +272,13 @@ void showActionSheet({
               height: 52,
               child: TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                style: TextButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
+                style: TextButton.styleFrom(shape: sq(12)),
                 child: const Text(
                   'Cancel',
                   style: TextStyle(
                     color: Color(0xff888888),
                     fontSize: 16,
-                    fontFamily: "Rubok",
+                    fontFamily: "Rubik",
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -318,9 +316,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   void initState() {
     super.initState();
     Future.microtask(() async {
-      // ref.listenManual(currentTabProvider, (prev, next)=>{
-      //
-      // }));
       ref.listenManual(currentTabProvider, ((previous, next) {
         if (next == 2) {
           debugPrint("🟦 Settings refreshing permissions.");
@@ -333,26 +328,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     WidgetsBinding.instance.addObserver(this);
   }
 
-  // chang whole bluetooth to global notifier provider?
-  // change it to subscription? -> useless?
   Future<void> _loadPermissionsState() async {
     if (!Platform.isLinux) {
       debugPrint("Settings. Permissions state.");
 
       final perm = await Permission.notification.status;
       debugPrint("🟨 Notification permission: $perm");
+      if (!mounted) return;
       setState(() {
         notificationPermission = perm;
       });
     } else {
-      debugPrint("Omiiting permission check LINUX");
+      debugPrint("Omitting permission check LINUX");
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final userInfo = ref.watch(userInfoProvider);
-    final theme = ref.watch(themeModeProvider);
+    final selectedTheme = ref.watch(appThemeProvider);
     return Scaffold(
       backgroundColor: context.colors.primaryCol,
       body: SafeArea(
@@ -401,11 +395,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                           debugPrint(
                             "🟦 Notification permission status: $permission",
                           );
+                          if (!mounted) return;
                           setState(() {
                             notificationPermission = permission;
                           });
                           if (permission != PermissionStatus.granted) {
-                            // show modal if its not greanted
+                            // show modal if it's not granted
                             if (context.mounted) {
                               showNotificationsPermissionDeniedModal(
                                 context,
@@ -438,9 +433,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                       children: [
                         _SettingsRow(
                           label: 'Theme',
-                          subtitle: theme.isLight ? "Light" : "Dark",
-                          onTap: () =>
-                              ref.read(themeModeProvider.notifier).toggle(),
+                          subtitle: selectedTheme.name,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.chevron_right,
+                                color: context.colors.primaryFont,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                          onTap: () => Navigator.of(context).push(
+                            FastRoute(builder: (_) => const ThemeScreen()),
+                          ),
                         ),
                       ],
                     ),
@@ -451,20 +457,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                       children: [
                         _SettingsRow(
                           label: 'Version',
-                          trailing: Text(
-                            '1',
-                            style: TextStyle(
-                              color: context.colors.primaryFont,
-                              fontSize: 14,
-                              fontFamily: 'Rubik',
-                            ),
+                          trailing: Row(
+                            children: [
+                              Text(
+                                '1.0.0',
+                                style: TextStyle(
+                                  color: context.colors.primaryFont,
+                                  fontSize: 13,
+                                  fontFamily: 'Rubik',
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                            ],
                           ),
                         ),
                         const _RowDivider(),
                         _SettingsRow(
                           label: 'Terms of Service',
                           onTap: () {
-                            // FastRoute(builder: (context) => const ToSScreen());
                             Navigator.of(context).push(
                               FastRoute(
                                 builder: (context) => const ToSScreen(),
@@ -473,21 +483,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                           },
                         ),
                         const _RowDivider(),
-
-                        _SettingsCard(
-                          children: [
-                            _SettingsRow(
-                              label: 'Privacy Policy',
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  FastRoute(
-                                    builder: (context) =>
-                                        const PrivacyPolicyScreen(),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
+                        _SettingsRow(
+                          label: 'Privacy Policy',
+                          onTap: () {
+                            Navigator.of(context).push(
+                              FastRoute(
+                                builder: (context) =>
+                                    const PrivacyPolicyScreen(),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -501,6 +506,63 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       ),
     );
   }
+}
+
+class SquircleInputBorder extends InputBorder {
+  const SquircleInputBorder({
+    super.borderSide = const BorderSide(),
+    this.radius = 12,
+  });
+
+  final double radius;
+
+  RoundedSuperellipseBorder get _shape => RoundedSuperellipseBorder(
+    borderRadius: BorderRadius.circular(radius),
+    side: borderSide,
+  );
+
+  @override
+  bool get isOutline => true;
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.all(borderSide.width);
+
+  @override
+  SquircleInputBorder copyWith({BorderSide? borderSide, double? radius}) =>
+      SquircleInputBorder(
+        borderSide: borderSide ?? this.borderSide,
+        radius: radius ?? this.radius,
+      );
+
+  @override
+  ShapeBorder scale(double t) =>
+      SquircleInputBorder(borderSide: borderSide.scale(t), radius: radius * t);
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
+      _shape.getInnerPath(rect, textDirection: textDirection);
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) =>
+      _shape.getOuterPath(rect, textDirection: textDirection);
+
+  @override
+  void paintInterior(
+    Canvas canvas,
+    Rect rect,
+    Paint paint, {
+    TextDirection? textDirection,
+  }) => _shape.paintInterior(canvas, rect, paint, textDirection: textDirection);
+
+  @override
+  void paint(
+    Canvas canvas,
+    Rect rect, {
+    double? gapStart,
+    double gapExtent = 0.0,
+    double gapPercentage = 0.0,
+    TextDirection? textDirection,
+  }) => _shape.paint(canvas, rect, textDirection: textDirection);
 }
 
 class ChangeUsernameScreen extends ConsumerStatefulWidget {
@@ -583,50 +645,52 @@ class _ChangeUsernameState extends ConsumerState<ChangeUsernameScreen> {
                 ),
               ),
               const Spacer(),
-              TextField(
-                controller: _controller,
-                maxLength: 32,
-                maxLines: 1,
-                showCursor: true,
-                autofocus: true,
-                focusNode: _focusNode,
-                cursorColor: context.colors.primaryFont,
-                cursorWidth: 1,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: context.colors.primaryFont,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  decoration: TextDecoration.none,
-                  fontFamily: "Rubik",
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Enter username',
-                  hintStyle: TextStyle(
-                    color: context.colors.secondaryFont,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w400,
-                    fontFamily: "Rubik",
-                  ),
-                  filled: true,
-                  fillColor: context.colors.secondaryCol,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: Color.fromARGB(97, 161, 161, 161),
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: TextField(
+                    controller: _controller,
+                    maxLength: 32,
+                    maxLines: 1,
+                    showCursor: true,
+                    autofocus: true,
+                    focusNode: _focusNode,
+                    cursorColor: context.colors.primaryFont,
+                    cursorWidth: 1,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: context.colors.primaryFont,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
+                      fontFamily: "Rubik",
                     ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: Color.fromARGB(117, 161, 161, 161),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: Color.fromARGB(114, 190, 190, 190),
-                      width: 1,
+                    decoration: InputDecoration(
+                      hintText: 'Enter username',
+                      hintStyle: TextStyle(
+                        color: context.colors.secondaryFont,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: "Rubik",
+                      ),
+                      counterText: '',
+                      filled: true,
+                      fillColor: context.colors.secondaryCol,
+                      border: SquircleInputBorder(
+                        borderSide: BorderSide(
+                          color: context.colors.classicBorder,
+                        ),
+                      ),
+                      enabledBorder: SquircleInputBorder(
+                        borderSide: BorderSide(
+                          color: context.colors.classicBorder,
+                        ),
+                      ),
+                      focusedBorder: SquircleInputBorder(
+                        borderSide: BorderSide(
+                          color: context.colors.classicBorderActive,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -675,7 +739,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
       fontSize: 14,
       color: context.colors.secondaryFont,
       height: 1.5,
-      fontWeight: FontWeight(400),
+      fontWeight: FontWeight.w400,
     );
 
     TextStyle headingStyle = TextStyle(
@@ -696,10 +760,11 @@ class PrivacyPolicyScreen extends StatelessWidget {
           padding: EdgeInsets.zero,
         ),
         titleSpacing: 0,
-        title: const Text(
-          'Terms Of Service',
+        title: Text(
+          'Privacy Policy',
           style: TextStyle(
             fontFamily: 'Rubik',
+            color: context.colors.primaryFont,
             fontWeight: FontWeight.w600,
             fontSize: 24,
           ),

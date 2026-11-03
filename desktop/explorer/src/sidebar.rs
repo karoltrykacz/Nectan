@@ -1,10 +1,9 @@
 use crate::{
-    EssentialTileData, ExplorerBridge, NectanWindow, SidebarBridge,
-    WindowBridge, state::ui_state,
+    App, EssentialTileData, SidebarBridge, WindowBridge,
+    state::ui_state,
 };
 use slint::{
     ComponentHandle, Image, Model, ModelNotify, ModelRc, ModelTracker,
-    SharedString, ToSharedString, VecModel,
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -42,7 +41,7 @@ pub enum TileAction {
 }
 
 impl TileAction {
-    pub fn execute(&self, w: &NectanWindow) {
+    pub fn execute(&self, w: &App) {
         let dir = match self {
             TileAction::Builtin(b) => match b {
                 Builtin::Recent => dirs::home_dir(),
@@ -58,8 +57,8 @@ impl TileAction {
         }
         .unwrap();
 
-        w.global::<WindowBridge>()
-            .set_current_window(crate::Window::Vaults);
+        // w.global::<WindowBridge>()
+        //     .set_current_window(crate::CurrentWindow::Explorer);
 
         ui_state().explorer().open_dir(w.as_weak(), dir);
     }
@@ -96,7 +95,9 @@ pub struct EssentialsModel {
 
 impl EssentialsModel {
     pub fn new() -> Self {
-        let load = |svg: &'static [u8]| Image::load_from_svg_data(svg).unwrap();
+        let load = |svg: &'static [u8]| {
+            Image::load_from_svg_data(svg).unwrap()
+        };
 
         // Order here = initial slot order.
         let defaults: Vec<(Builtin, Image, &'static str)> = vec![
@@ -189,7 +190,8 @@ impl EssentialsModel {
         let Some(a) = tiles.iter().position(|t| t.id == id) else {
             return;
         };
-        let Some(b) = tiles.iter().position(|t| t.slot == target) else {
+        let Some(b) = tiles.iter().position(|t| t.slot == target)
+        else {
             if tiles[a].slot != target {
                 tiles[a].slot = target;
                 drop(tiles);
@@ -228,7 +230,7 @@ impl Model for EssentialsModel {
     }
 }
 
-pub fn handle_sidebar(w: &NectanWindow) {
+pub fn handle_sidebar(w: &App) {
     let b = w.global::<SidebarBridge>();
     let model = Rc::new(EssentialsModel::new());
 

@@ -1,5 +1,5 @@
 import { ScrollView, TextEdit, VerticalBox, LineEdit } from "std-widgets.slint";
-import { Theme } from "theme.slint";
+import { Theme } from "../../shared/theme.slint";
 import {
     PrimaryButton,
     PlainLineEdit,
@@ -10,16 +10,16 @@ import {
     GeneralModal,
     IconButton,
     SvgIcon,
-} from "elements.slint";
-import { WindowBridge, MainWindowTouchArea } from "window.slint";
+} from "../../shared/elements.slint";
+import { WindowBridge, MainWindowTouchArea } from "../../shared/window.slint";
 import {
     Keys,
     ShortcutGroup,
     KeyMap,
     KeysBadge,
     ShortcutItem,
-} from "keys.slint";
-import { Icons } from "icons.slint";
+} from "../../shared/keys_shared.slint";
+import { Icons } from "../../shared/icons.slint";
 import { ExplorerBridge } from "explorer/bridge.slint";
 
 export struct Config {
@@ -351,7 +351,7 @@ component SettingsTab inherits Rectangle {
 
     height: 28px;
     border-radius: 12px;
-    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    // border-corner-shape: superellipse(Theme.config.edges-shape);
     background: SettingsBridge.active-tab == tab-idx ? Theme.colors.secondary-col
         : (ta.has-hover ? Theme.colors.secondary-col : transparent);
     border-width: 1px;
@@ -594,15 +594,13 @@ component SpeedLimitsConfig inherits GeneralModal {
         drop-shadow-color: #00000099;
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        // border-corner-shape: superellipse(Theme.config.edges-shape);
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.colors.border-col;
         clip: true;
 
         TouchArea {
-            width: 100%;
-            height: 100%;
             clicked => {}
         }
 
@@ -739,7 +737,7 @@ component IconsEditor inherits GeneralModal {
         drop-shadow-color: #00000099;
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        // border-corner-shape: superellipse(Theme.config.edges-shape);
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.colors.border-col;
@@ -833,8 +831,8 @@ component FontModal inherits GeneralModal {
     property <string> new-font;
 
     function save() {
-        Theme.font = new-font;
-        Theme.set-font(new-font);
+        Theme.config.font = new-font;
+        Theme.config-changed();
         root.restore-focus();
         root.on-close();
     }
@@ -854,7 +852,7 @@ component FontModal inherits GeneralModal {
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
         border-radius: 24px;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        // border-corner-shape: superellipse(Theme.config.edges-shape);
         border-width: 1px;
         border-color: Theme.colors.border-col;
         clip: true;
@@ -950,7 +948,7 @@ component ChangeUsernameModal inherits GeneralModal {
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
         border-radius: 24px;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        // border-corner-shape: superellipse(Theme.config.edges-shape);
         border-width: 1px;
         border-color: Theme.colors.border-col;
         clip: true;
@@ -1109,7 +1107,7 @@ component Appearance inherits SettingsPage {
 
         idx: 0;
         title: @tr("Font");
-        subtitle: Theme.font;
+        subtitle: Theme.config.font;
 
         PrimaryButton {
             text: @tr("Change");
@@ -1151,7 +1149,7 @@ component Appearance inherits SettingsPage {
             spacing: 12px;
             cross-axis-alignment: center;
 
-            if Theme.font-scale != 1.0: IconButton {
+            if Theme.config.font-scale != 1.0: IconButton {
                 width: 28px;
                 height: 28px;
                 SvgIcon {
@@ -1160,16 +1158,16 @@ component Appearance inherits SettingsPage {
                     size: 16px;
                 }
 
-                clicked => { Theme.set-font-scale(1.0); font-factor.value = 1.0; }
+                clicked => { Theme.config.font-scale = 1.0; font-factor.value = 1.0; Theme.config-changed(); }
             }
 
             font-factor := Slider {
                 width: 100px;
                 minimum: 0.75;
                 maximum: 1.5;
-                value <=> Theme.font-scale;
-                changed(value) => {
-                    Theme.set-font-scale(Theme.font-scale);
+                value <=> Theme.config.font-scale;
+                released => {
+                    Theme.config-changed();
                 }
             }
         }
@@ -1189,7 +1187,8 @@ component Appearance inherits SettingsPage {
             spacing: 24px;
             cross-axis-alignment: center;
             Switch {
-                checked <=> WindowBridge.round-edges;
+                checked <=> Theme.config.round-edges;
+                toggled => { Theme.config-changed(); }
             }
         }
     }
@@ -1205,9 +1204,10 @@ component Appearance inherits SettingsPage {
         subtitle: @tr("Change edges shape");
         Slider {
             width: 100px;
-            value <=> WindowBridge.edges-shape;
+            value <=> Theme.config.edges-shape;
             minimum: 1.0;
             maximum: 5.0;
+            released => { Theme.config-changed(); }
         }
     }
 
@@ -1221,7 +1221,8 @@ component Appearance inherits SettingsPage {
         title: @tr("Native topbar");
         subtitle: @tr("Use native window decorations.");
         Switch {
-            checked <=> WindowBridge.native-topbar;
+            checked <=> Theme.config.native-topbar;
+            toggled => { Theme.config-changed(); }
         }
     }
 
@@ -1236,7 +1237,8 @@ component Appearance inherits SettingsPage {
         subtitle: @tr("Don't hide topbar");
 
         Switch {
-            checked <=> WindowBridge.topbar-always-on;
+            checked <=> Theme.config.topbar-always-on;
+            toggled => { Theme.config-changed(); }
         }
     }
 }
@@ -1247,7 +1249,7 @@ component ShortcutGroupView inherits Rectangle {
 
     background: Theme.colors.secondary-col;
     border-radius: 12px;
-    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    // border-corner-shape: superellipse(Theme.config.edges-shape);
 
     VerticalLayout {
         padding: 20px;
@@ -1574,7 +1576,7 @@ export component Settings inherits GeneralModal {
 
             background: Theme.colors.primary-col;
             border-radius: 12px;
-            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            // border-corner-shape: superellipse(Theme.config.edges-shape);
             border-width: 1px;
             border-color: Theme.colors.fourth-col.with-alpha(0.5);
 

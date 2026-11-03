@@ -11,11 +11,18 @@ use anyhow::Result;
 use ed25519_dalek::SigningKey;
 use iroh::{
     Endpoint,
-    endpoint::{QuicTransportConfig, presets},
+    endpoint::{
+        Builder, QuicTransportConfig,
+        presets::{self, Minimal, Preset},
+    },
     protocol::Router,
 };
 use iroh_mdns_address_lookup::MdnsAddressLookup;
 use std::{sync::Arc, time::Duration};
+use tokio::sync::Mutex;
+use tracing::{error, info, warn};
+
+pub use iroh::{EndpointAddr, EndpointId};
 
 pub mod code_lookup;
 pub mod common;
@@ -39,6 +46,7 @@ pub async fn setup_core(
     signing_key: SigningKey,
     devices: Devices,
     storage: Arc<Storage>,
+    local_only: bool,
 ) -> Result<Arc<NectanState>> {
     let transport = QuicTransportConfig::builder()
         .stream_receive_window(32_000_000u32.into())
@@ -47,20 +55,21 @@ pub async fn setup_core(
         .initial_mtu(1200)
         .min_mtu(1200)
         .enable_segmentation_offload(true)
-        .max_idle_timeout(Some(Duration::from_secs(20).try_into().unwrap()))
+        .max_idle_timeout(Some(
+            Duration::from_secs(20).try_into().unwrap(),
+        ))
         .keep_alive_interval(Duration::from_secs(5))
         .build();
 
-    let builder = Endpoint::builder(presets::N0).transport_config(transport);
-    let endpoint = builder.bind().await.expect("Failed to bind endpoint");
-
-    let mdns = MdnsAddressLookup::builder()
-        .service_name("nectan_user")
-        .advertise(true)
-        .build(endpoint.id())
-        .unwrap();
-
-    endpoint.address_lookup().unwrap().add(mdns.clone());
+    let builder = if local_only {
+        Endpoint::builder(presets::Minimal)
+    } else {
+        Endpoint::builder(presets::N0)
+    };
+    let builder = builder.transport_config(transport);
+    let endpoint =
+        builder.bind().await.expect("Failed to bind endpoint");
+    let mdns = Arc::new(Mutex::new(None));
 
     let state = NectanState::build(
         userinfo,
@@ -74,13 +83,12 @@ pub async fn setup_core(
     .await;
 
     let s = Arc::new(state.clone());
-
     let prot = NectanProtocol::new(endpoint.clone(), s.clone());
     let router = Router::builder(endpoint).accept(ALPN, prot).spawn();
 
     s.attach_router(&router);
 
-    // start_mdns_discovery(&s);
+    tokio::spawn(start_mdns_discovery(s.clone()));
     start_registration_loop(&s);
     announce_endpoint(s.clone());
 

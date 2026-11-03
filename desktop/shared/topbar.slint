@@ -8,8 +8,8 @@ export component Topbar inherits Rectangle {
     y: 0;
     z: 10;
     height: 20px;
-    opacity: WindowBridge.native-topbar ? 0.0 :
-        WindowBridge.topbar-always-on ? 1.0 :
+    opacity: Theme.config.native-topbar ? 0.0 :
+        Theme.config.topbar-always-on ? 1.0 :
         WindowBridge.topbar-hover ? 1.0 : 0.0;
 
     animate opacity {
@@ -20,15 +20,14 @@ export component Topbar inherits Rectangle {
 
     HorizontalLayout {
         padding-top: 7px;
-        padding-right: 8px;
+        padding-right: 12px;
         height: 28px;
         alignment: end;
-        spacing: 12px;
+        spacing: 8px;
 
         IconButton {
             width: 20px;
             height: 20px;
-            inner-bg: transparent;
             enabled: WindowBridge.topbar-hover;
 
             SvgIcon {
@@ -45,7 +44,6 @@ export component Topbar inherits Rectangle {
         IconButton {
             width: 20px;
             height: 20px;
-            inner-bg: transparent;
             enabled: WindowBridge.topbar-hover;
             SvgIcon {
                 source: Icons.maximize;
@@ -61,7 +59,6 @@ export component Topbar inherits Rectangle {
         IconButton {
             width: 20px;
             height: 20px;
-            inner-bg: transparent;
             enabled: WindowBridge.topbar-hover;
             SvgIcon {
                 source: Icons.close;

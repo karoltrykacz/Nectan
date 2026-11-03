@@ -7,10 +7,10 @@ use slint::{
     ComponentHandle, Model, ModelNotify, ModelTracker, Weak,
 };
 use std::{cell::RefCell, sync::Arc};
-use uuid::Uuid;
+use tracing::info;
 
 use crate::{
-    DeviceItem, DeviceStatus, DevicesBridge, NectanSender,
+    App, DeviceFolder, DeviceItem, DeviceStatus, DevicesBridge,
     state::ui_state,
 };
 
@@ -69,7 +69,7 @@ impl From<nectan_core::devices::DeviceStatus> for DeviceStatus {
     }
 }
 
-pub fn update_devices(w: &Weak<NectanSender>, state: &NectanState) {
+pub fn update_devices(w: &Weak<App>, state: &NectanState) {
     let state = state.clone();
     let _ = w.upgrade_in_event_loop(move |_w| {
         let mut devices: Vec<DeviceItem> = state
@@ -103,10 +103,13 @@ pub fn update_devices(w: &Weak<NectanSender>, state: &NectanState) {
     });
 }
 
-pub fn handle_devices(w: &NectanSender, s: Arc<NectanState>) {
+pub fn handle_devices(w: &App, s: Arc<NectanState>) {
     let b = w.global::<DevicesBridge>();
+    let weak = w.as_weak();
     b.on_toggle_favourite(move |id| {
+        info!("Fav toggle {id}");
         let device_id = device_id_from_base64(id.as_str()).unwrap();
         s.devices.toggle_favourite(device_id);
+        update_devices(&weak, &s);
     });
 }

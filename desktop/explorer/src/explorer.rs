@@ -1,3 +1,4 @@
+use crate::window::show_error;
 use std::{
     cell::{Cell, Ref, RefCell},
     io::Cursor,
@@ -7,14 +8,14 @@ use std::{
 };
 
 use crate::{
-    DirEntry, EntryType, ExplorerBridge, NectanWindow, handlers::show_error,
-    sidebar::TileAction, state::ui_state,
+    App, DirEntry, EntryType, ExplorerBridge, sidebar::TileAction,
+    state::ui_state,
 };
 use clipboard_rs::Clipboard;
 use nectan_core::format::BinaryBytes;
 use slint::{
-    ComponentHandle, Model, ModelNotify, ModelRc, SharedString, ToSharedString,
-    Weak,
+    ComponentHandle, Model, ModelNotify, ModelRc, SharedString,
+    ToSharedString, Weak,
 };
 use tracing::{error, info, warn};
 use url::Url;
@@ -94,7 +95,8 @@ fn crumb_label(p: &Path) -> Option<SharedString> {
 }
 
 fn crumb_paths(p: &Path) -> Vec<PathBuf> {
-    let mut v: Vec<PathBuf> = p.ancestors().map(Path::to_path_buf).collect();
+    let mut v: Vec<PathBuf> =
+        p.ancestors().map(Path::to_path_buf).collect();
     v.reverse();
     v
 }
@@ -135,7 +137,7 @@ impl Explorer {
         self.items.paths()
     }
 
-    pub fn open_dir<P>(self: &Rc<Self>, w: Weak<NectanWindow>, p: P)
+    pub fn open_dir<P>(self: &Rc<Self>, w: Weak<App>, p: P)
     where
         P: Into<PathBuf>,
     {
@@ -156,7 +158,11 @@ impl Explorer {
 
             match result {
                 Ok(Ok(items)) => {
-                    info!("Opened {} ({} entries)", p.display(), items.len());
+                    info!(
+                        "Opened {} ({} entries)",
+                        p.display(),
+                        items.len()
+                    );
                     *this.current.borrow_mut() = p.clone();
                     this.items.set(items);
                     this.history.borrow_mut().push(p);
@@ -167,7 +173,11 @@ impl Explorer {
                     show_error(
                         &w,
                         "Error",
-                        format!("Failed to open {}. {}", p.display(), e),
+                        format!(
+                            "Failed to open {}. {}",
+                            p.display(),
+                            e
+                        ),
                     );
                 }
                 Err(e) => {
@@ -181,14 +191,17 @@ impl Explorer {
     }
 }
 
-pub fn handle_explorer(w: &NectanWindow) {
+pub fn handle_explorer(w: &App) {
     let b = w.global::<ExplorerBridge>();
     let explorer = ui_state().explorer();
     let weak = w.as_weak();
 
     b.set_current_dir(explorer.crumb_model());
 
-    fn sel_range(start: i32, end: i32) -> std::ops::RangeInclusive<usize> {
+    fn sel_range(
+        start: i32,
+        end: i32,
+    ) -> std::ops::RangeInclusive<usize> {
         let start = if start == -1 { end } else { start };
         start as usize..=end as usize
     }
@@ -197,7 +210,8 @@ pub fn handle_explorer(w: &NectanWindow) {
         let (e, weak) = (explorer.clone(), weak.clone());
         move |entry, id| {
             if entry.r#type == EntryType::Directory {
-                let path = e.paths().get(id as usize).unwrap().to_owned();
+                let path =
+                    e.paths().get(id as usize).unwrap().to_owned();
                 e.open_dir(weak.clone(), path);
             } else {
             }
@@ -207,7 +221,8 @@ pub fn handle_explorer(w: &NectanWindow) {
     b.on_navigate_to_in_current({
         let (e, weak) = (explorer.clone(), weak.clone());
         move |index| {
-            let target = e.crumbs.paths().get(index as usize).cloned();
+            let target =
+                e.crumbs.paths().get(index as usize).cloned();
             if let Some(p) = target {
                 e.open_dir(weak.clone(), p);
             } else {
@@ -239,7 +254,8 @@ pub fn handle_explorer(w: &NectanWindow) {
     b.on_up({
         let (e, weak) = (explorer.clone(), weak.clone());
         move || {
-            let parent = e.current.borrow().parent().map(Path::to_path_buf);
+            let parent =
+                e.current.borrow().parent().map(Path::to_path_buf);
             if let Some(parent) = parent {
                 e.open_dir(weak.clone(), parent);
             }
@@ -257,7 +273,8 @@ pub fn handle_explorer(w: &NectanWindow) {
     b.on_rename({
         let (e, weak) = (explorer.clone(), weak.clone());
         move |idx, new_name| {
-            let path = e.paths().get(idx as usize).unwrap().to_owned();
+            let path =
+                e.paths().get(idx as usize).unwrap().to_owned();
             let new_path = path.with_file_name(new_name.as_str());
 
             if new_path == path {
@@ -267,7 +284,10 @@ pub fn handle_explorer(w: &NectanWindow) {
                 show_error(
                     &weak,
                     "Failed to rename",
-                    format!("File {} already exists.", new_path.display()),
+                    format!(
+                        "File {} already exists.",
+                        new_path.display()
+                    ),
                 );
                 return;
             }
@@ -278,9 +298,11 @@ pub fn handle_explorer(w: &NectanWindow) {
                     path.display(),
                     new_path.display()
                 ),
-                Err(err) => {
-                    show_error(&weak, "Failed to rename", err.to_string())
-                }
+                Err(err) => show_error(
+                    &weak,
+                    "Failed to rename",
+                    err.to_string(),
+                ),
             }
             e.open_dir(weak.clone(), new_path.parent().unwrap());
         }
@@ -313,13 +335,17 @@ pub fn handle_explorer(w: &NectanWindow) {
         move |start, end| {
             for path in &e.paths()[sel_range(start, end)] {
                 let result = match std::fs::metadata(path) {
-                    Ok(m) if m.is_dir() => std::fs::remove_dir_all(path),
+                    Ok(m) if m.is_dir() => {
+                        std::fs::remove_dir_all(path)
+                    }
                     Ok(_) => std::fs::remove_file(path),
                     Err(err) => Err(err),
                 };
                 match result {
                     Ok(()) => info!("Deleted {path:?}"),
-                    Err(err) => warn!("Failed to delete {path:?}: {err}"),
+                    Err(err) => {
+                        warn!("Failed to delete {path:?}: {err}")
+                    }
                 }
             }
             let curr = e.current.borrow().clone();
@@ -369,14 +395,16 @@ pub fn handle_explorer(w: &NectanWindow) {
             let mut errors = Vec::new();
             for src in &files {
                 let Some(dst) = unique_dest(&dir, src) else {
-                    errors.push(format!("{}: invalid path", src.display()));
+                    errors.push(format!(
+                        "{}: invalid path",
+                        src.display()
+                    ));
                     continue;
                 };
                 match copy_recursive(src, &dst) {
                     Ok(()) => info!("Pasted {src:?} -> {dst:?}"),
-                    Err(err) => {
-                        errors.push(format!("{}: {err}", src.display()))
-                    }
+                    Err(err) => errors
+                        .push(format!("{}: {err}", src.display())),
                 }
             }
 
@@ -410,7 +438,8 @@ pub fn handle_explorer(w: &NectanWindow) {
         let (e, weak) = (explorer.clone(), weak.clone());
 
         move |start, end, name, encrypt, password| {
-            let paths: Vec<PathBuf> = e.paths()[sel_range(start, end)].to_vec();
+            let paths: Vec<PathBuf> =
+                e.paths()[sel_range(start, end)].to_vec();
             let dir = e.current.borrow().clone();
 
             let password_str = password.to_string();
@@ -420,67 +449,77 @@ pub fn handle_explorer(w: &NectanWindow) {
             info!("Zipping {start} = {end}");
             info!("Zipping {paths:?}");
 
-            let result: Result<(), Box<dyn std::error::Error>> = (|| {
-                let buf = Cursor::new(Vec::new());
-                let mut zip = ZipWriter::new(buf);
-                let mut options = SimpleFileOptions::default();
+            let result: Result<(), Box<dyn std::error::Error>> =
+                (|| {
+                    let buf = Cursor::new(Vec::new());
+                    let mut zip = ZipWriter::new(buf);
+                    let mut options = SimpleFileOptions::default();
 
-                if encrypt {
-                    options = options.with_aes_encryption(
-                        zip::AesMode::Aes256,
-                        password_static,
-                    );
-                }
-
-                // Recursive helper function for files and folders
-                fn add_path<W: std::io::Write + std::io::Seek>(
-                    zip: &mut ZipWriter<W>,
-                    path: &Path,
-                    base_path: &Path,
-                    options: SimpleFileOptions,
-                ) -> Result<(), Box<dyn std::error::Error>> {
-                    let relative = match path.strip_prefix(base_path) {
-                        Ok(r) => r,
-                        Err(_) => return Ok(()),
-                    };
-
-                    let name_str =
-                        relative.to_str().ok_or("Invalid path encoding")?;
-                    if name_str.is_empty() {
-                        return Ok(());
+                    if encrypt {
+                        options = options.with_aes_encryption(
+                            zip::AesMode::Aes256,
+                            password_static,
+                        );
                     }
 
-                    if path.is_dir() {
-                        zip.add_directory(name_str, options)?;
-                        for entry in std::fs::read_dir(path)? {
-                            let entry = entry?;
-                            add_path(zip, &entry.path(), base_path, options)?;
+                    // Recursive helper function for files and folders
+                    fn add_path<W: std::io::Write + std::io::Seek>(
+                        zip: &mut ZipWriter<W>,
+                        path: &Path,
+                        base_path: &Path,
+                        options: SimpleFileOptions,
+                    ) -> Result<(), Box<dyn std::error::Error>>
+                    {
+                        let relative =
+                            match path.strip_prefix(base_path) {
+                                Ok(r) => r,
+                                Err(_) => return Ok(()),
+                            };
+
+                        let name_str = relative
+                            .to_str()
+                            .ok_or("Invalid path encoding")?;
+                        if name_str.is_empty() {
+                            return Ok(());
                         }
-                    } else if path.is_file() {
-                        zip.start_file(name_str, options)?;
-                        let mut file = std::fs::File::open(path)?;
-                        std::io::copy(&mut file, zip)?;
+
+                        if path.is_dir() {
+                            zip.add_directory(name_str, options)?;
+                            for entry in std::fs::read_dir(path)? {
+                                let entry = entry?;
+                                add_path(
+                                    zip,
+                                    &entry.path(),
+                                    base_path,
+                                    options,
+                                )?;
+                            }
+                        } else if path.is_file() {
+                            zip.start_file(name_str, options)?;
+                            let mut file = std::fs::File::open(path)?;
+                            std::io::copy(&mut file, zip)?;
+                        }
+
+                        Ok(())
                     }
+
+                    for path in &paths {
+                        info!("Zipping recursive: {path:?}");
+                        if let Some(base_path) = path.parent() {
+                            add_path(
+                                &mut zip, path, base_path, options,
+                            )?;
+                        }
+                    }
+
+                    let cursor = zip.finish()?;
+                    let data = cursor.into_inner();
+
+                    let output_path = dir.join(name);
+                    std::fs::write(output_path, data)?;
 
                     Ok(())
-                }
-
-                for path in &paths {
-                    info!("Zipping recursive: {path:?}");
-                    if let Some(base_path) = path.parent() {
-                        add_path(&mut zip, path, base_path, options)?;
-                    }
-                }
-
-                let cursor = zip.finish()?;
-                let data = cursor.into_inner();
-
-                let output_path = dir.join(name);
-                std::fs::write(output_path, data)?;
-
-                Ok(())
-            })(
-            );
+                })();
 
             if let Err(err) = result {
                 error!("Failed to compress items: {err}");
@@ -521,7 +560,9 @@ pub fn handle_explorer(w: &NectanWindow) {
     });
 }
 
-async fn read_dir(p: impl AsRef<Path>) -> std::io::Result<Vec<PathBuf>> {
+async fn read_dir(
+    p: impl AsRef<Path>,
+) -> std::io::Result<Vec<PathBuf>> {
     let start = Instant::now();
     let mut dir = tokio::fs::read_dir(p).await?;
     let mut items = Vec::new();
@@ -598,7 +639,10 @@ fn copy_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(dst)?;
         for entry in std::fs::read_dir(src)? {
             let entry = entry?;
-            copy_recursive(&entry.path(), &dst.join(entry.file_name()))?;
+            copy_recursive(
+                &entry.path(),
+                &dst.join(entry.file_name()),
+            )?;
         }
     } else {
         std::fs::copy(src, dst)?;

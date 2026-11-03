@@ -1,4 +1,4 @@
-import { Theme } from "../theme.slint";
+import { Theme } from "../../../shared/theme.slint";
 import {
     GeneralModal,
     PlainLineEdit,
@@ -8,14 +8,17 @@ import {
     IconButton,
     SvgIcon,
     Switch,
-} from "../elements.slint";
+} from "../../../shared/elements.slint";
 import { ListView, ScrollView } from "std-widgets.slint";
-import { WindowBridge, MainWindowTouchArea } from "../window.slint";
-import { Keys } from "../keys.slint";
+import {
+    WindowBridge,
+    MainWindowTouchArea,
+} from "../../../shared/window.slint";
+import { Keys } from "../../../shared/keys_shared.slint";
 import { SettingsRow } from "../settings.slint";
 import { ExplorerBridge, EntryType, DirEntry } from "bridge.slint";
 import { CompressModal } from "compress.slint";
-import { Icons } from "../icons.slint";
+import { Icons } from "../../../shared/icons.slint";
 
 component MenuRow inherits Rectangle {
     in property <string> text;
@@ -538,12 +541,10 @@ component RenameModal inherits GeneralModal {
 
                 border-radius: 8px;
                 background: Theme.colors.third-col;
-                border-corner-shape: superellipse(WindowBridge.edges-shape);
+                // border-corner-shape: superellipse(Theme.config.edges-shape);
 
                 le := PlainLineEdit {
-                    autofocus: true;
                     input-text <=> new-name;
-                    start: 0;
                     end: root.selection-end;
 
                     rejected => {
@@ -586,7 +587,7 @@ component RenameModal inherits GeneralModal {
 export component Explorer inherits Rectangle {
     background: Theme.colors.secondary-col;
     border-radius: 12px;
-    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    // border-corner-shape: superellipse(Theme.config.edges-shape);
 
     property <bool> renaming;
     property <bool> searching;
@@ -724,7 +725,7 @@ export component Explorer inherits Rectangle {
             height: 32px;
             background: Theme.colors.primary-col;
             border-radius: 12px;
-            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            // border-corner-shape: superellipse(Theme.config.edges-shape);
 
             SvgIcon {
                 x: 8px;
@@ -1192,7 +1193,7 @@ export component Explorer inherits Rectangle {
                         cursor-hover == i ? Theme.colors.third-col : transparent;
 
                     border-radius: 12px;
-                    border-corner-shape: superellipse(WindowBridge.edges-shape);
+                    // border-corner-shape: superellipse(Theme.config.edges-shape);
 
                     transform-scale-y: (ta.pressed && root.cursor-hover == i) ? 0.99 : 1.0;
                     transform-scale-x: (ta.pressed && root.cursor-hover == i) ? 0.998 : 1.0;

@@ -1,7 +1,7 @@
 use crate::{
-    DevicesBridge, ExplorerBridge, NectanWindow, TransfersBridge,
-    devices::DevicesModel, explorer::Explorer, sidebar::EssentialsModel,
-    transfers::TransfersModel,
+    App, DevicesBridge, ExplorerBridge, TransfersBridge,
+    devices::DevicesModel, explorer::Explorer,
+    sidebar::EssentialsModel, transfers::TransfersModel,
 };
 use clipboard_rs::{Clipboard, ClipboardContent, ClipboardContext};
 use ignore::WalkBuilder;
@@ -98,10 +98,11 @@ pub fn ui_state() -> Rc<UiState> {
     })
 }
 
-pub fn init_app_state(w: &NectanWindow) {
+pub fn init_app_state(w: &App) {
     let devices_model = Rc::new(DevicesModel::new());
 
-    DevicesBridge::get(w).set_devices(ModelRc::from(devices_model.clone()));
+    DevicesBridge::get(w)
+        .set_devices(ModelRc::from(devices_model.clone()));
 
     let save_destination = dirs::download_dir()
         .or_else(dirs::home_dir)
@@ -133,12 +134,15 @@ pub fn init_app_state(w: &NectanWindow) {
         dnd_pump_timer: RefCell::new(Timer::default()),
     });
 
-    UI.with(|c| c.set(ui).ok().expect("UiState already initialized."));
+    UI.with(|c| {
+        c.set(ui).ok().expect("UiState already initialized.")
+    });
 }
 
-pub fn init_transfers(w: &NectanWindow, transfers: Arc<Transfers>) {
+pub fn init_transfers(w: &App, transfers: Arc<Transfers>) {
     let model = Rc::new(TransfersModel::new(transfers));
-    TransfersBridge::get(w).set_transfers(ModelRc::from(model.clone()));
+    TransfersBridge::get(w)
+        .set_transfers(ModelRc::from(model.clone()));
     ui_state()
         .transfers_model
         .set(model)

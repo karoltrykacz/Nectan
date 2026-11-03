@@ -1,9 +1,15 @@
-import { SvgIcon, GeneralModal, PlainLineEdit } from "elements.slint";
+import {
+    SvgIcon,
+    GeneralModal,
+    PlainLineEdit,
+} from "../../shared/elements.slint";
 import { DeviceItem, DeviceRow, DevicesBridge } from "devices.slint";
-import { Theme } from "theme.slint";
+import { Theme } from "../../shared/theme.slint";
 import { ListView } from "std-widgets.slint";
-import { WindowBridge } from "window.slint";
-import { Icons } from "icons.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { Icons } from "../../shared/icons.slint";
+
+// TODO
 
 export enum SearchItemKind { device, action } 
 
@@ -34,7 +40,7 @@ component ResultRow inherits Rectangle {
 
     height: 52px;
     border-radius: 8px;
-    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    // border-corner-shape: superellipse(Theme.config.edges-shape);
     background: selected ? Theme.colors.third-col : t.has-hover ? Theme.colors.secondary-col : transparent;
 
     HorizontalLayout {
@@ -55,7 +61,7 @@ component ResultRow inherits Rectangle {
                 size: 16px;
             }
             if root.id == "settings":SvgIcon {
-                source: @image-url("icons/settings.svg");
+                source: Icons.settings;
                 size: 16px;
             }
             if root.id == "vaults":SvgIcon {
@@ -134,7 +140,7 @@ export component Search inherits GeneralModal {
         x: (parent.width - self.width) / 2;
         background: Theme.colors.primary-col;
         border-radius: 24px;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        // border-corner-shape: superellipse(Theme.config.edges-shape);
         border-width: 1px;
         border-color: Theme.colors.hover-col;
         clip: true;

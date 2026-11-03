@@ -3,11 +3,15 @@ use nectan_core::{
     format::RoundedDecimalBytes,
     protocol::NectanState,
 };
-use slint::{ComponentHandle, Model, ModelNotify, ModelTracker, Weak};
+use slint::{
+    ComponentHandle, Model, ModelNotify, ModelTracker, Weak,
+};
 use std::{cell::RefCell, sync::Arc};
 use uuid::Uuid;
 
-use crate::{DeviceItem, DeviceStatus, DevicesBridge, NectanWindow, state::ui_state};
+use crate::{
+    App, DeviceItem, DeviceStatus, DevicesBridge, state::ui_state,
+};
 
 pub struct DevicesModel {
     devices: RefCell<Vec<DeviceItem>>,
@@ -51,14 +55,20 @@ impl Model for DevicesModel {
 impl From<nectan_core::devices::DeviceStatus> for DeviceStatus {
     fn from(value: nectan_core::devices::DeviceStatus) -> Self {
         match value {
-            nectan_core::devices::DeviceStatus::Online => DeviceStatus::Online,
-            nectan_core::devices::DeviceStatus::Offline => DeviceStatus::Offline,
-            nectan_core::devices::DeviceStatus::Nearby => DeviceStatus::Nearby,
+            nectan_core::devices::DeviceStatus::Online => {
+                DeviceStatus::Online
+            }
+            nectan_core::devices::DeviceStatus::Offline => {
+                DeviceStatus::Offline
+            }
+            nectan_core::devices::DeviceStatus::Nearby => {
+                DeviceStatus::Nearby
+            }
         }
     }
 }
 
-pub fn update_devices(w: &Weak<NectanWindow>, state: &NectanState) {
+pub fn update_devices(w: &Weak<App>, state: &NectanState) {
     let state = state.clone();
     let _ = w.upgrade_in_event_loop(move |_w| {
         let mut devices: Vec<DeviceItem> = state
@@ -70,9 +80,11 @@ pub fn update_devices(w: &Weak<NectanWindow>, state: &NectanState) {
                 name: d.username.to_string().into(),
                 status: DeviceStatus::from(d.status),
                 favourite: d.fav,
-                total_exchanged_data: RoundedDecimalBytes(d.total_exchanged_data)
-                    .to_string()
-                    .into(),
+                total_exchanged_data: RoundedDecimalBytes(
+                    d.total_exchanged_data,
+                )
+                .to_string()
+                .into(),
                 completed_transfers: d.completed_transfers as i32,
             })
             .collect();
@@ -90,7 +102,7 @@ pub fn update_devices(w: &Weak<NectanWindow>, state: &NectanState) {
     });
 }
 
-pub fn handle_devices(w: &NectanWindow, s: Arc<NectanState>) {
+pub fn handle_devices(w: &App, s: Arc<NectanState>) {
     let b = w.global::<DevicesBridge>();
     b.on_toggle_favourite(move |id| {
         let device_id = device_id_from_base64(id.as_str()).unwrap();

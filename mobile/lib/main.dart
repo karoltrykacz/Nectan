@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:media_scanner/media_scanner.dart';
 import 'package:nectan_mobile/add_remote.dart';
 import 'package:nectan_mobile/devices.dart';
@@ -22,6 +21,8 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nectan_mobile/settings.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:nectan_mobile/navigation.dart';
+import 'package:nectan_mobile/themes.dart';
 
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
@@ -110,44 +111,7 @@ const darkAppColors = AppColors(
   classicBorderActive: Color(0x47FFFFFF),
 );
 
-final lightColorScheme = ColorScheme.fromSeed(
-  seedColor: Colors.blue,
-  brightness: Brightness.light,
-);
-
-final darkColorScheme = ColorScheme.fromSeed(
-  seedColor: Colors.blue,
-  brightness: Brightness.dark,
-);
-
-final lightTheme = ThemeData(
-  brightness: Brightness.light,
-  colorScheme: lightColorScheme,
-  extensions: const [lightAppColors],
-);
-
-final darkTheme = ThemeData(
-  brightness: Brightness.dark,
-  colorScheme: darkColorScheme,
-  extensions: const [darkAppColors],
-);
-
-class ThemeModeNotifier extends Notifier<ThemeMode> {
-  @override
-  ThemeMode build() => ThemeMode.dark;
-
-  void setTheme(ThemeMode mode) {
-    state = mode;
-  }
-
-  void toggle() {
-    state = state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-  }
-}
-
-final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
-  ThemeModeNotifier.new,
-);
+// Themes (palettes, provider, picker) live in themes.dart.
 
 extension AppColorsX on BuildContext {
   AppColors get colors => Theme.of(this).extension<AppColors>()!;
@@ -160,12 +124,13 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(connectivityNotifier);
-    final themeMode = ref.watch(themeModeProvider);
+    final selected = ref.watch(appThemeProvider);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: lightTheme,
-      darkTheme: darkTheme,
-      themeMode: themeMode,
+      // "System" gets both light and dark; every other theme is used as-is.
+      theme: selected.isSystem ? AppThemes.light.data : selected.data,
+      darkTheme: selected.isSystem ? AppThemes.dark.data : null,
+      themeMode: selected.isSystem ? ThemeMode.system : ThemeMode.light,
       home: isFirstLaunch ? const SetupScreen() : const RootScreen(),
     );
   }
@@ -533,7 +498,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   style: TextStyle(
                     fontSize: 14,
                     color: context.colors.secondaryFont,
-                    fontWeight: FontWeight(500),
+                    fontWeight: FontWeight.w500,
                     fontFamily: "Inter",
                   ),
                 ),
@@ -617,8 +582,8 @@ class SecondaryTextButton extends StatelessWidget {
       child: TextButton(
         onPressed: onPressed,
         style: TextButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+          shape: RoundedSuperellipseBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
         ),
         child: Text(
@@ -635,49 +600,49 @@ class SecondaryTextButton extends StatelessWidget {
   }
 }
 
-class SmallButton extends StatelessWidget {
-  final String label;
-  final VoidCallback? onPressed;
-  final double maxWidth;
-  const SmallButton({
-    super.key,
-    required this.label,
-    required this.onPressed,
-    this.maxWidth = 300,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: SizedBox(
-        height: 42,
-        child: ElevatedButton(
-          onPressed: onPressed,
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            foregroundColor: context.colors.primaryFont,
-            backgroundColor: Colors.white,
-            disabledBackgroundColor: Colors.white,
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontFamily: 'Rubik',
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+// class SmallButton extends StatelessWidget {
+//   final String label;
+//   final VoidCallback? onPressed;
+//   final double maxWidth;
+//   const SmallButton({
+//     super.key,
+//     required this.label,
+//     required this.onPressed,
+//     this.maxWidth = 300,
+//   });
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return ConstrainedBox(
+//       constraints: BoxConstraints(maxWidth: maxWidth),
+//       child: SizedBox(
+//         height: 42,
+//         child: ElevatedButton(
+//           onPressed: onPressed,
+//           style: ElevatedButton.styleFrom(
+//             padding: const EdgeInsets.symmetric(horizontal: 24),
+//             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+//             shape: RoundedRectangleBorder(
+//               borderRadius: BorderRadius.circular(12),
+//             ),
+//             foregroundColor: context.colors.primaryFont,
+//             backgroundColor: Colors.white,
+//             disabledBackgroundColor: Colors.white,
+//           ),
+//           child: Text(
+//             label,
+//             style: const TextStyle(
+//               fontFamily: 'Rubik',
+//               fontSize: 15,
+//               fontWeight: FontWeight.w600,
+//               color: Colors.black,
+//             ),
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }
 
 class PrimaryWideButton extends StatefulWidget {
   final String label;
@@ -733,17 +698,16 @@ class _PrimaryWideButtonState extends State<PrimaryWideButton> {
                   ? null
                   : widget.onPressed,
               style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                shape: RoundedSuperellipseBorder(
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 backgroundColor: color,
-                disabledBackgroundColor: Color(0xff6c6c6c),
+                disabledBackgroundColor: const Color(0xff6c6c6c),
               ),
               child: widget.isLoading
                   ? Spinner()
                   : widget.failed
                   ? Text(
-                      // failed text
                       widget.failedLabel!,
                       style: TextStyle(
                         fontFamily: 'Rubik',
@@ -753,7 +717,6 @@ class _PrimaryWideButtonState extends State<PrimaryWideButton> {
                       ),
                     )
                   : Text(
-                      // normal text
                       widget.label,
                       style: TextStyle(
                         fontFamily: 'Rubik',
@@ -857,6 +820,17 @@ class _RootScreenState extends ConsumerState<RootScreen>
   final _dialogQueue = Queue<Widget Function()>();
   bool _dialogShowing = false;
 
+  late final PageController _pageController;
+  late final ValueNotifier<double> _pagePosition;
+  late final _GuardedPhysics _physics;
+
+  /// True while the user drags the nav pill. The finger drives the pages, so
+  /// tab-change side effects (animations, provider sync) stay quiet.
+  bool _scrubbing = false;
+
+  /// Target of the running programmatic page animation, to avoid restarting it.
+  int? _animatingTo;
+
   void _enqueueDialog(Widget Function() builder) {
     _dialogQueue.add(builder);
     _processQueue();
@@ -881,9 +855,83 @@ class _RootScreenState extends ConsumerState<RootScreen>
 
   final GlobalKey<NavigatorState> _devicesNavKey = GlobalKey<NavigatorState>();
 
+  /// Finger swiping between tabs is blocked while the Devices tab has a
+  /// sub-screen open, so the swipe doesn't drag that sub-screen away.
+  bool _canSwipe() {
+    final page = _pageController.hasClients ? (_pageController.page ?? 0) : 0;
+    final onDevices = page.round() == 0;
+    final devicesHasSubScreen = _devicesNavKey.currentState?.canPop() ?? false;
+    return !(onDevices && devicesHasSubScreen);
+  }
+
+  void _goTo(int index) {
+    if (!_pageController.hasClients) return;
+    if (_animatingTo == index) return;
+    final current = _pageController.page ?? index.toDouble();
+    if ((current - index).abs() < 0.001) return;
+
+    _animatingTo = index;
+    _pageController
+        .animateToPage(
+          index,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        )
+        .whenComplete(() {
+          if (_animatingTo == index) _animatingTo = null;
+        });
+  }
+
+  void _onScrubStart() {
+    _scrubbing = true;
+    _animatingTo = null;
+  }
+
+  void _onScrub(double page) {
+    if (!_pageController.hasClients) return;
+    final position = _pageController.position;
+    _pageController.jumpTo(
+      (page * position.viewportDimension).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+  }
+
+  void _onScrubEnd(int index) {
+    _scrubbing = false;
+    ref.read(currentTabProvider.notifier).set(index);
+    _goTo(index);
+  }
+
+  /// After a finger swipe settles, sync the selected tab with the page.
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0 || _scrubbing || !mounted) return false;
+    if (notification is ScrollEndNotification && _pageController.hasClients) {
+      final page = _pageController.page;
+      if (page != null) {
+        final index = page.round();
+        if (index != ref.read(currentTabProvider)) {
+          ref.read(currentTabProvider.notifier).set(index);
+        }
+      }
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
+
+    final initialTab = ref.read(currentTabProvider);
+    _pageController = PageController(initialPage: initialTab);
+    _pagePosition = ValueNotifier<double>(initialTab.toDouble());
+    _pageController.addListener(() {
+      if (!_pageController.hasClients) return;
+      final page = _pageController.page;
+      if (page != null) _pagePosition.value = page;
+    });
+    _physics = _GuardedPhysics(canScroll: _canSwipe);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initApp(ref);
@@ -905,24 +953,21 @@ class _RootScreenState extends ConsumerState<RootScreen>
   }
 
   @override
-  void dispose() async {
+  void dispose() {
+    _pageController.dispose();
+    _pagePosition.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final inactive = context.colors.thirdFont;
-    final active = context.colors.primaryFont;
-
     final currentIndex = ref.watch(currentTabProvider);
 
-    Color transfersColor;
-
-    if (currentIndex == 1) {
-      transfersColor = active;
-    } else {
-      transfersColor = inactive;
-    }
+    // Slide between tabs instead of an instant swap (pill taps, etc.).
+    ref.listen<int>(currentTabProvider, (prev, next) {
+      if (_scrubbing) return;
+      _goTo(next);
+    });
 
     ref.listen(connectionRequestNotifierProvider, (prev, next) {
       if (next != null) {
@@ -947,136 +992,76 @@ class _RootScreenState extends ConsumerState<RootScreen>
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1a1a1a),
+      backgroundColor: context.colors.primaryCol,
       extendBody: true,
       extendBodyBehindAppBar: true,
-      body: IndexedStack(
-        index: currentIndex,
-        children: [
-          DevicesScreen(navigatorKey: _devicesNavKey),
-          TransfersScreen(),
-          SettingsScreen(),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          color: Colors.transparent,
-          child: SizedBox(
-            height: 64,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                // Text(nfcData),
-                _NavItem(
-                  svgPath: 'assets/icons/radio.svg',
-                  label: 'Devices',
-                  active: currentIndex == 0,
-                  activeColor: active,
-                  inactiveColor: inactive,
-                  onTap: () {
-                    if (currentIndex == 0) {
-                      _devicesNavKey.currentState?.popUntil(
-                        (route) => route.isFirst,
-                      );
-                    } else {
-                      ref.read(currentTabProvider.notifier).set(0);
-                    }
-                  },
-                ),
-                GestureDetector(
-                  onTap: () => ref.read(currentTabProvider.notifier).set(1),
-                  behavior: HitTestBehavior.opaque,
-                  child: SizedBox(
-                    width: 80,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.swap_vert_rounded,
-                          color: transfersColor,
-                          size: 24,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "Transfers",
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: transfersColor,
-                            fontWeight: FontWeight.w500,
-                            fontFamily: "Inter",
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                _NavItem(
-                  svgPath: 'assets/icons/settings.svg',
-                  label: 'Settings',
-                  active: currentIndex == 2,
-                  activeColor: active,
-                  inactiveColor: inactive,
-                  onTap: () => ref.read(currentTabProvider.notifier).set(2),
-                ),
-              ],
-            ),
-          ),
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: PageView(
+          controller: _pageController,
+          physics: _physics,
+          children: [
+            _KeepAlive(child: DevicesScreen(navigatorKey: _devicesNavKey)),
+            _KeepAlive(child: TransfersScreen()),
+            _KeepAlive(child: SettingsScreen()),
+          ],
         ),
+      ),
+      bottomNavigationBar: BottomPillNav(
+        position: _pagePosition,
+        onTap: (i) {
+          if (i == 0 && currentIndex == 0) {
+            _devicesNavKey.currentState?.popUntil((route) => route.isFirst);
+          } else {
+            ref.read(currentTabProvider.notifier).set(i);
+            _goTo(i);
+          }
+        },
+        onScrubStart: _onScrubStart,
+        onScrub: _onScrub,
+        onScrubEnd: _onScrubEnd,
       ),
     );
   }
 }
 
-class _NavItem extends StatelessWidget {
-  final String svgPath;
-  final String label;
-  final bool active;
-  final Color activeColor;
-  final Color inactiveColor;
-  final VoidCallback onTap;
+/// Keeps a page's state alive while it is off-screen in the PageView, like
+/// IndexedStack did (navigator stacks and scroll positions survive).
+class _KeepAlive extends StatefulWidget {
+  const _KeepAlive({required this.child});
+  final Widget child;
 
-  const _NavItem({
-    required this.svgPath,
-    required this.label,
-    required this.active,
-    required this.activeColor,
-    required this.inactiveColor,
-    required this.onTap,
-  });
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? activeColor : inactiveColor;
+    super.build(context);
+    return widget.child;
+  }
+}
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 80,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SvgPicture.asset(
-              svgPath,
-              width: 20,
-              height: 20,
-              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                color: color,
-                fontWeight: FontWeight.w500,
-                fontFamily: "Inter",
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+/// Clamping physics whose finger scrolling can be switched off on demand
+/// (checked at the start of each drag, so it needs no rebuild).
+class _GuardedPhysics extends ClampingScrollPhysics {
+  const _GuardedPhysics({required this.canScroll, super.parent});
+
+  final bool Function() canScroll;
+
+  @override
+  _GuardedPhysics applyTo(ScrollPhysics? ancestor) {
+    return _GuardedPhysics(canScroll: canScroll, parent: buildParent(ancestor));
+  }
+
+  @override
+  bool shouldAcceptUserOffset(ScrollMetrics position) {
+    return canScroll() && super.shouldAcceptUserOffset(position);
   }
 }
 
@@ -1099,8 +1084,8 @@ class PrimaryButton extends StatelessWidget {
         child: ElevatedButton(
           onPressed: onPressed,
           style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+            shape: RoundedSuperellipseBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
             foregroundColor: Colors.white,
             backgroundColor: Colors.white,
@@ -1149,10 +1134,11 @@ class _PermissionDialogState extends State<PermissionDialog>
   void _requestPermission() async {
     final status = await widget.permission.request();
     debugPrint("🟦 Permission dialog requestes permission: $status");
+    if (!mounted) return;
     setState(() {
       permStatus = status;
     });
-    if (status == PermissionStatus.granted && mounted) {
+    if (status == PermissionStatus.granted) {
       Navigator.of(context).pop(true);
     }
   }
@@ -1161,11 +1147,10 @@ class _PermissionDialogState extends State<PermissionDialog>
   void didChangeAppLifecycleState(AppLifecycleState state) async {
     if (state == AppLifecycleState.resumed) {
       final status = await widget.permission.status;
+      if (!mounted) return;
       if (status == PermissionStatus.granted) {
-        if (mounted) {
-          debugPrint("🟦 Permission granted.");
-          Navigator.of(context).pop(true);
-        }
+        debugPrint("🟦 Permission granted.");
+        Navigator.of(context).pop(true);
       }
       setState(() {
         permStatus = status;
@@ -1201,8 +1186,8 @@ class _PermissionDialogState extends State<PermissionDialog>
                   Text(
                     widget.title,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: context.colors.primaryFont,
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
                       fontFamily: "Rubik",
@@ -1212,8 +1197,8 @@ class _PermissionDialogState extends State<PermissionDialog>
                   Text(
                     description,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xffd6d6d6),
+                    style: TextStyle(
+                      color: context.colors.secondaryFont,
                       fontSize: 14,
                     ),
                   ),

@@ -5,7 +5,6 @@ import "./fonts/Rubik-Light.ttf";
 import "./fonts/Rubik-Medium.ttf";
 import "./fonts/Rubik-Regular.ttf";
 import "./fonts/Rubik-SemiBold.ttf";
-import "./fonts/RubikMono.ttf";
 
 export struct ThemeColors {
     primary-col: color,
@@ -26,32 +25,41 @@ export struct ThemeDef {
     colors: ThemeColors,
 }
 
+export struct ThemeConfig {
+    edges-shape: float,
+    round-edges: bool,
+    font: string,
+    font-scale: float,
+    topbar-always-on: bool,
+    native-topbar: bool,
+}
+
 export global Theme {
     in-out property <int> mode: 1;
     in-out property <bool> theme-selector;
 
-    in-out property <bool> animations;
-    out property <easing> easing: cubic-bezier(0.25,0.96, 0.43, 0.98);
-    out property <duration> animation-speed: 128ms;
+    in-out property <ThemeConfig> config: {
+        edges-shape: 2.5,
+        round-edges: true,
+        font: "Rubik",
+        font-scale: 1.0,
+        topbar-always-on: false,
+        native-topbar: false,
+    };
 
+    out property <easing> easing: cubic-bezier(0.25, 0.96, 0.43, 0.98);
+    out property <duration> animation-speed: 128ms;
     out property <length> font-header: 20px;
 
-    in-out property <float> font-scale: 1.0;
-    in-out property <length> font-size: 13px * font-scale;
-    in-out property <string> font: "Rubik";
+    out property <length> font-size: 13px * config.font-scale;
 
+    callback config-changed();
     callback mode-changed(int);
-    callback set-font(string);
-    callback set-font-scale(float);
-
-    set-font-scale(v) => {
-        Theme.font-scale = v;
-        Theme.font-size = font-scale * 13px;
-    }
 
     public function set-mode(idx: int) {
         root.mode = idx;
         root.mode-changed(idx);
+        root.config-changed();
     }
 
     out property <[ThemeDef]> themes: [

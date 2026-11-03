@@ -2,7 +2,9 @@ use crate::frb_generated::StreamSink;
 use anyhow::Result;
 pub use base64::{Engine as _, engine::general_purpose::STANDARD};
 pub use chrono::{DateTime, Utc};
-pub use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
+pub use ed25519_dalek::{
+    Signature, Signer, SigningKey, VerifyingKey,
+};
 pub use flutter_rust_bridge::DartFnFuture;
 use flutter_rust_bridge::setup_log_to_console;
 use iroh::EndpointId;
@@ -11,19 +13,24 @@ pub use log::info;
 use nectan_core::{
     common::get_signing_key,
     devices::{
-        self, Device, Devices, UserInfo, Username, device_id_from_base64, device_id_to_base64,
+        self, Device, Devices, UserInfo, Username,
+        device_id_from_base64, device_id_to_base64,
     },
     messages::{AppEvent, UiResponse},
     protocol::{NectanState, TransferOffer},
     setup_core,
     storage::Storage,
-    transfers::{TransferItemError, TransferOfferError, TransferStatus, send_contents},
+    transfers::{
+        TransferItemError, TransferOfferError, TransferStatus,
+        send_contents,
+    },
     walker::Walker,
 };
 pub use rand_core::OsRng;
 pub use reqwest::{Client, StatusCode};
 pub use serde::{Deserialize, Serialize};
 pub use serde_json::{Value, de};
+use std::sync::atomic::Ordering::Relaxed;
 pub use std::{
     cell::OnceCell,
     collections::HashMap,
@@ -59,7 +66,6 @@ pub struct Engine {
     pub state: tokio::sync::OnceCell<Arc<NectanState>>,
     pub lookup_addr_placeholder: Mutex<Option<EndpointId>>,
     pub walker: Arc<Mutex<Option<Walker>>>,
-    pub transfers_accumulator: Mutex<Vec<TransferMetaDto>>,
     pub storage: Arc<Storage>,
 }
 
@@ -87,14 +93,17 @@ pub fn state() -> Arc<NectanState> {
 pub fn save_username(username: String) -> anyhow::Result<()> {
     log::info!("Saving username.");
     let uname = Username::new(username).expect("Invalid username");
-    store().set(nectan_core::storage::Value::Username(uname))
+    store().update(|s| s.username = Some(uname))
 }
 
 /// Adds received content to gallery
-static SCAN_DIR_CALLBACK: OnceLock<Box<dyn Fn(String) -> DartFnFuture<()> + Send + Sync>> =
-    OnceLock::new();
+static SCAN_DIR_CALLBACK: OnceLock<
+    Box<dyn Fn(String) -> DartFnFuture<()> + Send + Sync>,
+> = OnceLock::new();
 
-pub fn register_callback(cb: impl Fn(String) -> DartFnFuture<()> + Send + Sync + 'static) {
+pub fn register_callback(
+    cb: impl Fn(String) -> DartFnFuture<()> + Send + Sync + 'static,
+) {
     SCAN_DIR_CALLBACK.set(Box::new(cb)).ok();
 }
 
@@ -145,7 +154,6 @@ pub fn init_engine(base_path: String) -> bool {
             state: tokio::sync::OnceCell::new(),
             lookup_addr_placeholder: Mutex::new(None),
             walker: Arc::new(Mutex::new(None)),
-            transfers_accumulator: Mutex::new(Vec::new()),
             storage: Arc::new(storage),
         });
 
@@ -162,17 +170,27 @@ pub enum TransferDirection {
     Incoming,
 }
 
-impl From<nectan_core::transfers::TransferDirection> for TransferDirection {
-    fn from(child_dir: nectan_core::transfers::TransferDirection) -> Self {
+impl From<nectan_core::transfers::TransferDirection>
+    for TransferDirection
+{
+    fn from(
+        child_dir: nectan_core::transfers::TransferDirection,
+    ) -> Self {
         match child_dir {
-            nectan_core::transfers::TransferDirection::Outcoming => TransferDirection::Outcoming,
-            nectan_core::transfers::TransferDirection::Incoming => TransferDirection::Incoming,
+            nectan_core::transfers::TransferDirection::Outcoming => {
+                TransferDirection::Outcoming
+            }
+            nectan_core::transfers::TransferDirection::Incoming => {
+                TransferDirection::Incoming
+            }
         }
     }
 }
 
 // This is BULLSHIT
-#[derive(Deserialize, Serialize, PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(
+    Deserialize, Serialize, PartialEq, Eq, Debug, Clone, Copy,
+)]
 pub enum TransferStateDto {
     Processing,
     Cancelled,
@@ -182,9 +200,13 @@ pub enum TransferStateDto {
 impl From<TransferStatus> for TransferStateDto {
     fn from(state: TransferStatus) -> Self {
         match state {
-            TransferStatus::Downloading => TransferStateDto::Processing,
+            TransferStatus::Downloading => {
+                TransferStateDto::Processing
+            }
             TransferStatus::Finished => TransferStateDto::Finished,
-            TransferStatus::CancelledByRemote => TransferStateDto::Cancelled,
+            TransferStatus::CancelledByRemote => {
+                TransferStateDto::Cancelled
+            }
         }
     }
 }
@@ -199,10 +221,10 @@ pub struct TransferMetaDto {
     pub direction: TransferDirection,
     pub total_size: u64,
     pub sent_bytes: u64,
-    pub entires_num: u64,
+    pub entires_num: u32,
     pub status: TransferStateDto,
     pub speed_bps: u64,
-    pub failed_entries: u64,
+    pub failed_entries: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -229,9 +251,13 @@ pub enum SendItemErrorDto {
 impl From<TransferItemError> for SendItemErrorDto {
     fn from(item: TransferItemError) -> Self {
         match item {
-            TransferItemError::FileAlreadyExisted => Self::FileAlreadyExisted,
+            TransferItemError::FileAlreadyExisted => {
+                Self::FileAlreadyExisted
+            }
             TransferItemError::FileNotFound => Self::FileNotFound,
-            TransferItemError::PermissionDenied => Self::FileOpenPermissionDenied,
+            TransferItemError::PermissionDenied => {
+                Self::FileOpenPermissionDenied
+            }
             TransferItemError::FileIOError => Self::FileIOError,
             TransferItemError::OpenFail => Self::OpenFail,
             // those wont ever be translated anyways
@@ -267,20 +293,28 @@ pub async fn init_app(
 
     let storage = e.storage.clone();
     let path = std::path::PathBuf::from(app_dir);
-    let devices = Devices::new(Some(path)).unwrap();
+    let devices = Devices::new(Some(path));
 
     let signing_key = get_signing_key(&storage);
     let device_id = signing_key.verifying_key();
-    let (tx, rx) = tokio::sync::mpsc::channel(128);
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
 
     let username = storage
         .username()
         .unwrap_or(Username::new("Default").unwrap());
     let userinfo = UserInfo::new(username);
 
-    let state = setup_core(tx, device_id, userinfo, signing_key, devices, storage)
-        .await
-        .unwrap();
+    let state = setup_core(
+        tx,
+        device_id,
+        userinfo,
+        signing_key,
+        devices,
+        storage,
+        false,
+    )
+    .await
+    .unwrap();
 
     e.state.set(state).expect("Failed to set state!");
 
@@ -299,27 +333,27 @@ pub async fn init_app(
 }
 
 pub fn get_all_transfers() -> Vec<TransferMetaDto> {
-    Vec::new()
-    // state()
-    //     .transfers_pool
-    //     .get_transfers()
-    //     .iter()
-    //     .map(|t| TransferMetaDto {
-    //         id: t.0.to_string(),
-    //         name: t.1.name.clone(),
-    //         direction: t.1.direction.into(),
-    //         remote_device_id: device_id_to_base64(&t.1.remote_device),
-    //         remote_device_name: t.1.remote_device_name.clone(),
-    //         total_size: t.1.total_size,
-    //         entires_num: t.1.entries_num,
-    //         status: t.1.state.into(),
-    //         sent_bytes: 0, // only availiable in pending
-    //         speed_bps: 0,  // populated by the transfers controller
-    //         failed_entries: t.1.failed_entries,
-    //     })
-    //     .collect()
+    info!("LOADING TRANFERS ----------- ");
+    state()
+        .transfers
+        .get_pending_transfers()
+        .iter()
+        .map(|t| TransferMetaDto {
+            id: t.id.to_string(),
+            name: t.name.clone(),
+            direction: t.direction.into(),
+            remote_device_id: device_id_to_base64(&t.target),
+            remote_device_name: t.target_name.to_string(),
+            total_size: t.total_size,
+            entires_num: t.total_items,
+            status: TransferStateDto::Processing,
+            sent_bytes: t.sent_bytes.load(Relaxed),
+            speed_bps: t.speed.load(Relaxed),
+            failed_entries: t.failed.load(Relaxed),
+        })
+        .collect()
 }
-/// ???
+
 pub struct ConnectionRequest {
     pub username: String,
 }
@@ -404,7 +438,10 @@ pub struct TransferOfferDto {
     pub files: Vec<(String, u64, bool)>,
 }
 
-pub async fn respond_to_transfer_offer(accept: bool, destination: String) {
+pub async fn respond_to_transfer_offer(
+    accept: bool,
+    destination: String,
+) {
     let r = match accept {
         true => UiResponse::AcceptOffer {
             destination: PathBuf::from(destination),
@@ -435,14 +472,27 @@ fn start_event_listener(
     new_connection_sink: StreamSink<ConnectionRequest>,
     transfer_offer_sink: StreamSink<TransferOfferDto>,
     transfers_sink: StreamSink<Vec<TransferMetaDto>>,
-    found_device_nearby_sink: StreamSink<DeviceDto>,
+    _found_device_nearby_sink: StreamSink<DeviceDto>,
 ) {
     flutter_rust_bridge::spawn(async move {
         while let Some(ev) = event_rx.recv().await {
             match ev {
+                AppEvent::Autoaccepted { from } => {
+                    println!("Autoaccepted from {from}.");
+                    update_transfers(&transfers_sink);
+                }
+                AppEvent::TextMessage {
+                    from,
+                    device_id,
+                    content,
+                } => {
+                    println!(
+                        "Incoming text message from {from} {content}"
+                    );
+                }
                 AppEvent::TransfersUpdated => {
-                    // update_transfers(&w);
                     log::info!("Transfers changed.");
+                    update_transfers(&transfers_sink);
                 }
                 AppEvent::IncomingTransferOffer { offer } => {
                     log::info!("New transfer offer.");
@@ -451,11 +501,20 @@ fn start_event_listener(
                         .inner
                         .entries
                         .iter()
-                        .map(|e| (e.path.to_string_lossy().to_string(), e.size, e.is_dir))
+                        .map(|e| {
+                            (
+                                e.path.to_string_lossy().to_string(),
+                                e.size,
+                                e.is_dir,
+                            )
+                        })
                         .collect();
                     let new_offer = TransferOfferDto {
                         sender_device_name: offer.sender_name,
-                        transfer_id: offer.inner.transfer_id.to_string(),
+                        transfer_id: offer
+                            .inner
+                            .transfer_id
+                            .to_string(),
                         name: offer.inner.transfer_name,
                         size: offer.inner.total_size,
                         files_num: offer.inner.entries_num,
@@ -470,8 +529,12 @@ fn start_event_listener(
                         username: offer.username.as_string(),
                     };
 
-                    if let Err(e) = new_connection_sink.add(conn_req) {
-                        log::error!("‼️ Critical new connection request error: {}", e);
+                    if let Err(e) = new_connection_sink.add(conn_req)
+                    {
+                        log::error!(
+                            "‼️ Critical new connection request error: {}",
+                            e
+                        );
                     };
                 }
                 AppEvent::FoundNearby => {
@@ -482,7 +545,6 @@ fn start_event_listener(
                     log::info!("Connected to device");
                     update_devices_sink(&devices_sink);
                 }
-                AppEvent::TransferOfferDelivered => {}
                 AppEvent::DeviceWentOffline { .. } => {
                     log::info!("Device went offline");
                     update_devices_sink(&devices_sink);
@@ -497,11 +559,15 @@ async fn sync_accumulator(engine: &Engine) -> Vec<TransferMetaDto> {
     let mut acc = engine.transfers_accumulator.lock().await;
 
     for fresh_t in &fresh {
-        if let Some(existing) = acc.iter_mut().find(|t| t.id == fresh_t.id) {
+        if let Some(existing) =
+            acc.iter_mut().find(|t| t.id == fresh_t.id)
+        {
             existing.status = fresh_t.status;
             existing.name = fresh_t.name.clone();
-            existing.remote_device_id = fresh_t.remote_device_id.clone();
-            existing.remote_device_name = fresh_t.remote_device_name.clone();
+            existing.remote_device_id =
+                fresh_t.remote_device_id.clone();
+            existing.remote_device_name =
+                fresh_t.remote_device_name.clone();
             existing.direction = fresh_t.direction;
             existing.total_size = fresh_t.total_size;
             existing.entires_num = fresh_t.entires_num;
@@ -553,7 +619,9 @@ pub async fn pause_resume_transfer(transfer_id: String) {
 
 /// Called after obtaining remote device endpoint id
 /// Will attempt to connect to remote device
-pub async fn add_remote_device(sink: StreamSink<AddRemoteDeviceEvent>) {
+pub async fn add_remote_device(
+    sink: StreamSink<AddRemoteDeviceEvent>,
+) {
     log::info!("🟦 Adding remote device.");
 
     let state = state();
@@ -604,7 +672,7 @@ pub enum DeviceStatus {
 }
 
 pub struct DeviceDto {
-    pub id: String, // base64 encoded
+    pub id: String,
     pub username: String,
     pub status: DeviceStatus,
     pub deleted: bool,
@@ -613,6 +681,10 @@ pub struct DeviceDto {
 /// flutter_rust_bridge:ignore
 fn update_devices_sink(sink: &StreamSink<Vec<DeviceDto>>) {
     let _ = sink.add(get_dto_devices());
+}
+/// flutter_rust_bridge:ignore
+fn update_transfers(sink: &StreamSink<Vec<TransferMetaDto>>) {
+    let _ = sink.add(get_all_transfers());
 }
 
 // pub fn get_local_devices_list() -> Vec<String> {
@@ -639,7 +711,9 @@ impl From<Device> for DeviceDto {
     fn from(d: Device) -> DeviceDto {
         let status = match d.status {
             devices::DeviceStatus::Online => DeviceStatus::Online,
-            devices::DeviceStatus::Nearby => DeviceStatus::LocalNetwork,
+            devices::DeviceStatus::Nearby => {
+                DeviceStatus::LocalNetwork
+            }
             devices::DeviceStatus::Offline => DeviceStatus::Offline,
         };
         DeviceDto {
@@ -789,7 +863,8 @@ pub async fn send(
             walker.total_entries(),
             SendState::Scanning,
         );
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100))
+            .await;
     }
     let _ = handle.join();
 
@@ -814,62 +889,26 @@ pub async fn send(
         total_size,
         entries: Arc::new(entries),
     };
+    let (delivered_tx, delivered_rx) =
+        tokio::sync::oneshot::channel();
 
-    let final_state = match send_contents(&state(), target, offer, walker.root_path.clone()).await {
+    let final_state = match send_contents(
+        &state(),
+        target,
+        offer,
+        walker.root_path.clone(),
+        delivered_tx,
+    )
+    .await
+    {
         Ok(_) => SendState::Accepted,
-        Err(e) if e == TransferOfferError::TransferRejected => SendState::Rejected,
+        Err(e) if e == TransferOfferError::TransferRejected => {
+            SendState::Rejected
+        }
         Err(_) => SendState::Failed,
     };
     emit(total_size, entries_num, final_state);
 }
-
-// pub async fn send(
-//     remote_device_id: String,
-//     transfer_name: String,
-//     paths: Vec<String>,
-//     sink: StreamSink<WalkInfo>,
-// ) {
-//     let transfer_id = Uuid::new_v4();
-//     let target = device_id_from_base64(&remote_device_id).unwrap();
-//     let paths = paths.iter().map(|p| PathBuf::from(p)).collect();
-//     let walker = Walker::new(paths);
-//
-//     walker.walk().join().unwrap();
-//
-//     loop {
-//         if walker.finished() || walker.should_abort() {
-//             break;
-//         }
-//
-//         let total_size = walker.total_size();
-//         let files = walker.total_entries();
-//
-//         let info = WalkInfo {
-//             total_size,
-//             files,
-//             state: SendState::Scanning,
-//         };
-//         let _ = sink.add(info);
-//     }
-//
-//     let Some(entries) = walker.take_entries() else {
-//         return;
-//     };
-//
-//     let entries_num = walker.total_entries();
-//     let total_size = walker.total_size();
-//     let entries = Arc::new(entries);
-//
-//     let offer = TransferOffer {
-//         transfer_id,
-//         transfer_name,
-//         entries_num,
-//         total_size,
-//         entries,
-//     };
-//
-//     let _ = send_contents(&state(), target, offer, walker.root_path.clone()).await;
-// }
 
 pub fn gen_transfer_name() -> String {
     nectan_core::common::gen_transfer_name()

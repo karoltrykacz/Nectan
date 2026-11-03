@@ -1,15 +1,4 @@
-const btn = document.querySelector('#theme-toggle');
 const html = document.documentElement;
-
-const saved = localStorage.getItem('theme');
-const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-html.dataset.theme = saved || (osDark ? 'dark' : 'light');
-
-btn.addEventListener('click', () => {
-  const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
-  html.dataset.theme = next;
-  localStorage.setItem('theme', next);
-});
 
 const LOCALES = [
   { code: "en", name: "English" },

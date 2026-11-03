@@ -22,12 +22,21 @@ export struct DeviceItem {
     total-exchanged-data: string
 }
 
+export struct DeviceFolder {
+    id: string,
+    title: string,
+    icon: image,
+    devices: [DeviceItem],
+}
+
 export global DevicesBridge {
-    in-out property <[DeviceItem]> devices: [];
+    in-out property <[DeviceItem]> devices;
+
     pure callback toggle-favourite(string);
+    pure callback forget-device(string);
 
     in-out property <int> device-details-open-idx: -1;
-    in-out property <bool> device-details-open: false;
+    in-out property <bool> device-details-open;
 }
 
 export component DeviceStatusText inherits Text {

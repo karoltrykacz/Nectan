@@ -1,5 +1,6 @@
 use anyhow::bail;
 use clipboard_rs::Clipboard;
+use nectan_core::EndpointAddr;
 use nectan_core::{
     code_lookup::{
         CodeLookupError, gen_code, issue_code, lookup_code,
@@ -11,11 +12,10 @@ use std::sync::Arc;
 use tracing::error;
 
 use crate::{
-    AddDeviceBridge, Error, LookupState, NectanSender,
-    state::ui_state,
+    AddDeviceBridge, App, Error, LookupState, state::ui_state,
 };
 
-pub fn handle_add_device(w: &NectanSender, state: Arc<NectanState>) {
+pub fn handle_add_device(w: &App, state: Arc<NectanState>) {
     let bridge = w.global::<AddDeviceBridge>();
     let ui_weak = w.as_weak();
     let s = state.clone();
@@ -163,7 +163,7 @@ pub fn handle_add_device(w: &NectanSender, state: Arc<NectanState>) {
                     .set_lookup_state(LookupState::Connecting);
             })?;
 
-            let mut rx = connect(state, addr);
+            let mut rx = connect(state, EndpointAddr::from(addr));
             let result = rx.recv().await.unwrap();
 
             if let ConnectStatus::RequestDelivered = result {

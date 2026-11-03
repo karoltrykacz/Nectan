@@ -7,7 +7,7 @@
 // use slint::{ComponentHandle, ModelRc, VecModel, Weak};
 //
 // use crate::{
-//     AddDeviceBridge, DevicesBridge, NectanWindow, ResultItem, SearchBridge, SearchItemKind,
+//     AddDeviceBridge, DevicesBridge, App, ResultItem, SearchBridge, SearchItemKind,
 //     SettingsBridge, Window, WindowBridge, state::ui_state,
 // };
 //
@@ -72,7 +72,7 @@
 // }
 //
 // struct ActionProvider {
-//     weak: Weak<NectanWindow>,
+//     weak: Weak<App>,
 //     fuzzy: Fuzzy,
 // }
 //
@@ -152,7 +152,7 @@
 // }
 //
 // struct DeviceProvider {
-//     weak: Weak<NectanWindow>,
+//     weak: Weak<App>,
 //     fuzzy: Fuzzy,
 // }
 //
@@ -200,7 +200,7 @@
 //     }
 // }
 //
-// pub fn handle_search(w: &NectanWindow) {
+// pub fn handle_search(w: &App) {
 //     let weak = w.as_weak();
 //
 //     let registry = Rc::new(Registry(vec![

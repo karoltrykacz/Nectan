@@ -151,7 +151,7 @@ component SettingsTab inherits Rectangle {
 
     height: 28px;
     border-radius: 12px;
-    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    border-corner-shape: superellipse(Theme.config.edges-shape);
     background: SettingsBridge.active-tab == tab-idx ? Theme.colors.secondary-col
         : (ta.has-hover ? Theme.colors.secondary-col : transparent);
     border-width: 1px;
@@ -197,24 +197,7 @@ component SettingsTab inherits Rectangle {
 component General inherits SettingsPage {
 
     title: @tr("General");
-
-    SettingsRow {
-        title: @tr("Username");
-        subtitle: WindowBridge.username;
-
-        PrimaryButton {
-            text: @tr("Change");
-
-            clicked => {
-                SettingsBridge.username-modal = true;
-            }
-        }
-    }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
+    row-count: 6;
 
     SettingsRow {
         z: 1;
@@ -391,7 +374,7 @@ component SpeedLimitsConfig inherits GeneralModal {
         drop-shadow-color: #00000099;
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-corner-shape: superellipse(Theme.config.edges-shape);
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.colors.border-col;
@@ -510,126 +493,14 @@ component SpeedLimitsConfig inherits GeneralModal {
     }
 }
 
-component IconsEditor inherits GeneralModal {
-
-    on-close => {
-        root.restore-focus();
-        SettingsBridge.icons-config = false;
-    }
-
-    on-enter => {
-        root.on-close();
-    }
-
-    init => { self.focus(); }
-
-    TouchArea {
-        clicked => { root.on-close(); }
-    }
-
-    Rectangle {
-
-        width: min(512px, parent.width - 40px);
-        height: min(320px, parent.height - 40px);
-        drop-shadow-color: #00000099;
-        drop-shadow-blur: 28px;
-        background: Theme.colors.primary-col;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
-        border-radius: 12px;
-        border-width: 1px;
-        border-color: Theme.colors.border-col;
-        clip: true;
-
-        VerticalLayout {
-            padding: 20px;
-            padding-top: 16px;
-
-            Text {
-                text: @tr("Edit icons");
-                font-size: 1.5rem;
-                color: Theme.colors.primary-font;
-                font-weight: 600;
-            }
-
-            Rectangle {
-                height: 2px;
-            }
-
-            Text {
-                wrap: word-wrap;
-                text: @tr("Supported formats: PNG, JPEG, SVG");
-                font-size: 0.9rem;
-                color: Theme.colors.secondary-font;
-            }
-
-            Rectangle { }
-
-            FlexboxLayout {
-                cross-axis-self-alignment: center;
-                spacing-horizontal: 12px;
-                spacing-vertical: 20px;
-                cross-axis-alignment: center;
-                width: 320px;
-                alignment: center;
-                for icon[i] in [
-                    Icons.downloads,
-                    Icons.documents,
-                    Icons.music,
-                    Icons.videos,
-                    Icons.pictures,
-                    Icons.trash,
-                    Icons.home,
-                    Icons.recent,
-                    Icons.drives,
-                    Icons.search,
-                    Icons.save,
-                    Icons.refresh,
-                    Icons.settings,
-                    Icons.chevron-left,
-                    Icons.chevron-right,
-                    Icons.filter,
-                    Icons.grid,
-                    Icons.list,
-                    Icons.file,
-                    Icons.directory,
-                    Icons.eye,
-                    Icons.eye-off,
-                    Icons.cpu,
-                    Icons.transfers,
-                ]: IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: icon;
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
-                    }
-                }
-            }
-
-            Rectangle { }
-
-            PrimaryButton {
-
-                cross-axis-self-alignment: end;
-                text: @tr("Save");
-                image: Icons.save;
-
-                clicked => {
-                    root.on-close();
-                }
-            }
-        }
-    }
-}
 
 
 component FontModal inherits GeneralModal {
     property <string> new-font;
 
     function save() {
-        Theme.font = new-font;
-        Theme.set-font(new-font);
+        Theme.config.font = new-font;
+        Theme.config-changed();
         root.restore-focus();
         root.on-close();
     }
@@ -649,7 +520,7 @@ component FontModal inherits GeneralModal {
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
         border-radius: 24px;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-corner-shape: superellipse(Theme.config.edges-shape);
         border-width: 1px;
         border-color: Theme.colors.border-col;
         clip: true;
@@ -745,7 +616,7 @@ component ChangeUsernameModal inherits GeneralModal {
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
         border-radius: 24px;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-corner-shape: superellipse(Theme.config.edges-shape);
         border-width: 1px;
         border-color: Theme.colors.border-col;
         clip: true;
@@ -882,30 +753,28 @@ component Appearance inherits SettingsPage {
     SettingsRow {
 
         title: @tr("Font");
-        subtitle: Theme.font;
+        subtitle: Theme.config.font;
 
-        PrimaryButton {
-            text: @tr("Change");
-            clicked => {
-                SettingsBridge.font-modal = true;
+        HorizontalLayout {
+            spacing: 12px;
+            cross-axis-alignment: center;
+
+            if Theme.config.font != "Rubik": IconButton {
+                width: 28px;
+                height: 28px;
+                SvgIcon {
+                    source: Icons.refresh;
+                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    size: 16px;
+                }
+
+                clicked => { Theme.config.font = "Rubik"; Theme.config-changed(); }
             }
-        }
-    }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 1;
-        title: @tr("Icons");
-        subtitle: @tr("Edit icons set");
-
-        PrimaryButton {
-            text: @tr("Edit");
-            clicked => {
-                SettingsBridge.icons-config = true;
+            PrimaryButton {
+                text: @tr("Change");
+                clicked => {
+                    SettingsBridge.font-modal = true;
+                }
             }
         }
     }
@@ -924,7 +793,7 @@ component Appearance inherits SettingsPage {
             spacing: 12px;
             cross-axis-alignment: center;
 
-            if Theme.font-scale != 1.0: IconButton {
+            if Theme.config.font-scale != 1.0: IconButton {
                 width: 28px;
                 height: 28px;
                 SvgIcon {
@@ -933,16 +802,16 @@ component Appearance inherits SettingsPage {
                     size: 16px;
                 }
 
-                clicked => { Theme.set-font-scale(1.0); font-factor.value = 1.0; }
+                clicked => { Theme.config.font-scale = 1.0; font-factor.value = 1.0; Theme.config-changed(); }
             }
 
             font-factor := Slider {
                 width: 100px;
                 minimum: 0.75;
                 maximum: 1.5;
-                value <=> Theme.font-scale;
-                changed(value) => {
-                    Theme.set-font-scale(Theme.font-scale);
+                value <=> Theme.config.font-scale;
+                released => {
+                    Theme.config-changed();
                 }
             }
         }
@@ -962,7 +831,10 @@ component Appearance inherits SettingsPage {
             spacing: 24px;
             cross-axis-alignment: center;
             Switch {
-                checked <=> WindowBridge.round-edges;
+                checked <=> Theme.config.round-edges;
+                toggled => {
+                    Theme.config-changed();
+                }
             }
         }
     }
@@ -978,9 +850,12 @@ component Appearance inherits SettingsPage {
         subtitle: @tr("Change edges shape");
         Slider {
             width: 100px;
-            value <=> WindowBridge.edges-shape;
+            value <=> Theme.config.edges-shape;
             minimum: 1.0;
             maximum: 5.0;
+            released => {
+                Theme.config-changed();
+            }
         }
     }
 
@@ -994,7 +869,8 @@ component Appearance inherits SettingsPage {
         title: @tr("Native topbar");
         subtitle: @tr("Use native window decorations.");
         Switch {
-            checked <=> WindowBridge.native-topbar;
+            checked <=> Theme.config.native-topbar;
+            toggled => { Theme.config-changed() }
         }
     }
 
@@ -1009,7 +885,8 @@ component Appearance inherits SettingsPage {
         subtitle: @tr("Don't hide topbar");
 
         Switch {
-            checked <=> WindowBridge.topbar-always-on;
+            checked <=> Theme.config.topbar-always-on;
+            toggled => { Theme.config-changed() }
         }
     }
 }
@@ -1055,13 +932,13 @@ export component Settings inherits GeneralModal {
         }
 
         Rectangle {
-            width: min(920px, parent.width - 40px);
-            height: min(620px, parent.height - 40px);
+            width: min(920px, parent.width - 240px);
+            height: min(620px, parent.height - 160px);
             clip: true;
 
             background: Theme.colors.primary-col;
-            border-radius: 12px;
-            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            border-radius: 20px;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
             border-width: 1px;
             border-color: Theme.colors.fourth-col.with-alpha(0.5);
 
@@ -1129,10 +1006,6 @@ export component Settings inherits GeneralModal {
         }
 
         if SettingsBridge.speed-limits-config: SpeedLimitsConfig {
-            restore-focus => { fs.focus(); }
-        }
-
-        if SettingsBridge.icons-config: IconsEditor {
             restore-focus => { fs.focus(); }
         }
     }

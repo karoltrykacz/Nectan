@@ -5,11 +5,11 @@ import {
     PrimaryButton,
     IconButton,
     SvgIcon,
-} from "../elements.slint";
-import { Theme } from "../theme.slint";
-import { WindowBridge } from "../window.slint";
+} from "../../../shared/elements.slint";
+import { Theme } from "../../../shared/theme.slint";
+import { WindowBridge } from "../../../shared/window.slint";
 import { ExplorerBridge } from "bridge.slint";
-import { Icons } from "../icons.slint";
+import { Icons } from "../../../shared/icons.slint";
 
 export component CompressModal inherits GeneralModal {
     in property <int> selection-start;
@@ -73,7 +73,7 @@ export component CompressModal inherits GeneralModal {
             Rectangle {
                 height: 32px;
                 border-radius: 12px;
-                border-corner-shape: superellipse(WindowBridge.edges-shape);
+                // border-corner-shape: superellipse(Theme.config.edges-shape);
                 background: Theme.colors.third-col;
 
                 name := PlainLineEdit {
@@ -128,7 +128,7 @@ export component CompressModal inherits GeneralModal {
                     height: 32px;
                     width: parent.width - 28px;
                     border-radius: 8px;
-                    border-corner-shape: superellipse(WindowBridge.edges-shape);
+                    // border-corner-shape: superellipse(Theme.config.edges-shape);
                     background: Theme.colors.third-col;
                     property <bool> hide:true;
 
@@ -174,7 +174,7 @@ export component CompressModal inherits GeneralModal {
                 Rectangle {
                     height: 32px;
                     border-radius: 8px;
-                    border-corner-shape: superellipse(WindowBridge.edges-shape);
+                    // border-corner-shape: superellipse(Theme.config.edges-shape);
                     background: Theme.colors.third-col;
 
                     confirm := PlainLineEdit {

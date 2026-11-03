@@ -22,6 +22,9 @@ pub enum NetMessage {
     TransferOfferMsg {
         offer: Box<TransferOffer>,
     },
+    TextMessage {
+        content: String,
+    },
     Accepted,
     Rejected {
         reason: Option<String>,
@@ -84,11 +87,26 @@ pub struct ConnectionOffer {
 
 pub enum AppEvent {
     FoundNearby,
-    Autoaccepted { from: Username },
-    Connected { device_id: DeviceId },
-    ConnectionOffer { offer: ConnectionOffer },
-    IncomingTransferOffer { offer: TransferOfferRequest },
-    DeviceWentOffline { device_id: DeviceId },
+    Autoaccepted {
+        from: Username,
+    },
+    Connected {
+        device_id: DeviceId,
+    },
+    ConnectionOffer {
+        offer: ConnectionOffer,
+    },
+    TextMessage {
+        from: Username,
+        device_id: DeviceId,
+        content: String,
+    },
+    IncomingTransferOffer {
+        offer: TransferOfferRequest,
+    },
+    DeviceWentOffline {
+        device_id: DeviceId,
+    },
     TransfersUpdated,
 }
 
@@ -111,6 +129,9 @@ impl std::fmt::Debug for AppEvent {
                 .finish(),
             Self::FoundNearby => {
                 f.debug_struct("FoundNearby").finish()
+            }
+            Self::TextMessage { .. } => {
+                f.debug_struct("TextMessage").finish()
             }
             Self::Connected { device_id } => f
                 .debug_struct("Connected")

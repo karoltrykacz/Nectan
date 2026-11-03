@@ -1,7 +1,9 @@
-use crate::NectanSender;
+use crate::App;
 use crate::devices::update_devices;
 use crate::offers::{show_connection_offer, show_transfer_offer};
 use crate::transfers::update_transfers;
+use nectan_core::devices::Username;
+use nectan_core::storage::Notifications;
 use nectan_core::{messages::AppEvent, protocol::NectanState};
 use notify_rust::{Hint, Notification, Timeout};
 use slint::Weak;
@@ -9,8 +11,12 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use tracing::{error, info};
 
+fn notify_config(s: &NectanState) -> Notifications {
+    s.storage.read(|s| s.notifications.clone())
+}
+
 pub async fn event_listener(
-    w: Weak<NectanSender>,
+    w: Weak<App>,
     mut rx: Receiver<AppEvent>,
     state: Arc<NectanState>,
 ) {
@@ -18,36 +24,49 @@ pub async fn event_listener(
         info!("AppEvent. {msg:?}");
         match msg {
             AppEvent::Autoaccepted { from } => {
-                notify(
-                    "Accepted Transfer",
-                    Some(format!("Accepted transfer from {from}")),
-                );
+                if notify_config(&state).transfer {
+                    notify(
+                        "Accepted Transfer",
+                        Some(format!(
+                            "Accepted transfer from {from}"
+                        )),
+                    );
+                }
+            }
+            AppEvent::TextMessage { from, content, .. } => {
+                show_text_message(from, content);
             }
             AppEvent::TransfersUpdated => {
                 update_transfers(&w);
             }
             AppEvent::IncomingTransferOffer { offer } => {
-                notify(
-                    "Incoming transfer",
-                    Some(format!(
-                        "{} wants to send you something.",
-                        offer.sender_name
-                    )),
-                );
-                // show_transfer_offer(&w, offer);
+                if notify_config(&state).transfer {
+                    notify(
+                        "Incoming transfer",
+                        Some(format!(
+                            "{} wants to send you something.",
+                            offer.sender_name
+                        )),
+                    );
+                }
+                show_transfer_offer(&w, offer);
             }
             AppEvent::ConnectionOffer { offer } => {
-                notify(
-                    "Incoming connection",
-                    Some(format!(
-                        "{} wants to connect with you.",
-                        offer.username
-                    )),
-                );
+                if notify_config(&state).connection {
+                    notify(
+                        "Incoming connection",
+                        Some(format!(
+                            "{} wants to connect with you.",
+                            offer.username
+                        )),
+                    );
+                }
                 show_connection_offer(&w, offer);
             }
             AppEvent::FoundNearby => {
-                notify("Discovered nearby device", None);
+                if notify_config(&state).device {
+                    notify("Discovered nearby device", None);
+                }
                 update_devices(&w, &state);
             }
             AppEvent::Connected { .. } => {
@@ -59,6 +78,8 @@ pub async fn event_listener(
         }
     }
 }
+
+fn show_text_message(from: Username, content: String) {}
 
 pub fn notify(summary: impl Into<String>, body: Option<String>) {
     let summary = summary.into();

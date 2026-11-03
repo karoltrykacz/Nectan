@@ -14,7 +14,7 @@ export global TextPreviewBridge {
     in-out property <bool> open: true;
     in-out property <bool> loading: false;
     in-out property <string> doc-name: "Document.txt";
-    in-out property <string> doc-size: "123 KB";
+    in-out property <string> text-size: "123 KB";
     in-out property <string> doc-modified: "12 May 2026";
     in-out property <[string]> doc-text: ["Document.txt"];
 
@@ -64,7 +64,6 @@ export component TextPreview inherits GeneralModal {
                     font-size: 16px;
                     font-weight: 500;
                     overflow: elide;
-                    horizontal-alignment: start;
                     vertical-alignment: center;
                 }
 
@@ -87,12 +86,11 @@ export component TextPreview inherits GeneralModal {
                             font-size: 16px;
                             font-weight: 500;
                             overflow: elide;
-                            horizontal-alignment: start;
                             vertical-alignment: center;
                         }
 
                         Text {
-                            text: "\{TextPreviewBridge.doc-modified} | \{TextPreviewBridge.doc-size}";
+                            text: "\{TextPreviewBridge.doc-modified} | \{TextPreviewBridge.text-size}";
                             font-size: 13px;
                             color: Theme.colors.third-font;
                             font-weight: 400;

@@ -9,8 +9,10 @@ import {
 } from "elements.slint";
 import { TreeList, TreeNode } from "file_tree.slint";
 import { Theme } from "theme.slint";
-import { ListView } from "std-widgets.slint";
-import { SettingsRow } from "elements.slint";
+import { ListView, TextEdit, ScrollView } from "std-widgets.slint";
+import { SettingsRow, ToolTip } from "elements.slint";
+import { WindowBridge } from "window.slint";
+import { Icons } from "icons.slint";
 
 export struct OfferEntry { filename: string, is-dir: bool, size: string }
 
@@ -30,7 +32,7 @@ export component EntryRow inherits Rectangle {
         padding-right: row-padding-right;
 
         Image {
-            source: entry.is-dir ? @image-url("icons/folder-nofill.svg") : @image-url("icons/file-nofill.svg");
+            source: entry.is-dir ? Icons.directory : Icons.file;
             width: 13px;
             height: 13px;
             colorize: Theme.colors.third-font;
@@ -121,6 +123,7 @@ export component OutcomingTransferModal inherits Rectangle {
     property <bool> respect-gitignore: true;
     property <bool> send-hidden-files: true;
     property <bool> compression: true;
+    property <bool> close-on-accept: true;
 
     property send-state <=> OutcomingTransferModalBridge.send-state;
 
@@ -130,6 +133,10 @@ export component OutcomingTransferModal inherits Rectangle {
     changed send-state => {
         if (send-state == SendModalState.Initial) {
             modal.focus();
+        }
+        if (root.close-on-accept && send-state == SendModalState.Accepted) {
+            on-closed();
+            OutcomingTransferModalBridge.open = false;
         }
     }
 
@@ -173,14 +180,14 @@ export component OutcomingTransferModal inherits Rectangle {
             drop-shadow-color: #00000099;
             drop-shadow-blur: 28px;
             background: Theme.colors.primary-col;
-            border-radius: 12px;
+            border-radius: 24px;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
             border-width: 1px;
             border-color: Theme.colors.border-col;
             clip: true;
 
             TouchArea {
-                clicked => {
-                }
+                clicked => {}
             }
 
             if send-state == SendModalState.SendingOffer ||
@@ -306,7 +313,7 @@ export component OutcomingTransferModal inherits Rectangle {
                             }
 
                             Text {
-                                text: @tr("Overwrite global settings specifically for this transfer");
+                                text: @tr("Overwrite global settings only for this transfer");
                                 font-size: 13px;
                                 color: Theme.colors.secondary-font;
                             }
@@ -322,46 +329,46 @@ export component OutcomingTransferModal inherits Rectangle {
                         height: 24px;
                     }
 
-                    SettingsRow {
-                        title: @tr("Compression");
-                        subtitle: @tr("Enable compression ");
-
-                        HorizontalLayout {
-                            cross-axis-alignment: center;
-                            spacing: 12px;
-
-                            // IconButton {
-                            //     width: 28px;
-                            //     height: 28px;
-                            //     SvgIcon {
-                            //         source: @image-url("icons/help-circle.svg");
-                            //         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                            //         size: 16px;
-                            //     }
-                            // }
-
-                            Switch {
-                                checked <=> root.compression;
-                                toggled => {
-                                    OutcomingTransferModalBridge.rescan-dir();
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        height: 12px;
-                    }
-
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.colors.third-col;
-                    }
-
-                    Rectangle {
-                        height: 12px;
-                    }
-
+                    // SettingsRow {
+                    //     title: @tr("Compression");
+                    //     subtitle: @tr("Enable compression ");
+                    //
+                    //     HorizontalLayout {
+                    //         cross-axis-alignment: center;
+                    //         spacing: 12px;
+                    //
+                    //         // IconButton {
+                    //         //     width: 28px;
+                    //         //     height: 28px;
+                    //         //     SvgIcon {
+                    //         //         source: @image-url("icons/help-circle.svg");
+                    //         //         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    //         //         size: 16px;
+                    //         //     }
+                    //         // }
+                    //
+                    //         Switch {
+                    //             checked <=> root.compression;
+                    //             toggled => {
+                    //                 OutcomingTransferModalBridge.rescan-dir();
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                    //
+                    // Rectangle {
+                    //     height: 12px;
+                    // }
+                    //
+                    // Rectangle {
+                    //     height: 1px;
+                    //     background: Theme.colors.third-col;
+                    // }
+                    //
+                    // Rectangle {
+                    //     height: 12px;
+                    // }
+                    //
                     SettingsRow {
                         title: @tr("Ignore");
                         subtitle: @tr("Respect .gitignore files during scan.");
@@ -400,11 +407,6 @@ export component OutcomingTransferModal inherits Rectangle {
 
                     Rectangle {
                         height: 12px;
-                    }
-
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.colors.third-col;
                     }
 
                     Rectangle { }
@@ -513,7 +515,8 @@ export component OutcomingTransferModal inherits Rectangle {
 
                 Rectangle {
                     vertical-stretch: 1;
-                    border-radius: 12px;
+                    border-radius: 24px;
+                    border-corner-shape: superellipse(Theme.config.edges-shape);
                     background: Theme.colors.third-col;
 
                     VerticalLayout {
@@ -607,6 +610,7 @@ export struct TransferSettings { transfer-name: string, compression: bool }
 export global OutcomingTransferModalBridge {
 
     in-out property <bool> open;
+    in-out property <bool> text-message-open;
 
     in-out property <SendModalState> send-state: SendModalState.Initial;
     in-out property <string> sending-error-msg;
@@ -622,7 +626,7 @@ export global OutcomingTransferModalBridge {
 
     callback select-files();
     callback select-folders();
-    callback select-container();
+    callback select-clipboard();
     callback transfer-name-edited(string);
     callback transfer-walk-cancelled();
 
@@ -630,6 +634,8 @@ export global OutcomingTransferModalBridge {
 
     // Destination id, transfer name, compression enabled
     callback send(string, string, bool);
+    // Destination id, text
+    callback send-text(string, string);
 }
 
 
@@ -671,11 +677,12 @@ export component IncomingTransferOfferModal inherits GeneralModal {
     init => { self.focus() }
 
     Rectangle {
-        width: min(820px, parent.width - 40px);
-        height: min(560px, parent.height - 40px);
+        width: min(820px, parent.width - 240px);
+        height: min(560px, parent.height - 160px);
         clip: true;
         background: Theme.colors.secondary-col;
-        border-radius: 12px;
+        border-radius: 24px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
         border-width: 1px;
         border-color: Theme.colors.border-col;
         drop-shadow-color: #00000088;
@@ -728,6 +735,7 @@ export component IncomingTransferOfferModal inherits GeneralModal {
 
                 Rectangle {
                     border-radius: 12px;
+                    border-corner-shape: superellipse(Theme.config.edges-shape);
                     background: Theme.colors.third-col;
 
                     VerticalLayout {
@@ -822,5 +830,189 @@ export component IncomingTransferOfferModal inherits GeneralModal {
                 }
             }
         }
+    }
+}
+
+export component TextMessageEditor inherits GeneralModal {
+
+    on-close => { OutcomingTransferModalBridge.text-message-open = false; }
+
+    property <length> font-size: 13px;
+
+    Rectangle {
+        width: min(820px, parent.width - 240px);
+        height: min(560px,parent.height - 160px);
+        clip: true;
+        background: Theme.colors.primary-col;
+        border-width: 1px;
+        border-radius: 24px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        border-color: Theme.colors.fourth-col.with-alpha(0.5);
+
+        TouchArea { }
+
+        fs := FocusScope {
+
+            KeyBinding {
+                keys: @keys(LeftArrow);
+                activated => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 16px;
+
+                HorizontalLayout {
+                    height: 20px;
+                    z: 1;
+
+                    Text {
+                        text: @tr("Enter message");
+                        color: Theme.colors.primary-font;
+                        font-size: 16px;
+                        font-weight: 500;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle { }
+
+                    smaller-btn := IconButton {
+                        height: 28px;
+                        width: 28px;
+
+                        SvgIcon {
+                            size: 16px;
+                            fg: Theme.colors.primary-font;
+                            source: Icons.zoom-out;
+                            ToolTip {
+                                y: 32px;
+                                text: @tr("Smaller");
+                                opacity: smaller-btn.hovered ? 1.0 : 0.0;
+                            }
+                        }
+
+                        clicked => {
+                            if font-size > 8px {
+                                font-size -= 1px;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                    }
+
+                    bigger-btn := IconButton {
+                        height: 28px;
+                        width: 28px;
+                        SvgIcon {
+                            size: 16px;
+                            fg: Theme.colors.primary-font;
+                            source: Icons.zoom-in;
+                            ToolTip {
+                                y: 32px;
+                                text: @tr("Bigger");
+                                opacity: bigger-btn.hovered ? 1.0 : 0.0;
+                            }
+                        }
+
+                        clicked => {
+                            if font-size < 72px {
+                                font-size += 1px;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 24px;
+                }
+
+                Rectangle {
+                    border-radius: 20px;
+                    border-corner-shape: superellipse(Theme.config.edges-shape);
+                    background: Theme.colors.third-col;
+                    clip: true;
+
+                    sv := ScrollView {
+                        padding: 20px;
+                        width: parent.width;
+                        height: parent.height;
+
+                        content-width: self.visible-width;
+                        content-height: max(input.preferred-height, self.visible-height);
+
+                        if input.text.character-count == 0: Text {
+                            text: @tr("Enter your message here");
+                            x: 12px;
+                            y: 8px;
+                            color: Theme.colors.third-font;
+                        }
+
+                        input := TextInput {
+                            x: 12px;
+                            y: 8px;
+                            width: sv.visible-width - 24px;
+                            font-size: root.font-size;
+                            wrap: char-wrap;
+                            single-line: false;
+                            selection-background-color: Theme.colors.third-font;
+                            selection-foreground-color: Theme.colors.primary-font;
+                            color: Theme.colors.primary-font;
+
+                            init => { self.focus(); }
+
+                            private property <length> margin: 8px;
+                            private property <length> line-h: root.font-size * 1.4;
+
+                            cursor-position-changed(pos) => {
+                                if pos.y + sv.content-y < margin {
+                                    sv.content-y = -pos.y + margin;
+                                }
+                                else if pos.y + line-h + sv.content-y > sv.visible-height - margin {
+                                    sv.content-y = sv.visible-height - margin - pos.y - line-h;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 12px;
+                }
+
+                PrimaryButton {
+                    cross-axis-self-alignment: end;
+                    text: @tr("Send");
+                    image: Icons.send;
+
+                    clicked => {
+                        OutcomingTransferModalBridge.text-message-open = false;
+                        OutcomingTransferModalBridge.send-text(OutcomingTransferModalBridge.sending-destination-id, input.text);
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component TextMessageViewer inherits GeneralModal {
+
+    on-close => { OutcomingTransferModalBridge.text-message-open = false; }
+
+    property <length> font-size: 13px;
+
+    Rectangle {
+        width: min(820px, parent.width - 240px);
+        height: min(560px,parent.height - 160px);
+        clip: true;
+        background: Theme.colors.primary-col;
+        border-width: 1px;
+        border-radius: 24px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        border-color: Theme.colors.fourth-col.with-alpha(0.5);
+
+        TouchArea { }
     }
 }

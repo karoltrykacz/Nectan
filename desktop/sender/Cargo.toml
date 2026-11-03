@@ -35,8 +35,15 @@ uuid = { version = "1.29.0", features = ["v4"] }
 notify-rust = { version = "4.18.2", features = ["z-with-tokio"] }
 tracing-subscriber = "0.3.23"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+raw-window-handle = "0.6"
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+
+
 [build-dependencies]
 slint-build = {
     git = "https://github.com/R-Cramer4/slint.git",
     branch = "corner-shape",
 }
+

@@ -6,6 +6,12 @@ resolver = "3"
 authors = ["Karol Trykacz"]
 repository = "https://github.com/karoltrykacz/Nectan"
 
+[profile.dev]
+debug = 0
+
+[profile.dev.package."*"]
+opt-level = 0
+
 [profile.release]
 opt-level = 3 
 lto = "fat"

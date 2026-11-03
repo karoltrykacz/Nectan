@@ -1,3 +1,4 @@
+// this shit sucks
 use crate::{devices::Username, storage_utils::DataWriter};
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
@@ -17,8 +18,41 @@ pub struct SpeedLimits {
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct StoredShortcut {
-    pub keys: Vec<String>, // e.g. ["Control", "T"];
+    pub keys: Vec<String>,
     pub alt_keys: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Notifications {
+    pub connection: bool,
+    pub transfer: bool,
+    pub device: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct Appearance {
+    pub theme: String,
+    pub font: String,
+    pub font_scale: f32,
+    pub edges_shape: f32,
+    pub round_window_edges: bool,
+    pub native_topbar: bool,
+    pub topbar_always_on: bool,
+}
+
+impl Default for Appearance {
+    fn default() -> Self {
+        Self {
+            theme: "light".into(),
+            font: "Rubik".into(),
+            font_scale: 1.0,
+            edges_shape: 2.0,
+            round_window_edges: true,
+            native_topbar: false,
+            topbar_always_on: false,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -26,54 +60,38 @@ pub struct StoredShortcut {
 pub struct Settings {
     pub username: Option<Username>,
     pub key: Option<SigningKey>,
-    pub theme: String,
     pub registered: bool,
     pub autoaccept_from_nearby: bool,
     pub autoaccept_from_favourites: bool,
     pub default_destination: PathBuf,
     pub language: String,
-    pub font_family: String,
-    pub font_scale: f32,
-    pub edges_shape: f32,
-    pub connection_notifications: bool,
-    pub transfer_notifications: bool,
-    pub device_notifications: bool,
-    pub round_window_edges: bool,
-    pub native_topbar: bool,
-    pub topbar_always_on: bool,
+    pub notifications: Notifications,
+    pub appearance: Appearance,
     pub speed_limits: Option<SpeedLimits>,
     pub shortcuts: HashMap<String, StoredShortcut>,
 }
 
-fn default_language() -> String {
-    String::from("en")
-}
-
 fn default_destination() -> PathBuf {
-    dirs::download_dir().expect("Failed to get downloads directory")
+    dirs::download_dir().unwrap_or(std::env::current_dir().unwrap())
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            appearance: Appearance::default(),
             username: None,
-            theme: "light".into(),
             shortcuts: HashMap::default(),
             key: None,
             registered: false,
             autoaccept_from_nearby: false,
-            font_scale: 1.0,
-            edges_shape: 2.0,
-            connection_notifications: true,
-            transfer_notifications: true,
-            device_notifications: true,
-            round_window_edges: true,
-            native_topbar: false,
-            topbar_always_on: false,
-            font_family: "Rubik".into(),
+            notifications: Notifications {
+                connection: true,
+                transfer: true,
+                device: true,
+            },
             autoaccept_from_favourites: false,
             default_destination: default_destination(),
-            language: default_language(),
+            language: String::from("en"),
             speed_limits: None,
         }
     }
@@ -111,8 +129,8 @@ impl Storage {
         Ok(())
     }
 
-    pub fn theme(&self) -> String {
-        self.read(|s| s.theme.clone())
+    pub fn appearance(&self) -> Appearance {
+        self.read(|s| s.appearance.clone())
     }
 
     pub fn registered(&self) -> bool {
@@ -143,14 +161,6 @@ impl Storage {
         self.read(|s| s.speed_limits.clone())
     }
 
-    pub fn font_scale(&self) -> f32 {
-        self.read(|s| s.font_scale)
-    }
-
-    pub fn font_family(&self) -> String {
-        self.read(|s| s.font_family.clone())
-    }
-
     pub fn dir() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(std::env::temp_dir)
@@ -165,6 +175,10 @@ impl Storage {
                 s.language.clone()
             }
         })
+    }
+
+    pub fn set_appearance(&self, a: Appearance) -> Result<()> {
+        self.update(|s| s.appearance = a)
     }
 
     pub fn shortcuts(&self) -> HashMap<String, StoredShortcut> {

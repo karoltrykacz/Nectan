@@ -2,7 +2,6 @@ import { Theme } from "theme.slint";
 import { VerticalBox, ScrollView } from "std-widgets.slint";
 import { DropDownOption } from "dropdown.slint";
 import { WindowBridge } from "window.slint";
-import { HoverBridge } from "hover.slint";
 import { Icons } from "icons.slint";
 
 export component SvgIcon inherits Image {
@@ -89,15 +88,15 @@ export component IconButton inherits Rectangle {
     in property <color> inner-border;
 
     border-radius: 8px;
-    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    border-corner-shape: superellipse(Theme.config.edges-shape);
 
-    callback clicked <=> area.clicked;
+    callback clicked();
 
     inner := Rectangle {
         width: root.width;
         height: root.height;
         border-radius: root.border-radius;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-corner-shape: superellipse(Theme.config.edges-shape);
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         background: inner-bg != red ? inner-bg : area.has-hover ? Theme.colors.fourth-col : transparent;
         border-color: inner-border;
@@ -126,6 +125,7 @@ export component IconButton inherits Rectangle {
     area := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
+        clicked => { root.clicked(); }
     }
 }
 
@@ -339,8 +339,8 @@ export component GeneralModal inherits Rectangle {
 
         Rectangle {
             background: #00000088;
-            border-radius: WindowBridge.round-edges ? 24px : 0;
-            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            border-radius: Theme.config.round-edges ? 24px : 0;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
 
             TouchArea {
                 clicked => { root.on-close(); }
@@ -450,7 +450,6 @@ export component Switch inherits Rectangle {
             width: 18px;
             height: 18px;
             border-radius: 9px;
-            // border-corner-shape: superellipse(WindowBridge.edges-shape);
             background: (root.checked ? Theme.colors.secondary-col : Theme.colors.fourth-font);
 
             transform-scale: ta.pressed ? 0.9 : 1.0;
@@ -540,7 +539,7 @@ export component SquareButton {
         width: 100%;
         height: 100%;
         border-radius: 12px;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-corner-shape: superellipse(Theme.config.edges-shape);
         background: root.alt
             ? (touch.pressed
             ? Theme.colors.third-col
@@ -628,7 +627,7 @@ export component PrimaryButton {
         height: 100%;
         width: 100%;
         border-radius: 12px;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-corner-shape: superellipse(Theme.config.edges-shape);
         background: root.alt
             ? (touch.pressed
             ? Theme.colors.third-col
@@ -966,7 +965,7 @@ export component Dropdown inherits Rectangle {
         height: 32px;
         width: parent.width;
         border-radius: 24px;
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        border-corner-shape: superellipse(Theme.config.edges-shape);
         background: header-area.has-hover
             ? Theme.colors.fourth-col
             : Theme.colors.third-col;
@@ -1381,7 +1380,7 @@ export component Breadcrumb inherits HorizontalLayout {
                 width: 128px;
                 height: 256px;
                 border-radius: 12px;
-                border-corner-shape: superellipse(WindowBridge.edges-shape);
+                border-corner-shape: superellipse(Theme.config.edges-shape);
                 background: Theme.colors.primary-col;
                 border-width: 1px;
                 border-color: Theme.colors.third-col;
@@ -1398,7 +1397,7 @@ export component SearchBar inherits Rectangle {
     background: h.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
     height: 32px;
     border-radius: 24px;
-    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    border-corner-shape: superellipse(Theme.config.edges-shape);
     transform-scale: h.pressed ? 0.98 : 1.0;
     callback search();
 
@@ -1428,6 +1427,90 @@ export component SearchBar inherits Rectangle {
         mouse-cursor: pointer;
         clicked => {
             root.search();
+        }
+    }
+}
+
+export component ContextMenuItem inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    callback activated();
+
+    height: 30px;
+    border-radius: 24px;
+    border-corner-shape: superellipse(Theme.config.edges-shape);
+    background: item-area.has-hover ? Theme.colors.fourth-col : transparent;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        alignment: start;
+
+        if root.icon.width > 0: SvgIcon {
+            cross-axis-self-alignment: center;
+            source: root.icon;
+            size: 1rem;
+            colorize: Theme.colors.primary-font;
+        }
+
+        Text {
+            vertical-alignment: center;
+            text: root.text;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: Theme.colors.secondary-font;
+        }
+    }
+
+    item-area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
+}
+
+export component ContextMenuSeparator inherits Rectangle {
+    height: 1px;
+    background: Theme.colors.fourth-col;
+}
+
+export component ContextMenu inherits Rectangle {
+    in property <length> menu-width: 180px;
+
+    property <length> pos-x;
+    property <length> pos-y;
+
+    public function show(x: length, y: length) {
+        root.pos-x = x;
+        root.pos-y = y;
+        popup.show();
+    }
+
+    public function close() {
+        popup.close();
+    }
+
+    popup := PopupWindow {
+        x: root.pos-x;
+        y: root.pos-y;
+        width: root.menu-width;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: Theme.colors.primary-col;
+            border-radius: 24px;
+            border-width: 1px;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
+            border-color: Theme.colors.fourth-col;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000040;
+            drop-shadow-offset-y: 4px;
+
+            VerticalLayout {
+                padding: 4px;
+                spacing: 4px;
+                @children
+            }
         }
     }
 }

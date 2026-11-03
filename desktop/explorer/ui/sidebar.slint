@@ -1,18 +1,18 @@
 import {
     IconButton,
     SvgIcon,
-} from "elements.slint";
-import { SearchBar } from "search.slint";
+} from "../../shared/elements.slint";
+// import { SearchBar } from "../../shared/search.slint";
 import { DeviceItem } from "devices.slint";
-import { Window, WindowBridge } from "window.slint";
-import { Theme } from "theme.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { Theme } from "../../shared/theme.slint";
 import { DevicesBridge } from "devices.slint";
-import { AddDeviceBridge } from "add_remote_modal.slint";
+import { AddDeviceBridge } from "../../shared/add_remote_modal.slint";
 import { ExplorerBridge } from "explorer/bridge.slint";
 import { SettingsBridge } from "settings.slint";
-import { HoverBridge } from "hover.slint";
-import { Keys } from "keys.slint";
-import { Icons } from "icons.slint";
+import { HoverBridge } from "../../shared/hover.slint";
+import { Keys } from "../../shared/keys_shared.slint";
+import { Icons } from "../../shared/icons.slint";
 
 export struct EssentialTileData { id: int, slot: int, emoji: string, icon: image }
 
@@ -57,7 +57,7 @@ component CustomFolder inherits Rectangle {
     height: 36px;
     background: ta.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
     border-radius: 12px;
-    border-corner-shape: superellipse(WindowBridge.edges-shape);
+    // border-corner-shape: superellipse(Theme.config.edges-shape);
 
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -255,7 +255,7 @@ component Essentials {
         opacity: dragged ? 0.85 : 1.0;
         border-radius: 12px;
 
-        border-corner-shape: superellipse(WindowBridge.edges-shape);
+        // border-corner-shape: superellipse(Theme.config.edges-shape);
 
         drop-shadow-spread: 2px;
         drop-shadow-blur: dragged ? 4px : 0px;
@@ -436,7 +436,7 @@ export component Sidebar inherits Rectangle {
                 height: 8px;
             }
 
-            SearchBar { }
+            // SearchBar { }
 
             Rectangle {
                 height: 8px;
@@ -493,7 +493,7 @@ export component Sidebar inherits Rectangle {
                     }
 
                     clicked => {
-                        WindowBridge.current-window = Window.transfers;
+                        // WindowBridge.current-window = Window.transfers;
                     }
                 }
 

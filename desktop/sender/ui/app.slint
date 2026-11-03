@@ -1,4 +1,8 @@
-import { WindowBridge, TopBarShower } from "../../shared/window.slint";
+import {
+    WindowBridge,
+    TopBarShower,
+    MainWindowTouchArea,
+} from "../../shared/window.slint";
 import { Theme, ThemeAnimator } from "../../shared/theme.slint";
 import { Topbar } from "../../shared/topbar.slint";
 import {
@@ -8,16 +12,18 @@ import {
     TransferStatus,
     TransfersBridge,
 } from "../../shared/transfers.slint";
+import { HoverBridge, HoverModal } from "../../shared/hover.slint";
 import { NectanModal } from "../../shared/nectan_modal.slint";
-import { Sidebar } from "sidebar.slint";
+import { Sidebar, SidebarBridge } from "sidebar.slint";
 import { SelectTypeModal, SenderWindow } from "sender.slint";
 import { SettingsBridge, Settings } from "settings.slint";
 import { Icons } from "../../shared/icons.slint";
-import { PrimaryButton } from "../../shared/elements.slint";
+import { PrimaryButton, ThemeSelector } from "../../shared/elements.slint";
 import { Error, ErrorModal } from "../../shared/error_modal.slint";
 import {
     DeviceStatus,
     DeviceItem,
+    DeviceFolder,
     DevicesBridge,
 } from "../../shared/devices.slint";
 import { VerticalBox, HorizontalBox, Button } from "std-widgets.slint";
@@ -27,6 +33,7 @@ import {
     IncomingTransferOfferBridge,
     OutcomingTransferModalBridge,
     OfferEntry,
+    TextMessageEditor,
 } from "../../shared/transfer_offer_modal.slint";
 import {
     LookupState,
@@ -37,14 +44,21 @@ import {
 
 export {
     Error,
+    Theme,
     Transfer,
     DeviceItem,
     OfferEntry,
     LookupState,
     DeviceStatus,
     TransferItem,
+    DeviceFolder,
+    SenderWindow,
+    WindowBridge,
+    SidebarBridge,
     DevicesBridge,
+    SettingsBridge,
     TransferStatus,
+    HoverBridge,
     AddDeviceBridge,
     TransfersBridge,
     ConnectionOfferBridge,
@@ -53,17 +67,17 @@ export {
 }
 export enum CurrentWindow { main, transfers }
 
-export component NectanSender inherits Window {
+export component App inherits Window {
     title: "Nectan";
-    preferred-width: 1128px;
-    preferred-height: 720px;
+    preferred-width: 900px;
+    preferred-height: 600px;
     min-width: 400px;
     min-height: 200px;
     resize-border-width: 6px;
-    no-frame: !WindowBridge.native-topbar;
+    no-frame: !Theme.config.native-topbar;
     background: transparent;
     maximized: WindowBridge.maximized;
-    default-font-family: Theme.font;
+    default-font-family: Theme.config.font;
     default-font-size: Theme.font-size;
     z: 0;
 
@@ -86,11 +100,11 @@ export component NectanSender inherits Window {
             background: Theme.colors.primary-col;
             border-color: Theme.colors.fourth-col;
             border-width: root.maximized ? 0 : 1px;
-            border-radius: WindowBridge.round-edges ? root.maximized ? 0 : 24px : 0;
-            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            border-radius: Theme.config.round-edges ? root.maximized ? 0 : 24px : 0;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
             clip: true;
 
-            WindowMoveArea { }
+            MainWindowTouchArea { }
 
             TopBarShower { }
 
@@ -99,8 +113,19 @@ export component NectanSender inherits Window {
             Sidebar { }
 
             HorizontalLayout {
+                padding-top: !Theme.config.native-topbar && (Theme.config.topbar-always-on || WindowBridge.topbar-hover) ? 24px : 8px;
                 padding-left: WindowBridge.sidebar-width;
                 padding: 8px;
+                spacing: 8px;
+                animate padding-top {
+                    delay: 100ms;
+                    duration: 100ms;
+                    easing: Theme.easing;
+                }
+
+                if Theme.theme-selector: ThemeSelector {
+                    width: 300px;
+                }
 
                 Transfers {
                     min-width: 300px;
@@ -115,16 +140,20 @@ export component NectanSender inherits Window {
 
         if SettingsBridge.open: Settings { }
 
-        if SenderWindow.send-type-modal: SelectTypeModal { }
+        if SenderWindow.send-modal: SelectTypeModal { }
 
         if WindowBridge.nectan-modal-open: NectanModal { }
 
         if OutcomingTransferModalBridge.open: OutcomingTransferModal { }
+
+        if OutcomingTransferModalBridge.text-message-open: TextMessageEditor { }
 
         if IncomingTransferOfferBridge.open: IncomingTransferOfferModal { }
 
         if AddDeviceBridge.open:  AddDeviceModal { }
 
         if SenderWindow.error-modal: ErrorModal { }
+
+        // if HoverBridge.hovering: HoverModal { }
     }
 }

@@ -316,7 +316,6 @@ class TransfersScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
 
-            // ── Content ───────────────────────────────────────────────────
             Expanded(
               child: transfersLength == 0
                   ? Center(
@@ -491,9 +490,8 @@ class TransferItemTile extends ConsumerStatefulWidget {
   ConsumerState<TransferItemTile> createState() => _TransferItemTileState();
 }
 
-// todo fix speed not showing
 String _speedLabel(BigInt speed) {
-  return '$speed MB/s';
+  return '$speed Mbps';
 }
 
 class _TransferItemTileState extends ConsumerState<TransferItemTile> {
@@ -565,7 +563,7 @@ class _TransferItemTileState extends ConsumerState<TransferItemTile> {
               );
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: context.colors.secondaryCol,
                 borderRadius: BorderRadius.circular(12),
@@ -588,7 +586,7 @@ class _TransferItemTileState extends ConsumerState<TransferItemTile> {
                                 color: context.colors.primaryFont,
                                 fontSize: 14,
                                 fontWeight: FontWeight(600),
-                                fontFamily: "Inter",
+                                fontFamily: "Rubik",
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -601,6 +599,7 @@ class _TransferItemTileState extends ConsumerState<TransferItemTile> {
                               style: TextStyle(
                                 color: context.colors.secondaryFont,
                                 fontSize: 12,
+                                fontFamily: "Rubik",
                               ),
                             ),
                           ],
@@ -624,6 +623,7 @@ class _TransferItemTileState extends ConsumerState<TransferItemTile> {
                               style: TextStyle(
                                 color: context.colors.primaryFont,
                                 fontSize: 12,
+                                fontFamily: "Rubik",
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -632,6 +632,7 @@ class _TransferItemTileState extends ConsumerState<TransferItemTile> {
                               style: TextStyle(
                                 color: context.colors.secondaryFont,
                                 fontSize: 12,
+                                fontFamily: "Rubik",
                               ),
                             ),
                           ],
@@ -708,7 +709,7 @@ class BlurPercentText extends StatelessWidget {
 }
 
 class RealProgressBar extends StatelessWidget {
-  final double progress; // 0.0 to 1.0
+  final double progress;
 
   const RealProgressBar({super.key, required this.progress});
 
@@ -804,6 +805,7 @@ class _TransferDetailScreenState extends ConsumerState<TransferDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
+        backgroundColor: context.colors.primaryCol,
         leading: IconButton(
           icon: const Icon(Icons.chevron_left),
           onPressed: () => Navigator.of(context).pop(),
@@ -824,10 +826,11 @@ class _TransferDetailScreenState extends ConsumerState<TransferDetailScreen> {
               ),
             ),
             Text(
-              '$dirLabel · ${sizeOf(currentTransfer.totalSize)}',
+              '$dirLabel	   ${sizeOf(currentTransfer.totalSize)}',
               style: TextStyle(
                 fontSize: 11,
                 color: context.colors.secondaryFont,
+                fontFamily: 'Rubik',
               ),
             ),
           ],
@@ -838,7 +841,6 @@ class _TransferDetailScreenState extends ConsumerState<TransferDetailScreen> {
             child: TransferStatusBadge(state: currentTransfer.status),
           ),
         ],
-        // add three dots here to manage transfer
       ),
       body: _items.isEmpty && _loading
           ? const Center(child: Spinner())
@@ -1055,8 +1057,7 @@ class _TransferControlsState extends State<_TransferControls> {
             child: Icon(Icons.warning_rounded, color: Colors.white, size: 26),
           ),
         ],
-        // const SizedBox(width: 12),
-        // if (widget.transfer.status == TransferStateDto.suspended) ...[
+        // if (widget.transfer.status == TransferStateDto.processing) ...[
         //   const SizedBox(width: 12),
         //   FloatingActionButton(
         //     heroTag: 'pause',
@@ -1067,23 +1068,9 @@ class _TransferControlsState extends State<_TransferControls> {
         //     foregroundColor: _debouncing
         //         ? context.colors.thirdFont
         //         : context.colors.primaryCol,
-        //     child: const Icon(Icons.play_arrow_rounded),
+        //     child: const Icon(Icons.pause_rounded),
         //   ),
-        // ] else
-        if (widget.transfer.status == TransferStateDto.processing) ...[
-          const SizedBox(width: 12),
-          FloatingActionButton(
-            heroTag: 'pause',
-            onPressed: _debouncing ? null : _handlePauseResume,
-            backgroundColor: _debouncing
-                ? context.colors.thirdCol
-                : context.colors.primaryFont,
-            foregroundColor: _debouncing
-                ? context.colors.thirdFont
-                : context.colors.primaryCol,
-            child: const Icon(Icons.pause_rounded),
-          ),
-        ],
+        // ],
       ],
     );
   }

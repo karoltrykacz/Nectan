@@ -1,4 +1,4 @@
-import { Theme, ThemeAnimator } from "theme.slint";
+import { Theme, ThemeAnimator } from "../../shared/theme.slint";
 import {
     PrimaryButton,
     GeneralModal,
@@ -6,17 +6,24 @@ import {
     Carousel,
     SvgIcon,
     IconButton,
-} from "elements.slint";
+} from "../../shared/elements.slint";
 import { ListView, VerticalBox } from "std-widgets.slint";
+import { NectanModal } from "../../shared/nectan_modal.slint";
+import { SearchBridge } from "search.slint";
 import { SettingsBridge, Settings, SettingsRow } from "settings.slint";
-import { TransfersBridge, Transfers, TransferItem } from "transfers.slint";
+import { AppBridge, CurrentWindow } from "explorer_app.slint";
+import {
+    TransfersBridge,
+    Transfers,
+    TransferItem,
+} from "../../shared/transfers.slint";
 import {
     AddDeviceModal,
     AddDeviceBridge,
     ConnectionOfferBridge,
     ConnectionOfferModal,
-} from "add_remote_modal.slint";
-import { ErrorModal, Error } from "error_modal.slint";
+} from "../../shared/add_remote_modal.slint";
+import { ErrorModal, Error } from "../../shared/error_modal.slint";
 import {
     DeviceItem,
     DevicesBridge,
@@ -28,15 +35,14 @@ import {
     IncomingTransferOfferBridge,
     OutcomingTransferModal,
     OutcomingTransferModalBridge,
-} from "transfer_offer_modal.slint";
-import { SearchBridge, Search, SearchBar } from "search.slint";
+} from "../../shared/transfer_offer_modal.slint";
 import {
     WindowBridge,
-    Window,
     MainWindowTouchArea,
     TopBarShower,
-} from "window.slint";
-import { WelcomeScreen } from "welcome.slint";
+} from "../../shared/window.slint";
+import { Topbar } from "../../shared/topbar.slint";
+
 import {
     EssentialTileData,
     SidebarBridge,
@@ -48,21 +54,19 @@ import {
     RecursiveSearch,
 } from "explorer/explorer.slint";
 import { ExplorerBridge, DirEntry } from "explorer/bridge.slint";
-import { Keys } from "keys.slint";
-import { HoverBridge } from "hover.slint";
-import { Icons } from "icons.slint";
+import { Keys } from "../../shared/keys_shared.slint";
+import { HoverBridge } from "../../shared/hover.slint";
+import { Icons } from "../../shared/icons.slint";
 
 export {
     Keys,
     Theme,
     Error,
     Icons,
-    Window,
     DirEntry,
     DeviceItem,
     HoverBridge,
     TransferItem,
-    SearchBridge,
     WindowBridge,
     DevicesBridge,
     SidebarBridge,
@@ -155,12 +159,12 @@ component MainFocusScope inherits FocusScope {
 
     KeyBinding {
         keys: Keys.map.transfers.keys;
-        activated => { WindowBridge.current-window = Window.transfers; }
+        activated => { AppBridge.current-window = CurrentWindow.transfers; }
     }
 
     KeyBinding {
         keys: Keys.map.transfers.alt-keys;
-        activated => { WindowBridge.current-window = Window.transfers; }
+        activated => { AppBridge.current-window = CurrentWindow.transfers; }
     }
 
     KeyBinding {
@@ -173,19 +177,19 @@ component MainFocusScope inherits FocusScope {
     @children
 }
 
-export component NectanWindow inherits Window {
+export component App inherits Window {
 
     title: "Nectan";
-    preferred-width: 720pxx;
+    preferred-width: 720px;
     preferred-height: 520px;
     min-width: 400px;
     min-height: 200px;
     resize-border-width: 6px;
-    no-frame: !WindowBridge.native-topbar;
+    no-frame: !Theme.config.native-topbar;
     background: transparent;
     maximized: WindowBridge.maximized;
 
-    default-font-family: Theme.font;
+    default-font-family: Theme.config.font;
     default-font-size: Theme.font-size;
 
     z: 0;
@@ -208,9 +212,11 @@ export component NectanWindow inherits Window {
             background: Theme.colors.primary-col;
             border-color: Theme.colors.fourth-col;
             border-width: root.maximized ? 0 : 1px;
-            border-radius: WindowBridge.round-edges ? root.maximized ? 0 : 12px : 0;
-            border-corner-shape: superellipse(WindowBridge.edges-shape);
+            border-radius: Theme.config.round-edges ? root.maximized ? 0 : 24px : 0;
+            // border-corner-shape: superellipse(Theme.config.edges-shape);
             clip: true;
+
+            MainWindowTouchArea { }
 
             TopBarShower { }
 
@@ -226,8 +232,8 @@ export component NectanWindow inherits Window {
                 spacing: 8px;
                 padding: 8px;
                 padding-left: !WindowBridge.sidebar-visible ? 8px : WindowBridge.sidebar-width;
-                padding-top: WindowBridge.native-topbar ? 8px :
-                    WindowBridge.topbar-always-on ? 24px :
+                padding-top: Theme.config.native-topbar ? 8px :
+                    Theme.config.topbar-always-on ? 24px :
                     WindowBridge.topbar-hover ? 24px : 8px;
 
                 // For sidebar
@@ -242,13 +248,13 @@ export component NectanWindow inherits Window {
                     easing: Theme.easing;
                 }
 
-                if WindowBridge.current-window == Window.device: DeviceScreen { }
+                // if App.current-window == Window.device: DeviceScreen { }
 
                 if Theme.theme-selector: ThemeSelector { }
 
-                if WindowBridge.current-window == Window.transfers: Transfers { }
+                if AppBridge.current-window == CurrentWindow.transfers: Transfers { }
 
-                if WindowBridge.current-window == Window.vaults: Explorer { }
+                if AppBridge.current-window == CurrentWindow.explorer: Explorer { }
             }
         }
 
@@ -282,13 +288,13 @@ export component NectanWindow inherits Window {
 
             if AddDeviceBridge.open:  AddDeviceModal { }
 
-            if SearchBridge.open: Search { }
-
             if ExplorerBridge.searching-recursive: RecursiveSearch { }
 
             if Error.open: ErrorModal { }
 
-            if WindowBridge.welcome-open: WelcomeScreen { }
+            // if SearchBridge.open: Search { }
+
+            // if WindowBridge.welcome-open: WelcomeScreen { }
         }
     }
 }
