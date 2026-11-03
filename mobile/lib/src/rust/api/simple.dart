@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'simple.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `init_client`, `start_event_listener`, `sync_accumulator`, `update_devices_sink`
+// These functions are ignored because they are not marked as `pub`: `init_client`, `start_event_listener`, `transfer_item_dto`, `update_devices_sink`, `update_transfers`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Engine`, `FileSize`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `client`, `engine`, `state`, `store`
@@ -96,6 +96,11 @@ Future<String> issueCode({required String code}) =>
 Future<String> lookupCode({required String code}) =>
     RustLib.instance.api.crateApiSimpleLookupCode(code: code);
 
+Future<String> setLookupEndpointId({required String endpointId}) => RustLib
+    .instance
+    .api
+    .crateApiSimpleSetLookupEndpointId(endpointId: endpointId);
+
 Future<void> respondToConnectionReq({required bool accept}) =>
     RustLib.instance.api.crateApiSimpleRespondToConnectionReq(accept: accept);
 
@@ -143,6 +148,14 @@ Stream<WalkInfo> send({
   remoteDeviceId: remoteDeviceId,
   transferName: transferName,
   paths: paths,
+);
+
+Future<void> sendText({
+  required String remoteDeviceId,
+  required String content,
+}) => RustLib.instance.api.crateApiSimpleSendText(
+  remoteDeviceId: remoteDeviceId,
+  content: content,
 );
 
 Future<String> genTransferName() =>
@@ -234,6 +247,7 @@ class TransferItemDto {
   final String name;
   final BigInt size;
   final BigInt sentBytes;
+  final bool isDir;
   final SendItemErrorDto? error;
 
   const TransferItemDto({
@@ -242,6 +256,7 @@ class TransferItemDto {
     required this.name,
     required this.size,
     required this.sentBytes,
+    required this.isDir,
     this.error,
   });
 
@@ -252,6 +267,7 @@ class TransferItemDto {
       name.hashCode ^
       size.hashCode ^
       sentBytes.hashCode ^
+      isDir.hashCode ^
       error.hashCode;
 
   @override
@@ -264,6 +280,7 @@ class TransferItemDto {
           name == other.name &&
           size == other.size &&
           sentBytes == other.sentBytes &&
+          isDir == other.isDir &&
           error == other.error;
 }
 

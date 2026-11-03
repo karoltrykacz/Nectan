@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1389583848;
+  int get rustContentHash => -1945249670;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -153,6 +153,15 @@ abstract class RustLibApi extends BaseApi {
     required String remoteDeviceId,
     required String transferName,
     required List<String> paths,
+  });
+
+  Future<void> crateApiSimpleSendText({
+    required String remoteDeviceId,
+    required String content,
+  });
+
+  Future<String> crateApiSimpleSetLookupEndpointId({
+    required String endpointId,
   });
 
   Future<void> crateApiSimpleSetShowConnectedToNearby({
@@ -972,6 +981,73 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<void> crateApiSimpleSendText({
+    required String remoteDeviceId,
+    required String content,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(remoteDeviceId, serializer);
+          sse_encode_String(content, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 26,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSimpleSendTextConstMeta,
+        argValues: [remoteDeviceId, content],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleSendTextConstMeta => const TaskConstMeta(
+    debugName: "send_text",
+    argNames: ["remoteDeviceId", "content"],
+  );
+
+  @override
+  Future<String> crateApiSimpleSetLookupEndpointId({
+    required String endpointId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(endpointId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSimpleSetLookupEndpointIdConstMeta,
+        argValues: [endpointId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleSetLookupEndpointIdConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_lookup_endpoint_id",
+        argNames: ["endpointId"],
+      );
+
+  @override
   Future<void> crateApiSimpleSetShowConnectedToNearby({
     required bool showAgain,
   }) {
@@ -983,7 +1059,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1013,7 +1089,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1040,7 +1116,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1329,15 +1405,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TransferItemDto dco_decode_transfer_item_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 6)
-      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
     return TransferItemDto(
       id: dco_decode_u_64(arr[0]),
       path: dco_decode_String(arr[1]),
       name: dco_decode_String(arr[2]),
       size: dco_decode_u_64(arr[3]),
       sentBytes: dco_decode_u_64(arr[4]),
-      error: dco_decode_opt_box_autoadd_send_item_error_dto(arr[5]),
+      isDir: dco_decode_bool(arr[5]),
+      error: dco_decode_opt_box_autoadd_send_item_error_dto(arr[6]),
     );
   }
 
@@ -1727,6 +1804,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_name = sse_decode_String(deserializer);
     var var_size = sse_decode_u_64(deserializer);
     var var_sentBytes = sse_decode_u_64(deserializer);
+    var var_isDir = sse_decode_bool(deserializer);
     var var_error = sse_decode_opt_box_autoadd_send_item_error_dto(
       deserializer,
     );
@@ -1736,6 +1814,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       name: var_name,
       size: var_size,
       sentBytes: var_sentBytes,
+      isDir: var_isDir,
       error: var_error,
     );
   }
@@ -2206,6 +2285,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.name, serializer);
     sse_encode_u_64(self.size, serializer);
     sse_encode_u_64(self.sentBytes, serializer);
+    sse_encode_bool(self.isDir, serializer);
     sse_encode_opt_box_autoadd_send_item_error_dto(self.error, serializer);
   }
 

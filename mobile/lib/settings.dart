@@ -81,7 +81,7 @@ class _SettingsRow extends StatelessWidget {
                         color: context.colors.secondaryFont,
                         fontSize: 14,
                         fontWeight: FontWeight.w400,
-                        fontFamily: "Inter",
+                        fontFamily: "Rubik",
                       ),
                     ),
                   ],
@@ -182,7 +182,7 @@ class _PromoCard extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       color: context.colors.secondaryFont,
-                      fontFamily: 'Inter',
+                      fontFamily: 'Rubik',
                       fontSize: 14,
                       fontWeight: FontWeight.w400,
                     ),
@@ -237,7 +237,7 @@ void showActionSheet({
               style: const TextStyle(
                 color: Color(0xff888888),
                 fontSize: 14,
-                fontFamily: 'Inter',
+                fontFamily: 'Rubik',
                 fontWeight: FontWeight.w400,
               ),
             ),

@@ -392,6 +392,10 @@ Future<void> main() async {
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle());
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
   final appDir = await getApplicationDocumentsDirectory();
 
@@ -402,6 +406,8 @@ Future<void> main() async {
   } catch (e) {
     debugPrint("🟥 Rust lib init failed: $e");
   }
+
+  await AppThemeNotifier.preload();
 
   runApp(ProviderScope(child: MyApp(isFirstLaunch: isFirstLaunch)));
 }
@@ -499,7 +505,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     fontSize: 14,
                     color: context.colors.secondaryFont,
                     fontWeight: FontWeight.w500,
-                    fontFamily: "Inter",
+                    fontFamily: "Rubik",
                   ),
                 ),
               ),
@@ -520,7 +526,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     style: TextStyle(
                       color: context.colors.primaryFont,
                       fontSize: 16,
-                      fontFamily: "Inter",
+                      fontFamily: "Rubik",
                       fontWeight: FontWeight.w600,
                       decoration: TextDecoration.none,
                     ),
@@ -702,7 +708,7 @@ class _PrimaryWideButtonState extends State<PrimaryWideButton> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 backgroundColor: color,
-                disabledBackgroundColor: const Color(0xff6c6c6c),
+                disabledBackgroundColor: context.colors.thirdFont,
               ),
               child: widget.isLoading
                   ? Spinner()

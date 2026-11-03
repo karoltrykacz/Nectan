@@ -12,6 +12,7 @@ import 'package:nectan_mobile/main.dart';
 import 'package:nectan_mobile/src/rust/api/simple.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:nectan_mobile/themes.dart';
 
 Future<bool> showStoragePermissionDialog(
   BuildContext context,
@@ -219,14 +220,26 @@ class _SendItemErrorScreen extends StatelessWidget {
   }
 }
 
+bool _sameTransfers(List<TransferMetaDto> a, List<TransferMetaDto> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
 class TransfersPoolNotifier extends Notifier<List<TransferMetaDto>> {
   StreamSubscription<List<TransferMetaDto>>? _sub;
+  Timer? _pollTimer;
+  bool _visible = false;
+  bool _polling = false;
   void Function()? onPermissionDenied;
 
   @override
   List<TransferMetaDto> build() {
     ref.onDispose(() {
       _sub?.cancel();
+      _pollTimer?.cancel();
     });
     return [];
   }
@@ -235,7 +248,7 @@ class TransfersPoolNotifier extends Notifier<List<TransferMetaDto>> {
     debugPrint('🟦 Transfers stream sink was set.');
     _sub?.cancel();
     _listenTo(stream);
-    state = await getAllTransfers();
+    syncFromPoll(await getAllTransfers());
   }
 
   void _listenTo(Stream<List<TransferMetaDto>> stream) {
@@ -246,8 +259,46 @@ class TransfersPoolNotifier extends Notifier<List<TransferMetaDto>> {
       } else {
         await FlutterForegroundTask.stopService();
       }
-      state = transfers;
+      syncFromPoll(transfers);
     });
+  }
+
+  void setVisible(bool visible) {
+    if (_visible == visible) return;
+    _visible = visible;
+    _updatePolling();
+  }
+
+  void syncFromPoll(List<TransferMetaDto> fresh) {
+    if (!_sameTransfers(fresh, state)) {
+      state = fresh;
+    }
+    _updatePolling();
+  }
+
+  void _updatePolling() {
+    final active =
+        _visible &&
+        state.any((t) => t.status == TransferStateDto.processing);
+    if (active && _pollTimer == null) {
+      _pollTimer = Timer.periodic(
+        const Duration(milliseconds: 80),
+        (_) => _poll(),
+      );
+    } else if (!active && _pollTimer != null) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+    }
+  }
+
+  Future<void> _poll() async {
+    if (_polling) return;
+    _polling = true;
+    try {
+      syncFromPoll(await getAllTransfers());
+    } finally {
+      _polling = false;
+    }
   }
 
   void _updateForegroundService() async {
@@ -287,6 +338,9 @@ class TransfersScreen extends ConsumerWidget {
     final transfersLength = ref.watch(
       transfersPoolProvider.select((list) => list.length),
     );
+    ref.listen<int>(currentTabProvider, (prev, next) {
+      ref.read(transfersPoolProvider.notifier).setVisible(next == 1);
+    });
 
     return Scaffold(
       backgroundColor: context.colors.primaryCol,
@@ -345,35 +399,30 @@ class TransfersScreen extends ConsumerWidget {
   }
 }
 
-Color lighten(Color color, [double amount = 0.4]) {
-  final hsl = HSLColor.fromColor(color);
-  return hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0)).toColor();
-}
-
 class TransferStatusBadge extends StatelessWidget {
   final TransferStateDto state;
   const TransferStatusBadge({super.key, required this.state});
 
-  static (String, Color) _resolve(TransferStateDto state) => switch (state) {
-    TransferStateDto.processing => ('Processing', Color(0xff4fc3f7)),
-    TransferStateDto.finished => ('Finished', Color(0xff119405)),
-    TransferStateDto.cancelled => ('Cancelled', Color(0xff888888)),
-  };
+  static (String, double) _resolve(TransferStateDto state) =>
+      switch (state) {
+        TransferStateDto.processing => ('Processing', 0.55),
+        TransferStateDto.finished => ('Finished', 1.0),
+        TransferStateDto.cancelled => ('Cancelled', 0.35),
+      };
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = _resolve(state);
+    final (label, opacity) = _resolve(state);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color,
+        color: context.colors.primaryFont.withValues(alpha: opacity),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: lighten(color, 0.0), width: 0.5),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: Colors.white,
+          color: context.colors.primaryCol,
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
@@ -491,7 +540,8 @@ class TransferItemTile extends ConsumerStatefulWidget {
 }
 
 String _speedLabel(BigInt speed) {
-  return '$speed Mbps';
+  final mbps = speed.toDouble() / 1000000;
+  return '${mbps.toStringAsFixed(2)} Mbps';
 }
 
 class _TransferItemTileState extends ConsumerState<TransferItemTile> {
@@ -564,9 +614,15 @@ class _TransferItemTileState extends ConsumerState<TransferItemTile> {
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: context.colors.secondaryCol,
-                borderRadius: BorderRadius.circular(12),
+              decoration: ShapeDecoration(
+                color: context.colors.thirdCol,
+                shape: sq(
+                  20,
+                  side: BorderSide(
+                    color: context.colors.thirdFont.withAlpha(64),
+                    width: 1,
+                  ),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -609,7 +665,7 @@ class _TransferItemTileState extends ConsumerState<TransferItemTile> {
                       if (transfer.failedEntries.toInt() > 0) ...[
                         Icon(
                           Icons.warning_rounded,
-                          color: Color(0xffF3523F),
+                          color: context.colors.primaryFont,
                           size: 26,
                         ),
                         const SizedBox(width: 12),
@@ -748,6 +804,8 @@ class _TransferDetailScreenState extends ConsumerState<TransferDetailScreen> {
   final _scroll = ScrollController();
   bool _loading = false;
   bool _hasMore = true;
+  bool _popped = false;
+  Timer? _pollTimer;
   static const _pageSize = 30;
 
   @override
@@ -759,12 +817,88 @@ class _TransferDetailScreenState extends ConsumerState<TransferDetailScreen> {
         _loadMore();
       }
     });
+    if (widget.transferMeta.status == TransferStateDto.processing) {
+      _startPolling();
+    }
   }
 
   @override
   void dispose() {
+    _stopPolling();
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _startPolling() {
+    _pollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 80),
+      (_) => _poll(),
+    );
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  void _popToList() {
+    if (_popped) return;
+    _popped = true;
+    _stopPolling();
+    if (mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
+
+  Future<void> _poll() async {
+    final all = await getAllTransfers();
+    if (!mounted) return;
+    ref.read(transfersPoolProvider.notifier).syncFromPoll(all);
+
+    TransferMetaDto? live;
+    for (final t in all) {
+      if (t.id == widget.transferMeta.id) {
+        live = t;
+        break;
+      }
+    }
+
+    if (live == null) {
+      _popToList();
+      return;
+    }
+
+    await _refreshItems();
+
+    if (live.status != TransferStateDto.processing) {
+      _stopPolling();
+    }
+  }
+
+  Future<void> _refreshItems() async {
+    if (_loading || _items.isEmpty) return;
+    final batch = await getTransferItems(
+      transferId: widget.transferMeta.id,
+      offset: BigInt.zero,
+      limit: BigInt.from(_items.length),
+    );
+    if (!mounted) return;
+    var changed = batch.length != _items.length;
+    if (!changed) {
+      for (var i = 0; i < batch.length; i++) {
+        if (batch[i] != _items[i]) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) {
+      setState(() {
+        _items
+          ..clear()
+          ..addAll(batch);
+      });
+    }
   }
 
   Future<void> _loadMore() async {
@@ -860,7 +994,11 @@ class _TransferDetailScreenState extends ConsumerState<TransferDetailScreen> {
               itemCount: _items.length,
               separatorBuilder: (_, _) =>
                   Divider(color: context.colors.classicBorder, height: 1),
-              itemBuilder: (_, i) => _FileRow(item: _items[i]),
+              itemBuilder: (_, i) => _FileRow(
+                item: _items[i],
+                processing: currentTransfer.status ==
+                    TransferStateDto.processing,
+              ),
             ),
       floatingActionButton: _TransferControls(
         transfer: currentTransfer,
@@ -882,9 +1020,7 @@ class _TransferDetailScreenState extends ConsumerState<TransferDetailScreen> {
           }
 
           await deleteTransfer(transferId: currentTransfer.id);
-          if (context.mounted) {
-            Navigator.pop(context);
-          }
+          _popToList();
         },
       ),
     );
@@ -960,6 +1096,7 @@ class _FailedTransferItemsListState extends State<_FailedTransferItemsList> {
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
+        backgroundColor: context.colors.primaryCol,
         leading: IconButton(
           icon: const Icon(Icons.chevron_left),
           onPressed: () => Navigator.of(context).pop(),
@@ -1114,7 +1251,7 @@ String sizeOf(BigInt bytes) {
 String getSendItemError(SendItemErrorDto error) {
   switch (error) {
     case SendItemErrorDto.fileAlreadyExisted:
-      return 'File already exsists.';
+      return 'File already existed.';
     case SendItemErrorDto.fileIoError:
       return 'Failed to read file.';
     case SendItemErrorDto.fileOpenPermissionDenied:
@@ -1222,7 +1359,7 @@ class _FileRowSimple extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: context.colors.primaryFont,
-                      fontFamily: "Inter",
+                      fontFamily: "Rubik",
                       fontWeight: FontWeight.w500,
                       fontSize: 14,
                     ),
@@ -1233,7 +1370,7 @@ class _FileRowSimple extends StatelessWidget {
                       sizeOf(size),
                       style: TextStyle(
                         color: context.colors.thirdFont,
-                        fontFamily: "Inter",
+                        fontFamily: "Rubik",
                         fontSize: 12,
                       ),
                     ),
@@ -1250,7 +1387,8 @@ class _FileRowSimple extends StatelessWidget {
 
 class _FileRow extends StatelessWidget {
   final TransferItemDto item;
-  const _FileRow({required this.item});
+  final bool processing;
+  const _FileRow({required this.item, this.processing = false});
 
   Widget _iconBox(BuildContext context, IconData icon) => Container(
     width: 40,
@@ -1287,7 +1425,9 @@ class _FileRow extends StatelessWidget {
     final isVid = _isVideo(item.name);
 
     Widget preview;
-    if (isImg) {
+    if (item.isDir) {
+      preview = _iconBox(context, Icons.folder_outlined);
+    } else if (isImg) {
       preview = ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: Image(
@@ -1340,7 +1480,7 @@ class _FileRow extends StatelessWidget {
             context,
             rootNavigator: true,
           ).push(FastRoute(builder: (_) => _SendItemErrorScreen(item: item)));
-        } else if (isImg) {
+        } else if (!item.isDir && isImg) {
           _openPreview(context);
         }
       },
@@ -1368,18 +1508,29 @@ class _FileRow extends StatelessWidget {
                   if (isError) ...[
                     Text(
                       getSendItemError(item.error!),
-                      style: const TextStyle(
-                        color: Color(0xffF3523F),
+                      style: TextStyle(
+                        color: context.colors.primaryFont,
                         fontSize: 12,
                       ),
                     ),
                   ] else ...[
                     Text(
-                      sizeOf(item.size),
+                      item.isDir ? 'Directory' : sizeOf(item.size),
                       style: TextStyle(
                         color: context.colors.thirdFont,
                         fontSize: 12,
                       ),
+                    ),
+                  ],
+                  if (processing &&
+                      !isError &&
+                      !item.isDir &&
+                      item.size > BigInt.zero) ...[
+                    const SizedBox(height: 6),
+                    RealProgressBar(
+                      progress:
+                          item.sentBytes.toDouble() /
+                          item.size.toDouble(),
                     ),
                   ],
                 ],

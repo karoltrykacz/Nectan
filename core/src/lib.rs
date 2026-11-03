@@ -88,7 +88,7 @@ pub async fn setup_core(
 
     s.attach_router(&router);
 
-    tokio::spawn(start_mdns_discovery(s.clone()));
+    // tokio::spawn(start_mdns_discovery(s.clone()));
     start_registration_loop(&s);
     announce_endpoint(s.clone());
 

@@ -191,6 +191,35 @@ pub async fn send_contents(
     Ok(())
 }
 
+pub async fn send_text(
+    state: &NectanState,
+    target: DeviceId,
+    content: String,
+) -> Result<()> {
+    let Some(device) = state.devices.get(&target) else {
+        bail!("Device not found")
+    };
+    let Some(conn) = device.connection.clone() else {
+        bail!("Offline")
+    };
+    let Ok((mut tx, mut rx)) = conn.open_bi().await else {
+        bail!("Offline")
+    };
+    let msg = NetMessage::TextMessage { content };
+    if msg.write(&mut tx).await.is_err() {
+        bail!("Offline")
+    }
+    match tokio::time::timeout(
+        Duration::from_secs(5),
+        NetMessage::read_async(&mut rx),
+    )
+    .await
+    {
+        Ok(Ok(NetMessage::Ack)) => Ok(()),
+        _ => bail!("Message was not delivered."),
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TransferDirection {
     Outcoming,
@@ -320,14 +349,11 @@ impl PendingTransfer {
         let id = offer.transfer_id;
         println!("Transfer root_path {root_path:?}");
 
-        let db_dir = dirs::data_dir()
-            .unwrap_or_else(|| dirs::runtime_dir().unwrap());
         let dir = match direction {
             TransferDirection::Outcoming => "out",
             TransferDirection::Incoming => "in",
         };
-        let db_dir = db_dir.join(format!("Nectan/t-{id}-{dir}"));
-        let db = redb::Database::create(db_dir)
+        let db = redb::Database::create(transfers_db_path(dir, id))
             .expect("Failed to create database");
 
         let txn = db.begin_write().unwrap();
@@ -449,6 +475,49 @@ impl PendingTransfer {
             .get(id)?
             .expect("Item must be in database.")
             .value())
+    }
+
+    pub fn items_range(
+        &self,
+        offset: u64,
+        limit: u64,
+    ) -> Vec<TransferItem> {
+        let Ok(txn) = self.db.begin_read() else {
+            return Vec::new();
+        };
+        let Ok(table) = txn.open_table(DUMB_ITEMS) else {
+            return Vec::new();
+        };
+        let Ok(iter) = table.iter() else {
+            return Vec::new();
+        };
+        iter.filter_map(|r| r.ok())
+            .map(|(_, v)| v.value())
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect()
+    }
+
+    pub fn failed_items_range(
+        &self,
+        offset: u64,
+        limit: u64,
+    ) -> Vec<TransferItem> {
+        let Ok(txn) = self.db.begin_read() else {
+            return Vec::new();
+        };
+        let Ok(table) = txn.open_table(DUMB_ITEMS) else {
+            return Vec::new();
+        };
+        let Ok(iter) = table.iter() else {
+            return Vec::new();
+        };
+        iter.filter_map(|r| r.ok())
+            .map(|(_, v)| v.value())
+            .filter(|i| i.err.is_some())
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect()
     }
 
     fn unsent_batch(&self) -> Vec<usize> {
@@ -602,22 +671,16 @@ impl PendingTransfer {
 
         let id = header.id;
 
-        let r = match self
-            .receive_item(header, &mut stream, permit)
-            .await
-        {
-            Ok(()) => self.item_finished(id),
+        match self.receive_item(header, &mut stream, permit).await {
+            Ok(()) => {
+                self.item_finished(id);
+            }
             Err(e) => {
                 println!("Failed to receive item [{e:?}]");
                 let _ =
                     stream.write(&TransferControl::Error(e)).await;
-                self.handle_item_err(id, e)
+                self.handle_item_err(id, e);
             }
-        };
-
-        if r == 0 {
-            info!("No more items to receive.");
-            self.cancel();
         }
 
         Ok(())
@@ -707,6 +770,7 @@ impl PendingTransfer {
                     return Err(TransferItemError::Terminated);
                 }
                 _ = tick.tick() => {
+                    let _ = self.set_item_progress(header.id, total_written);
                     stream.write(&TransferControl::Ack(total_written))
                         .await
                         .map_err(|_| {
@@ -853,7 +917,7 @@ impl PendingTransfer {
                         TransferControl::Ack(bytes) => {
                             let diff = bytes - item.sent_bytes;
                             self.ack_sent_bytes(diff);
-                            self.ack_sent_bytes_db(item.idx, item.sent_bytes);
+                            self.ack_sent_bytes_db(item.idx, bytes);
                             item.sent_bytes = bytes;
                         }
                     }
@@ -879,9 +943,21 @@ impl PendingTransfer {
                 }
             };
         }
+        match tokio::time::timeout(
+            Duration::from_secs(10),
+            ctrl_rx.recv(),
+        )
+        .await
+        {
+            Ok(Some(TransferControl::Error(e))) => return Err(e),
+            Ok(Some(TransferControl::Ack(bytes))) => {
+                let diff = bytes.saturating_sub(item.sent_bytes);
+                self.ack_sent_bytes(diff);
+                self.ack_sent_bytes_db(item.idx, bytes);
+            }
+            _ => return Err(TransferItemError::StreamError),
+        }
         info!("Sending {} finished", path.display());
-        self.ack_sent_bytes(item.size);
-        // ctrl_rx.recv()
 
         Ok(())
     }
@@ -896,10 +972,8 @@ impl PendingTransfer {
             | TransferItemError::FileNotFound
             | TransferItemError::FileIOError => {
                 let _ = self.set_item_error(id, e);
-                let _ = self.item_finished(id);
-
                 self.failed.fetch_add(1, Relaxed);
-                self.processed_items.fetch_add(1, Relaxed) + 1
+                self.item_finished(id)
             }
             // Recoverable (Network) errors - nop
             TransferItemError::StreamError
@@ -960,6 +1034,37 @@ impl PendingTransfer {
     }
 }
 
+fn transfers_db_root() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| dirs::runtime_dir().unwrap())
+        .join("Nectan")
+        .join("transfers")
+}
+
+fn transfers_db_path(dir: &str, id: Uuid) -> PathBuf {
+    let root = transfers_db_root();
+    let _ = std::fs::create_dir_all(&root);
+    root.join(format!("t-{dir}-{id}"))
+}
+
+fn wipe_transfers_db() {
+    if let Ok(entries) = std::fs::read_dir(transfers_db_root()) {
+        for entry in entries.flatten() {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+
+    let legacy_root = transfers_db_root().parent().unwrap().to_path_buf();
+    if let Ok(entries) = std::fs::read_dir(legacy_root) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with("t-") {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+}
+
 pub struct PendingTransfers {
     pub inner: std::sync::RwLock<HashMap<Uuid, Arc<PendingTransfer>>>,
 }
@@ -968,7 +1073,6 @@ pub struct Transfers {
     pending_transfers: PendingTransfers,
     devices: Devices,
     event_tx: tokio::sync::mpsc::Sender<AppEvent>,
-    // db: redb::Database,
 }
 
 impl Transfers {
@@ -976,9 +1080,8 @@ impl Transfers {
         devices: Devices,
         event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     ) -> Self {
-        // let db_dir = dirs::data_dir().unwrap_or_else(|| dirs::runtime_dir().unwrap());
-        // let db_dir = db_dir.join("transfers");
-        // let db = redb::Database::create(db_dir).expect("Failed to create transfers database");
+        wipe_transfers_db();
+
         let pending_transfers = PendingTransfers {
             inner: std::sync::RwLock::new(HashMap::new()),
         };
@@ -1003,15 +1106,6 @@ impl Transfers {
             .cloned()
             .collect()
     }
-
-    // pub fn get_pending_transfers(&self) -> Vec<Arc<PendingTransfer>> {
-    //     self.pending_transfers()
-    //         .read()
-    //         .unwrap()
-    //         .values()
-    //         .cloned()
-    //         .collect()
-    // }
 
     pub fn get_transfers(&self) -> Vec<TransferMeta> {
         self.pending_transfers()
@@ -1052,7 +1146,12 @@ impl Transfers {
         if direction == TransferDirection::Outcoming
             && let Some(conn) = self.devices.get_connection(target)
         {
-            tokio::spawn(t.start_sending(conn));
+            let event_tx = self.event_tx.clone();
+            tokio::spawn(async move {
+                let _ = t.start_sending(conn).await;
+                let _ =
+                    event_tx.send(AppEvent::TransfersUpdated).await;
+            });
         }
         let _ = self.event_tx.send(AppEvent::TransfersUpdated).await;
     }
@@ -1062,20 +1161,34 @@ impl Transfers {
         id: Uuid,
         stream: StreamPair,
     ) -> Result<()> {
-        let Some(t) = self.get(id) else {
+        let Some(t) = self.get_transfer(id) else {
             error!("Transfer not found");
             bail!("Transfer not found")
         };
-        t.process_stream(stream).await
+        t.clone().process_stream(stream).await?;
+
+        if t.processed_items.load(Relaxed) == t.total_items
+            && !matches!(t.status(), TransferStatus::Finished)
+        {
+            t.set_status(TransferStatus::Finished);
+            t.cancel();
+            let _ =
+                self.event_tx.send(AppEvent::TransfersUpdated).await;
+        }
+
+        Ok(())
     }
 
-    fn get(&self, id: Uuid) -> Option<Arc<PendingTransfer>> {
+    pub fn get_transfer(
+        &self,
+        id: Uuid,
+    ) -> Option<Arc<PendingTransfer>> {
         self.pending_transfers().read().unwrap().get(&id).cloned()
     }
 
     /// Called when remote device cancelled the transfer
     pub async fn transfer_cancelled(&self, id: Uuid) -> Result<()> {
-        let Some(t) = self.get(id) else {
+        let Some(t) = self.get_transfer(id) else {
             error!("Transfer not found");
             bail!("Transfer not found")
         };

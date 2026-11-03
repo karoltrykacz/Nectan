@@ -295,6 +295,7 @@ async fn handle_stream(
                     content,
                 })
                 .await;
+            let _ = stream.write(&Ack).await;
         }
         NetMessage::TransferStream { transfer_id } => {
             state
@@ -303,7 +304,7 @@ async fn handle_stream(
                 .await?;
         }
         NetMessage::TransferCancelled { transfer_id } => {
-            state.transfers.transfer_cancelled(transfer_id)?;
+            state.transfers.transfer_cancelled(transfer_id).await?;
         }
         NetMessage::Accepted
         | NetMessage::Rejected { .. }
@@ -826,6 +827,8 @@ pub fn announce_endpoint(state: Arc<NectanState>) {
         let payload = postcard::to_allocvec(&payload).unwrap();
 
         let seq = loop {
+            info!("Announcing");
+
             match state
                 .http()
                 .post(format!("{}/announce_endpoint", DISCOVERY_URL))

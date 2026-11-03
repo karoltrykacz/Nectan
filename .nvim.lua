@@ -1,4 +1,4 @@
-vim.g.project_color = "#83A598"
+vim.g.project_color = "#0083f5"
 
 vim.lsp.config("rust_analyzer", {
 	settings = {

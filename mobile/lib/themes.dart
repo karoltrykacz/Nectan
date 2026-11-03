@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nectan_mobile/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 RoundedSuperellipseBorder sq(double radius, {BorderSide? side}) =>
     RoundedSuperellipseBorder(
@@ -50,6 +51,7 @@ class AppTheme {
 
   late final ThemeData data = ThemeData(
     brightness: brightness,
+    fontFamily: 'Rubik',
     colorScheme: ColorScheme.fromSeed(
       seedColor: accent,
       brightness: brightness,
@@ -308,10 +310,33 @@ abstract final class AppThemes {
 }
 
 class AppThemeNotifier extends Notifier<AppTheme> {
-  @override
-  AppTheme build() => AppThemes.dark;
+  static const _prefsKey = 'app_theme_id';
+  static String? initialId;
 
-  void select(AppTheme theme) => state = theme;
+  static Future<void> preload() async {
+    final prefs = await SharedPreferences.getInstance();
+    initialId = prefs.getString(_prefsKey);
+  }
+
+  @override
+  AppTheme build() {
+    _restore();
+    return AppThemes.byId(initialId);
+  }
+
+  Future<void> _restore() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString(_prefsKey);
+    if (id != null && id != state.id) {
+      state = AppThemes.byId(id);
+    }
+  }
+
+  Future<void> select(AppTheme theme) async {
+    state = theme;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKey, theme.id);
+  }
 }
 
 final appThemeProvider = NotifierProvider<AppThemeNotifier, AppTheme>(

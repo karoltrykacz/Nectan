@@ -11,13 +11,14 @@ use iroh::EndpointId;
 use jwalk::ClientState;
 pub use log::info;
 use nectan_core::{
+    EndpointAddr,
     common::get_signing_key,
     devices::{
         self, Device, Devices, UserInfo, Username,
         device_id_from_base64, device_id_to_base64,
     },
     messages::{AppEvent, UiResponse},
-    protocol::{NectanState, TransferOffer},
+    protocol::{ConnectStatus, NectanState, TransferOffer},
     setup_core,
     storage::Storage,
     transfers::{
@@ -231,10 +232,11 @@ pub struct TransferMetaDto {
 pub struct TransferItemDto {
     pub id: u64,
     pub path: String,
-    pub name: String, // derive name from path
+    pub name: String,
     pub size: u64,
     pub sent_bytes: u64,
-    pub error: Option<SendItemErrorDto>, // error enum
+    pub is_dir: bool,
+    pub error: Option<SendItemErrorDto>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -327,13 +329,12 @@ pub async fn init_app(
         found_device_nearby_sink,
     );
 
-    log::info!("🟦 App initialized.");
+    log::info!("App initialized.");
 
     Ok("Ok".to_string())
 }
 
 pub fn get_all_transfers() -> Vec<TransferMetaDto> {
-    info!("LOADING TRANFERS ----------- ");
     state()
         .transfers
         .get_pending_transfers()
@@ -346,7 +347,7 @@ pub fn get_all_transfers() -> Vec<TransferMetaDto> {
             remote_device_name: t.target_name.to_string(),
             total_size: t.total_size,
             entires_num: t.total_items,
-            status: TransferStateDto::Processing,
+            status: t.status().into(),
             sent_bytes: t.sent_bytes.load(Relaxed),
             speed_bps: t.speed.load(Relaxed),
             failed_entries: t.failed.load(Relaxed),
@@ -363,34 +364,16 @@ pub async fn get_failed_transfer_items(
     offset: u64,
     limit: u64,
 ) -> Vec<TransferItemDto> {
-    Vec::new()
-    // let transfer_id = Uuid::parse_str(&transfer_id).expect("Invalid UUID");
-    // let s = state();
-    // let Some(meta) = s.transfers_pool.get_transfer_meta(transfer_id) else {
-    //     return Vec::new();
-    // };
-    // let parent = meta.root_path;
-    // s.transfers_pool
-    //     .get_failed_items_range(transfer_id, offset, limit)
-    //     .iter()
-    //     .map(|i| {
-    //         // todo  impl from for tranfer dto
-    //         let path = format!("{}/{}", parent, i.path); // this shit is probably needed!!
-    //         let error = i.err.map(SendItemErrorDto::from);
-    //         TransferItemDto {
-    //             id: i.id,
-    //             name: Path::new(&i.path)
-    //                 .file_name()
-    //                 .unwrap_or_default()
-    //                 .to_string_lossy()
-    //                 .to_string(),
-    //             path,
-    //             size: i.file_size,
-    //             sent_bytes: i.sent_bytes,
-    //             error,
-    //         }
-    //     })
-    //     .collect()
+    let Ok(transfer_id) = Uuid::parse_str(&transfer_id) else {
+        return Vec::new();
+    };
+    let Some(t) = state().transfers.get_transfer(transfer_id) else {
+        return Vec::new();
+    };
+    t.failed_items_range(offset, limit)
+        .iter()
+        .map(|i| transfer_item_dto(i, &t.root_path))
+        .collect()
 }
 
 pub async fn get_transfer_items(
@@ -398,34 +381,31 @@ pub async fn get_transfer_items(
     offset: u64,
     limit: u64,
 ) -> Vec<TransferItemDto> {
-    Vec::new()
-    // let transfer_id = Uuid::parse_str(&transfer_id).expect("Invalid UUID");
-    // let s = state();
-    // let Some(meta) = s.transfers_pool.get_transfer_meta(transfer_id) else {
-    //     return Vec::new();
-    // };
-    // let parent = meta.root_path;
-    // s.transfers_pool
-    //     .get_items_range(transfer_id, offset, limit)
-    //     .iter()
-    //     .map(|i| {
-    //         // todo  impl from for tranfer dto
-    //         let path = format!("{}/{}", parent, i.path);
-    //         let error = i.err.map(SendItemErrorDto::from);
-    //         TransferItemDto {
-    //             id: i.id,
-    //             name: Path::new(&i.path)
-    //                 .file_name()
-    //                 .unwrap_or_default()
-    //                 .to_string_lossy()
-    //                 .to_string(),
-    //             path,
-    //             size: i.file_size,
-    //             sent_bytes: i.sent_bytes,
-    //             error,
-    //         }
-    //     })
-    //     .collect()
+    let Ok(transfer_id) = Uuid::parse_str(&transfer_id) else {
+        return Vec::new();
+    };
+    let Some(t) = state().transfers.get_transfer(transfer_id) else {
+        return Vec::new();
+    };
+    t.items_range(offset, limit)
+        .iter()
+        .map(|i| transfer_item_dto(i, &t.root_path))
+        .collect()
+}
+
+fn transfer_item_dto(
+    item: &nectan_core::transfers::TransferItem,
+    root: &std::path::Path,
+) -> TransferItemDto {
+    TransferItemDto {
+        id: item.idx as u64,
+        name: item.name(),
+        path: root.join(&item.path).to_string_lossy().to_string(),
+        size: item.size,
+        sent_bytes: item.sent_bytes,
+        is_dir: item.is_dir,
+        error: item.err.map(SendItemErrorDto::from),
+    }
 }
 
 pub struct TransferOfferDto {
@@ -462,6 +442,16 @@ pub async fn lookup_code(code: String) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
     *engine().lookup_addr_placeholder.lock().await = Some(ep_id);
+    Ok("Code found.".to_string())
+}
+
+pub async fn set_lookup_endpoint_id(
+    endpoint_id: String,
+) -> Result<String, String> {
+    let Ok(id) = endpoint_id.parse::<EndpointId>() else {
+        return Err("Invalid code.".to_string());
+    };
+    *engine().lookup_addr_placeholder.lock().await = Some(id);
     Ok("Code found.".to_string())
 }
 
@@ -524,18 +514,10 @@ fn start_event_listener(
                 }
                 AppEvent::ConnectionOffer { offer } => {
                     log::info!("New connection offer.");
-
                     let conn_req = ConnectionRequest {
                         username: offer.username.as_string(),
                     };
-
-                    if let Err(e) = new_connection_sink.add(conn_req)
-                    {
-                        log::error!(
-                            "‼️ Critical new connection request error: {}",
-                            e
-                        );
-                    };
+                    let _ = new_connection_sink.add(conn_req);
                 }
                 AppEvent::FoundNearby => {
                     log::info!("Found nearby device");
@@ -552,31 +534,6 @@ fn start_event_listener(
             }
         }
     });
-}
-
-async fn sync_accumulator(engine: &Engine) -> Vec<TransferMetaDto> {
-    let fresh = get_all_transfers();
-    let mut acc = engine.transfers_accumulator.lock().await;
-
-    for fresh_t in &fresh {
-        if let Some(existing) =
-            acc.iter_mut().find(|t| t.id == fresh_t.id)
-        {
-            existing.status = fresh_t.status;
-            existing.name = fresh_t.name.clone();
-            existing.remote_device_id =
-                fresh_t.remote_device_id.clone();
-            existing.remote_device_name =
-                fresh_t.remote_device_name.clone();
-            existing.direction = fresh_t.direction;
-            existing.total_size = fresh_t.total_size;
-            existing.entires_num = fresh_t.entires_num;
-        } else {
-            acc.push(fresh_t.clone());
-        }
-    }
-    acc.retain(|t| fresh.iter().any(|f| f.id == t.id));
-    acc.clone()
 }
 
 pub async fn respond_to_connection_req(accept: bool) {
@@ -625,44 +582,44 @@ pub async fn add_remote_device(
     log::info!("🟦 Adding remote device.");
 
     let state = state();
-    let e = engine();
-    let guard = e.lookup_addr_placeholder.lock().await;
+    let endpoint_id = {
+        let guard = engine().lookup_addr_placeholder.lock().await;
+        guard.clone()
+    };
 
-    let Some(endpoint_addr) = guard.clone() else {
-        let _ = sink.add_error("Failed".to_string());
-        log::error!("🟥 Endpoint Addr placeholder was empty.");
+    let Some(endpoint_id) = endpoint_id else {
+        let _ =
+            sink.add_error("Failed to find the device.".to_string());
+        log::error!("🟥 Endpoint id placeholder was empty.");
         return;
     };
 
-    // let connection_handle = flutter_rust_bridge::spawn(connect(state, endpoint_addr));
-    //
-    // match connection_handle.await {
-    //     Ok(Ok(())) => {
-    //         log::info!("🟩 Connection successful.");
-    //         let _ = sink.add(AddRemoteDeviceEvent::Connected);
-    //     }
-    //     Ok(Err(e)) => {
-    //         log::error!("🟥 Connection failed");
-    //         let err = match e {
-    //             ConnectError::Connection => AddRemoteDeviceEvent::ConnectionFailed,
-    //             ConnectError::UserRejected => AddRemoteDeviceEvent::Rejected,
-    //             _ => AddRemoteDeviceEvent::ConnectionFailed,
-    //         };
-    //
-    //         // NectanProtocolError::AlreadyConnecting { .. }
-    //         // | NectanProtocolError::AlreadyConnected { .. } => AddRemoteDeviceEvent::Connected,
-    //         // NectanProtocolError::UserRejected { .. } => AddRemoteDeviceEvent::Rejected,
-    //         // other => {
-    //         //     log::error!("Unhandled error {}", other);
-    //         //     AddRemoteDeviceEvent::Error(other.to_string())
-    //         // }
-    //         let _ = sink.add(err);
-    //     }
-    //     Err(e) => {
-    //         log::error!("🟥 Add remote device error. Join error. {}", e);
-    //         let _ = sink.add_error("Connection error. Please try again.".to_string());
-    //     }
-    // }
+    let mut rx = nectan_core::protocol::connect(
+        state,
+        EndpointAddr::from(endpoint_id),
+    );
+
+    while let Some(status) = rx.recv().await {
+        let event = match status {
+            ConnectStatus::RequestDelivered => {
+                AddRemoteDeviceEvent::WaitingForResponse
+            }
+            ConnectStatus::Accepted(_)
+            | ConnectStatus::AlreadyConnected => {
+                AddRemoteDeviceEvent::Connected
+            }
+            ConnectStatus::UserRejected => {
+                AddRemoteDeviceEvent::Rejected
+            }
+            ConnectStatus::ConnectionFailed => {
+                AddRemoteDeviceEvent::ConnectionFailed
+            }
+            ConnectStatus::AuthFailed => AddRemoteDeviceEvent::Error(
+                "Authentication failed.".to_string(),
+            ),
+        };
+        let _ = sink.add(event);
+    }
 }
 
 pub enum DeviceStatus {
@@ -686,16 +643,6 @@ fn update_devices_sink(sink: &StreamSink<Vec<DeviceDto>>) {
 fn update_transfers(sink: &StreamSink<Vec<TransferMetaDto>>) {
     let _ = sink.add(get_all_transfers());
 }
-
-// pub fn get_local_devices_list() -> Vec<String> {
-//     // state()
-//     //     .devices_pool
-//     //     .get_all_local()
-//     //     .iter()
-//     //     .map(|d| device_id_to_base64(&d.id))
-//     //     .collect()
-//     Vec::new()
-// }
 
 pub fn get_dto_devices() -> Vec<DeviceDto> {
     state()
@@ -754,9 +701,13 @@ pub async fn cancel_walk() {
 }
 
 pub async fn delete_transfer(transfer_id: String) {
-    let transfer_id = Uuid::parse_str(&transfer_id).unwrap();
+    let Ok(transfer_id) = Uuid::parse_str(&transfer_id) else {
+        log::info!("Delete transfer. Invalid id.");
+        return;
+    };
 
-    // let _ = state().transfers_pool.delete_transfer(transfer_id).await;
+    let _ = state().transfers.delete_transfer(transfer_id).await;
+    log::info!("Transfer deleted.");
 }
 
 pub async fn init_transfer() -> String {
@@ -908,6 +859,18 @@ pub async fn send(
         Err(_) => SendState::Failed,
     };
     emit(total_size, entries_num, final_state);
+}
+
+pub async fn send_text(
+    remote_device_id: String,
+    content: String,
+) -> Result<(), String> {
+    let Ok(target) = device_id_from_base64(&remote_device_id) else {
+        return Err("Invalid device id.".to_string());
+    };
+    nectan_core::transfers::send_text(&state(), target, content)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 pub fn gen_transfer_name() -> String {

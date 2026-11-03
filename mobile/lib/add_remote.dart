@@ -264,6 +264,7 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
             icon: Icons.keyboard_alt_outlined,
             mode: CodeMode.enter,
           ),
+          const SizedBox(width: 4),
           _buildModeSegment(
             label: 'Show my code',
             icon: Icons.visibility_outlined,
@@ -521,7 +522,7 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
             size: 18,
           ),
           label: Text(
-            'Show QR code',
+            'QR code',
             style: TextStyle(
               fontFamily: "Rubik",
               color: context.colors.primaryFont,
@@ -581,6 +582,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final stream = addRemoteDevice();
     _sub = stream.listen(
       (event) => setState(() => _currentStatus = event),
+      onError: (Object e) => setState(
+        () => _currentStatus = AddRemoteDeviceEvent.error(e.toString()),
+      ),
       onDone: () => debugPrint("🟦 Add remote device done."),
     );
   }
@@ -749,29 +753,21 @@ class _ConnectingBodyState extends State<_ConnectingBody> {
               style: TextStyle(
                 color: context.colors.primaryFont,
                 fontSize: 14,
-                fontFamily: 'Inter',
+                fontFamily: 'Rubik',
                 fontWeight: FontWeight.w500,
               ),
             ),
           const SizedBox(height: 24),
-          SizedBox(
-            height: 36,
-            child: _showSpinner
-                ? const Spinner()
-                : TextButton.icon(
-                    onPressed: () => Navigator.of(
-                      context,
-                      rootNavigator: true,
-                    ).popUntil((route) => route.isFirst),
-                    label: Text(
-                      'Go to devices',
-                      style: TextStyle(
-                        color: context.colors.secondaryFont,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-          ),
+          if (_showSpinner)
+            const SizedBox(height: 36, child: Spinner())
+          else
+            PrimaryWideButton(
+              label: 'Done',
+              onPressed: () => Navigator.of(
+                context,
+                rootNavigator: true,
+              ).popUntil((route) => route.isFirst),
+            ),
         ],
       ),
     );
@@ -789,8 +785,15 @@ class QrScreen extends StatelessWidget {
 
     if (scannedCode == null || !context.mounted) return;
 
-    // TODO: wire scannedCode into your existing lookup/connect flow
-    debugPrint('🟦 Scanned code: $scannedCode');
+    await Navigator.of(context).push(
+      FastRoute(
+        builder: (context) => ConnectScreen(
+          code: '',
+          lookupFuture: setLookupEndpointId(endpointId: scannedCode),
+          initialState: CodeLookupState.found,
+        ),
+      ),
+    );
   }
 
   @override

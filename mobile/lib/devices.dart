@@ -833,7 +833,7 @@ class _DeviceTile extends ConsumerWidget {
                               style: TextStyle(
                                 color: context.colors.thirdFont,
                                 fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w400,
                                 fontFamily: "Rubik",
                               ),
                             ),
@@ -1145,6 +1145,7 @@ class SendOptionsSheet extends StatelessWidget {
   const SendOptionsSheet({super.key, required this.device, required this.ref});
 
   static const List<_SendOption> _options = [
+    _SendOption(icon: Icons.notes_rounded, label: 'Text'),
     _SendOption(icon: Icons.videocam_outlined, label: 'Videos'),
     _SendOption(icon: Icons.photo_library_outlined, label: 'Photos'),
     _SendOption(icon: Icons.insert_drive_file_outlined, label: 'Files'),
@@ -1155,6 +1156,12 @@ class SendOptionsSheet extends StatelessWidget {
   Future<void> _handleOption(BuildContext context, String label) async {
     await requestStoragePermissions();
     switch (label) {
+      case 'Text':
+        if (!context.mounted) return;
+        Navigator.of(
+          context,
+        ).push(FastRoute(builder: (_) => SendTextScreen(device: device)));
+        break;
       case 'Videos':
       case 'Photos':
         if (!context.mounted) return;
@@ -1328,7 +1335,7 @@ class _OptionTile extends StatelessWidget {
           fontWeight: FontWeight.w500,
           fontSize: 15,
           color: scheme.onSurface,
-          fontFamily: "Inter",
+          fontFamily: "Rubik",
         ),
       ),
       trailing: Icon(
@@ -1341,7 +1348,148 @@ class _OptionTile extends StatelessWidget {
   }
 }
 
-class WalkDirScreen extends StatefulWidget {
+class SendTextScreen extends StatefulWidget {
+  final DeviceDto device;
+  const SendTextScreen({super.key, required this.device});
+
+  @override
+  State<SendTextScreen> createState() => _SendTextScreenState();
+}
+
+class _SendTextScreenState extends State<SendTextScreen> {
+  final _controller = TextEditingController();
+  bool _sending = false;
+  bool _delivered = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      await sendText(remoteDeviceId: widget.device.id, content: text);
+      if (!mounted) return;
+      setState(() => _delivered = true);
+      await Future.delayed(const Duration(seconds: 1));
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      debugPrint('🟥 Text send error: $e');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: context.colors.primaryCol,
+      appBar: AppBar(
+        backgroundColor: context.colors.primaryCol,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left),
+          onPressed: () => Navigator.of(context).pop(),
+          iconSize: 20,
+          padding: EdgeInsets.zero,
+        ),
+        titleSpacing: 0,
+        title: Text(
+          'Send text',
+          style: TextStyle(
+            fontFamily: 'Rubik',
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+          ),
+        ),
+      ),
+      body: _delivered
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    size: 56,
+                    color: context.colors.primaryFont,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Delivered',
+                    style: TextStyle(
+                      color: context.colors.primaryFont,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Rubik',
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      expands: true,
+                      maxLines: null,
+                      textAlignVertical: TextAlignVertical.top,
+                      style: TextStyle(
+                        color: context.colors.primaryFont,
+                        fontSize: 15,
+                        fontFamily: 'Rubik',
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Type something...',
+                        hintStyle: TextStyle(color: context.colors.thirdFont),
+                        filled: true,
+                        fillColor: context.colors.secondaryCol,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: context.colors.classicBorder,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: context.colors.classicBorder,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: context.colors.classicBorder,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: PrimaryWideButton(
+                      label: 'Send',
+                      maxWidth: double.infinity,
+                      isLoading: _sending,
+                      onPressed: _send,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class WalkDirScreen extends ConsumerStatefulWidget {
   const WalkDirScreen({
     super.key,
     required this.deviceId,
@@ -1354,10 +1502,10 @@ class WalkDirScreen extends StatefulWidget {
   final List<String> paths;
 
   @override
-  State<WalkDirScreen> createState() => _WalkDirScreenState();
+  ConsumerState<WalkDirScreen> createState() => _WalkDirScreenState();
 }
 
-class _WalkDirScreenState extends State<WalkDirScreen> {
+class _WalkDirScreenState extends ConsumerState<WalkDirScreen> {
   StreamSubscription<WalkInfo>? _sub;
   WalkInfo? _info;
   Object? _streamError;
@@ -1380,8 +1528,18 @@ class _WalkDirScreenState extends State<WalkDirScreen> {
           transferName: widget.transferName,
           paths: widget.paths,
         ).listen(
-          (info) => setState(() => _info = info),
-          onError: (e) => setState(() => _streamError = e),
+          (info) {
+            if (!mounted) return;
+            if (info.state == SendState.accepted) {
+              ref.read(currentTabProvider.notifier).set(1);
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              return;
+            }
+            setState(() => _info = info);
+          },
+          onError: (e) {
+            if (mounted) setState(() => _streamError = e);
+          },
         );
   }
 
