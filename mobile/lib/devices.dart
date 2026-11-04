@@ -1084,6 +1084,25 @@ class _DeviceOptionsSheet extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               ListTile(
+                title: Text(
+                  device.fav ? 'Unfavourite' : 'Favourite',
+                  style: const TextStyle(
+                    fontWeight: FontWeight(500),
+                    fontFamily: "Rubik",
+                  ),
+                ),
+                trailing: Icon(
+                  device.fav
+                      ? Icons.star_rounded
+                      : Icons.star_outline_rounded,
+                  color: context.colors.primaryFont,
+                ),
+                onTap: () {
+                  toggleFavourite(deviceId: device.id);
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
                 title: const Text(
                   'Remove device',
                   style: TextStyle(

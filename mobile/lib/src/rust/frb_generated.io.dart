@@ -29,6 +29,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Object dco_decode_DartOpaque(dynamic raw);
 
   @protected
+  RustStreamSink<String> dco_decode_StreamSink_String_Sse(dynamic raw);
+
+  @protected
   RustStreamSink<AddRemoteDeviceEvent>
   dco_decode_StreamSink_add_remote_device_event_Sse(dynamic raw);
 
@@ -47,6 +50,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   RustStreamSink<List<TransferMetaDto>>
   dco_decode_StreamSink_list_transfer_meta_dto_Sse(dynamic raw);
+
+  @protected
+  RustStreamSink<TextMessageDto> dco_decode_StreamSink_text_message_dto_Sse(
+    dynamic raw,
+  );
 
   @protected
   RustStreamSink<TransferOfferDto> dco_decode_StreamSink_transfer_offer_dto_Sse(
@@ -76,6 +84,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   DeviceStatus dco_decode_device_status(dynamic raw);
+
+  @protected
+  double dco_decode_f_32(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -119,6 +130,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SendState dco_decode_send_state(dynamic raw);
 
   @protected
+  TextMessageDto dco_decode_text_message_dto(dynamic raw);
+
+  @protected
   TransferDirection dco_decode_transfer_direction(dynamic raw);
 
   @protected
@@ -158,6 +172,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Object sse_decode_DartOpaque(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<String> sse_decode_StreamSink_String_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<AddRemoteDeviceEvent>
   sse_decode_StreamSink_add_remote_device_event_Sse(
     SseDeserializer deserializer,
@@ -180,6 +199,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   RustStreamSink<List<TransferMetaDto>>
   sse_decode_StreamSink_list_transfer_meta_dto_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RustStreamSink<TextMessageDto> sse_decode_StreamSink_text_message_dto_Sse(
     SseDeserializer deserializer,
   );
 
@@ -217,6 +241,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   DeviceStatus sse_decode_device_status(SseDeserializer deserializer);
+
+  @protected
+  double sse_decode_f_32(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -268,6 +295,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SendState sse_decode_send_state(SseDeserializer deserializer);
 
   @protected
+  TextMessageDto sse_decode_text_message_dto(SseDeserializer deserializer);
+
+  @protected
   TransferDirection sse_decode_transfer_direction(SseDeserializer deserializer);
 
   @protected
@@ -316,6 +346,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_DartOpaque(Object self, SseSerializer serializer);
 
   @protected
+  void sse_encode_StreamSink_String_Sse(
+    RustStreamSink<String> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_add_remote_device_event_Sse(
     RustStreamSink<AddRemoteDeviceEvent> self,
     SseSerializer serializer,
@@ -342,6 +378,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_list_transfer_meta_dto_Sse(
     RustStreamSink<List<TransferMetaDto>> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_text_message_dto_Sse(
+    RustStreamSink<TextMessageDto> self,
     SseSerializer serializer,
   );
 
@@ -386,6 +428,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_device_status(DeviceStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_f_32(double self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
@@ -449,6 +494,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_send_state(SendState self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_message_dto(
+    TextMessageDto self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_transfer_direction(

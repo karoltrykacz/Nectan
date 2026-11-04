@@ -437,6 +437,7 @@ Future<bool?> showConfirmDialog(
   required String message,
   String keepLabel = 'Keep',
   String removeLabel = 'Remove',
+  int confirmDelaySeconds = 0,
 }) {
   return showGeneralDialog<bool>(
     context: context,
@@ -445,18 +446,72 @@ Future<bool?> showConfirmDialog(
     barrierColor: Colors.black.withAlpha(130),
     transitionDuration: Duration.zero,
     transitionBuilder: (_, _, _, child) => child,
-    pageBuilder: (ctx, _, _) => Dialog(
+    pageBuilder: (ctx, _, _) => _ConfirmDialog(
+      title: title,
+      message: message,
+      keepLabel: keepLabel,
+      removeLabel: removeLabel,
+      confirmDelaySeconds: confirmDelaySeconds,
+    ),
+  );
+}
+
+class _ConfirmDialog extends StatefulWidget {
+  final String title;
+  final String message;
+  final String keepLabel;
+  final String removeLabel;
+  final int confirmDelaySeconds;
+
+  const _ConfirmDialog({
+    required this.title,
+    required this.message,
+    required this.keepLabel,
+    required this.removeLabel,
+    required this.confirmDelaySeconds,
+  });
+
+  @override
+  State<_ConfirmDialog> createState() => _ConfirmDialogState();
+}
+
+class _ConfirmDialogState extends State<_ConfirmDialog> {
+  int _remaining = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _remaining = widget.confirmDelaySeconds;
+    if (_remaining > 0) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() => _remaining -= 1);
+        if (_remaining <= 0) timer.cancel();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final confirmEnabled = _remaining <= 0;
+    return Dialog(
       backgroundColor: context.colors.primaryCol,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 320),
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
-              title,
+              widget.title,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: context.colors.primaryFont,
@@ -467,7 +522,7 @@ Future<bool?> showConfirmDialog(
             ),
             const SizedBox(height: 16),
             Text(
-              message,
+              widget.message,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: context.colors.secondaryFont,
@@ -480,17 +535,15 @@ Future<bool?> showConfirmDialog(
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
+                    onPressed: () => Navigator.of(context).pop(false),
                     style: FilledButton.styleFrom(
                       backgroundColor: context.colors.primaryFont,
                       foregroundColor: context.colors.primaryCol,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      shape: sq(12),
                     ),
                     child: Text(
-                      keepLabel,
+                      widget.keepLabel,
                       style: const TextStyle(
                         fontFamily: "Rubik",
                         fontWeight: FontWeight.w600,
@@ -502,17 +555,20 @@ Future<bool?> showConfirmDialog(
                 const SizedBox(width: 14),
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => Navigator.of(ctx).pop(true),
+                    onPressed: confirmEnabled
+                        ? () => Navigator.of(context).pop(true)
+                        : null,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xffDC3545),
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: const Color(0xff6c6c6c),
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      shape: sq(12),
                     ),
                     child: Text(
-                      removeLabel,
+                      confirmEnabled
+                          ? widget.removeLabel
+                          : '${widget.removeLabel} ($_remaining)',
                       style: const TextStyle(
                         fontFamily: "Rubik",
                         fontWeight: FontWeight.w600,
@@ -526,8 +582,8 @@ Future<bool?> showConfirmDialog(
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class TransferItemTile extends ConsumerStatefulWidget {
@@ -719,14 +775,14 @@ class _TransferItemTileState extends ConsumerState<TransferItemTile> {
                   AnimatedSize(
                     duration: const Duration(milliseconds: 400),
                     curve: Curves.easeInOut,
-                    child: transfer.status == TransferStateDto.finished
-                        ? const SizedBox.shrink()
-                        : Column(
+                    child: transfer.status == TransferStateDto.processing
+                        ? Column(
                             children: [
                               const SizedBox(height: 12),
                               RealProgressBar(progress: targetProgress),
                             ],
-                          ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ],
               ),

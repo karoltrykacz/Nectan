@@ -40,6 +40,18 @@ Future<void> setShowConnectedToNearby({required bool showAgain}) => RustLib
 Future<bool> showConnectedToNearby() =>
     RustLib.instance.api.crateApiSimpleShowConnectedToNearby();
 
+Future<void> setAutoacceptNearby({required bool value}) =>
+    RustLib.instance.api.crateApiSimpleSetAutoacceptNearby(value: value);
+
+Future<void> setAutoacceptFavourites({required bool value}) =>
+    RustLib.instance.api.crateApiSimpleSetAutoacceptFavourites(value: value);
+
+Future<bool> autoacceptNearby() =>
+    RustLib.instance.api.crateApiSimpleAutoacceptNearby();
+
+Future<bool> autoacceptFavourites() =>
+    RustLib.instance.api.crateApiSimpleAutoacceptFavourites();
+
 Future<bool> initEngine({required String basePath}) =>
     RustLib.instance.api.crateApiSimpleInitEngine(basePath: basePath);
 
@@ -50,6 +62,9 @@ Future<String> initApp({
   required RustStreamSink<List<TransferMetaDto>> transfersSink,
   required RustStreamSink<TransferOfferDto> transferOfferSink,
   required RustStreamSink<DeviceDto> foundDeviceNearbySink,
+  required RustStreamSink<TextMessageDto> textMessageSink,
+  required RustStreamSink<String> autoacceptSink,
+  required RustStreamSink<String> foundNearbySink,
 }) => RustLib.instance.api.crateApiSimpleInitApp(
   appDir: appDir,
   devicesSink: devicesSink,
@@ -57,6 +72,9 @@ Future<String> initApp({
   transfersSink: transfersSink,
   transferOfferSink: transferOfferSink,
   foundDeviceNearbySink: foundDeviceNearbySink,
+  textMessageSink: textMessageSink,
+  autoacceptSink: autoacceptSink,
+  foundNearbySink: foundNearbySink,
 );
 
 Future<List<TransferMetaDto>> getAllTransfers() =>
@@ -109,6 +127,18 @@ Future<void> pauseResumeTransfer({required String transferId}) => RustLib
     .api
     .crateApiSimplePauseResumeTransfer(transferId: transferId);
 
+Future<void> setSpeedLimit({required BigInt limitBps}) =>
+    RustLib.instance.api.crateApiSimpleSetSpeedLimit(limitBps: limitBps);
+
+Future<double> mapSpeed({required double t}) =>
+    RustLib.instance.api.crateApiSimpleMapSpeed(t: t);
+
+Future<double> unmapSpeed({required double bps}) =>
+    RustLib.instance.api.crateApiSimpleUnmapSpeed(bps: bps);
+
+Future<String> formatSpeed({required double bps}) =>
+    RustLib.instance.api.crateApiSimpleFormatSpeed(bps: bps);
+
 /// Called after obtaining remote device endpoint id
 /// Will attempt to connect to remote device
 Stream<AddRemoteDeviceEvent> addRemoteDevice() =>
@@ -116,6 +146,9 @@ Stream<AddRemoteDeviceEvent> addRemoteDevice() =>
 
 Future<List<DeviceDto>> getDtoDevices() =>
     RustLib.instance.api.crateApiSimpleGetDtoDevices();
+
+Future<void> toggleFavourite({required String deviceId}) =>
+    RustLib.instance.api.crateApiSimpleToggleFavourite(deviceId: deviceId);
 
 Future<void> deleteDevice({required String deviceId}) =>
     RustLib.instance.api.crateApiSimpleDeleteDevice(deviceId: deviceId);
@@ -127,18 +160,6 @@ Future<void> deleteTransfer({required String transferId}) =>
 
 Future<String> initTransfer() =>
     RustLib.instance.api.crateApiSimpleInitTransfer();
-
-Future<List<TransferItemDto>> loadTransferItemsList({
-  required String deviceId,
-  required String transferId,
-  required BigInt start,
-  required BigInt end,
-}) => RustLib.instance.api.crateApiSimpleLoadTransferItemsList(
-  deviceId: deviceId,
-  transferId: transferId,
-  start: start,
-  end: end,
-);
 
 Stream<WalkInfo> send({
   required String remoteDeviceId,
@@ -160,9 +181,6 @@ Future<void> sendText({
 
 Future<String> genTransferName() =>
     RustLib.instance.api.crateApiSimpleGenTransferName();
-
-Future<void> wipeTransfers() =>
-    RustLib.instance.api.crateApiSimpleWipeTransfers();
 
 Future<String?> getTicket() => RustLib.instance.api.crateApiSimpleGetTicket();
 
@@ -202,17 +220,23 @@ class DeviceDto {
   final String username;
   final DeviceStatus status;
   final bool deleted;
+  final bool fav;
 
   const DeviceDto({
     required this.id,
     required this.username,
     required this.status,
     required this.deleted,
+    required this.fav,
   });
 
   @override
   int get hashCode =>
-      id.hashCode ^ username.hashCode ^ status.hashCode ^ deleted.hashCode;
+      id.hashCode ^
+      username.hashCode ^
+      status.hashCode ^
+      deleted.hashCode ^
+      fav.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -222,7 +246,8 @@ class DeviceDto {
           id == other.id &&
           username == other.username &&
           status == other.status &&
-          deleted == other.deleted;
+          deleted == other.deleted &&
+          fav == other.fav;
 }
 
 enum DeviceStatus { online, localNetwork, offline }
@@ -238,6 +263,24 @@ enum SendItemErrorDto {
 }
 
 enum SendState { scanning, sending, accepted, failed, rejected }
+
+class TextMessageDto {
+  final String sender;
+  final String content;
+
+  const TextMessageDto({required this.sender, required this.content});
+
+  @override
+  int get hashCode => sender.hashCode ^ content.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TextMessageDto &&
+          runtimeType == other.runtimeType &&
+          sender == other.sender &&
+          content == other.content;
+}
 
 enum TransferDirection { outcoming, incoming }
 

@@ -19,7 +19,7 @@ import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nectan_mobile/settings.dart';
+import 'package:nectan_mobile/settings.dart' hide sq;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nectan_mobile/navigation.dart';
 import 'package:nectan_mobile/themes.dart';
@@ -205,8 +205,12 @@ class ConnectionRequestNotifier extends Notifier<ConnectionRequest?> {
 
     _sub?.cancel();
     _sub = stream.listen(
-      (request) {
+      (request) async {
         debugPrint("🟦 Connection stream event: $request");
+        await showAppNotification(
+          title: 'Connection request',
+          body: '${request.username} wants to connect.',
+        );
         state = request;
       },
       onError: (error, stackTrace) {
@@ -235,9 +239,6 @@ class TransferRequestNotifier extends Notifier<TransferOfferDto?> {
   @override
   TransferOfferDto? build() => null;
 
-  bool get _isAppInForeground =>
-      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-
   void setStream(Stream<TransferOfferDto> stream) {
     debugPrint("🟦 set connection request stream");
 
@@ -246,31 +247,10 @@ class TransferRequestNotifier extends Notifier<TransferOfferDto?> {
       (request) async {
         debugPrint("🟦 Transfer offer stream event: $request");
 
-        if (!Platform.isLinux) {
-          if (!_isAppInForeground) {
-            const androidDetails = AndroidNotificationDetails(
-              'nectan_messages',
-              'Nectan',
-              importance: Importance.high,
-              priority: Priority.high,
-              largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-              icon: '@mipmap/ic_launcher',
-            );
-            const notificationDetails = NotificationDetails(
-              android: androidDetails,
-            );
-
-            // line 204
-            await flutterLocalNotificationsPlugin.show(
-              id: 0,
-              title: 'New transfer',
-              body: 'Accept transfer from ${request.senderDeviceName}',
-              notificationDetails: notificationDetails,
-            );
-          }
-        } else {
-          debugPrint("Omitted notification show. LINUX");
-        }
+        await showAppNotification(
+          title: 'New transfer',
+          body: 'Accept transfer from ${request.senderDeviceName}',
+        );
 
         state = request;
       },
@@ -324,6 +304,136 @@ final nearbyDeviceFoundNotifierProvider =
     NotifierProvider<NearbyDeviceFoundNotifier, DeviceDto?>(
       NearbyDeviceFoundNotifier.new,
     );
+
+class TextMessageNotifier extends Notifier<List<TextMessageDto>> {
+  StreamSubscription? _sub;
+
+  @override
+  List<TextMessageDto> build() => [];
+
+  void setStream(Stream<TextMessageDto> stream) {
+    _sub?.cancel();
+    _sub = stream.listen(
+      (message) async {
+        await showAppNotification(
+          title: 'Message from ${message.sender}',
+          body: message.content,
+        );
+        state = [...state, message];
+      },
+      onError: (error, stackTrace) {
+        debugPrint("🟥 Text message stream error: $error\n$stackTrace");
+      },
+      onDone: () {
+        debugPrint("🟨 Text message stream closed");
+      },
+    );
+  }
+
+  void removeFirst() {
+    if (state.isEmpty) return;
+    state = state.sublist(1);
+  }
+}
+
+final textMessageQueueProvider =
+    NotifierProvider<TextMessageNotifier, List<TextMessageDto>>(
+      TextMessageNotifier.new,
+    );
+
+class AutoacceptedNotifier extends Notifier<String?> {
+  StreamSubscription? _sub;
+
+  @override
+  String? build() => null;
+
+  void setStream(Stream<String> stream) {
+    _sub?.cancel();
+    _sub = stream.listen(
+      (from) async {
+        await showAppNotification(
+          title: 'Transfer accepted',
+          body: 'Auto-accepted transfer from $from.',
+        );
+      },
+      onError: (error, stackTrace) {
+        debugPrint("🟥 Autoaccepted stream error: $error\n$stackTrace");
+      },
+      onDone: () {
+        debugPrint("🟨 Autoaccepted stream closed");
+      },
+    );
+  }
+
+  void clear() => state = null;
+}
+
+final autoacceptedProvider = NotifierProvider<AutoacceptedNotifier, String?>(
+  AutoacceptedNotifier.new,
+);
+
+class FoundNearbyTextNotifier extends Notifier<String?> {
+  StreamSubscription? _sub;
+
+  @override
+  String? build() => null;
+
+  void setStream(Stream<String> stream) {
+    _sub?.cancel();
+    _sub = stream.listen(
+      (message) async {
+        await showAppNotification(title: 'Device nearby', body: message);
+      },
+      onError: (error, stackTrace) {
+        debugPrint("🟥 Found nearby stream error: $error\n$stackTrace");
+      },
+      onDone: () {
+        debugPrint("🟨 Found nearby stream closed");
+      },
+    );
+  }
+
+  void clear() => state = null;
+}
+
+final foundNearbyTextProvider =
+    NotifierProvider<FoundNearbyTextNotifier, String?>(
+      FoundNearbyTextNotifier.new,
+    );
+
+int _notificationId = 0;
+
+Future<void> showAppNotification({
+  required String title,
+  required String body,
+}) async {
+  if (Platform.isLinux) {
+    debugPrint("Omitted notification show. LINUX");
+    return;
+  }
+  if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+    return;
+  }
+  if (!await NotificationSettings.enabled()) return;
+
+  const androidDetails = AndroidNotificationDetails(
+    'nectan_messages',
+    'Nectan',
+    importance: Importance.high,
+    priority: Priority.high,
+    largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+    icon: '@mipmap/ic_launcher',
+  );
+  const notificationDetails = NotificationDetails(android: androidDetails);
+
+  _notificationId += 1;
+  await flutterLocalNotificationsPlugin.show(
+    id: _notificationId,
+    title: title,
+    body: body,
+    notificationDetails: notificationDetails,
+  );
+}
 
 Future<void> initForegroundTask() async {
   FlutterForegroundTask.init(
@@ -408,6 +518,7 @@ Future<void> main() async {
   }
 
   await AppThemeNotifier.preload();
+  await SpeedLimits.apply();
 
   runApp(ProviderScope(child: MyApp(isFirstLaunch: isFirstLaunch)));
 }
@@ -746,6 +857,9 @@ Future<void> _initApp(WidgetRef ref) async {
   final transfersSink = RustStreamSink<List<TransferMetaDto>>();
   final transferOfferSink = RustStreamSink<TransferOfferDto>();
   final foundNearbyDeviceSink = RustStreamSink<DeviceDto>();
+  final textMessageSink = RustStreamSink<TextMessageDto>();
+  final autoacceptSink = RustStreamSink<String>();
+  final foundNearbyTextSink = RustStreamSink<String>();
 
   try {
     await initApp(
@@ -755,6 +869,9 @@ Future<void> _initApp(WidgetRef ref) async {
       transfersSink: transfersSink,
       transferOfferSink: transferOfferSink,
       foundDeviceNearbySink: foundNearbyDeviceSink,
+      textMessageSink: textMessageSink,
+      autoacceptSink: autoacceptSink,
+      foundNearbySink: foundNearbyTextSink,
     );
 
     ref
@@ -797,6 +914,30 @@ Future<void> _initApp(WidgetRef ref) async {
           }),
         );
 
+    ref
+        .read(textMessageQueueProvider.notifier)
+        .setStream(
+          textMessageSink.stream.handleError((e) {
+            debugPrint("🟥 Text message stream error: $e");
+          }),
+        );
+
+    ref
+        .read(autoacceptedProvider.notifier)
+        .setStream(
+          autoacceptSink.stream.handleError((e) {
+            debugPrint("🟥 Autoaccept stream error: $e");
+          }),
+        );
+
+    ref
+        .read(foundNearbyTextProvider.notifier)
+        .setStream(
+          foundNearbyTextSink.stream.handleError((e) {
+            debugPrint("🟥 Found nearby stream error: $e");
+          }),
+        );
+
     debugPrint("🟦 App initialized");
   } catch (e) {
     debugPrint("🟥 App initalizing error: $e");
@@ -814,6 +955,162 @@ class CurrentTabNotifier extends Notifier<int> {
   void set(int tab) => state = tab;
 }
 
+class IncomingTextScreen extends ConsumerWidget {
+  final VoidCallback onClose;
+  const IncomingTextScreen({super.key, required this.onClose});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final messages = ref.watch(textMessageQueueProvider);
+    final colors = context.colors;
+
+    if (messages.isEmpty) {
+      return Scaffold(
+        backgroundColor: colors.primaryCol,
+        body: const SizedBox.shrink(),
+      );
+    }
+
+    final message = messages.first;
+
+    Future<void> copy() async {
+      await Clipboard.setData(ClipboardData(text: message.content));
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Copied')));
+      }
+    }
+
+    void close() {
+      Navigator.of(context).pop();
+      onClose();
+    }
+
+    return Scaffold(
+      backgroundColor: colors.primaryCol,
+      appBar: AppBar(
+        backgroundColor: colors.primaryCol,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left),
+          onPressed: close,
+          iconSize: 20,
+          padding: EdgeInsets.zero,
+        ),
+        titleSpacing: 0,
+        title: Text(
+          'Message',
+          style: TextStyle(
+            fontFamily: 'Rubik',
+            color: colors.primaryFont,
+            fontWeight: FontWeight.w600,
+            fontSize: 24,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 24,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        message.sender,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Rubik',
+                          color: colors.primaryFont,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 20,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'sent you a message:',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Rubik',
+                          color: colors.secondaryFont,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      SelectableText(
+                        message.content,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Rubik',
+                          color: colors.secondaryFont,
+                          fontSize: 15,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: close,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colors.primaryFont,
+                        foregroundColor: colors.primaryCol,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: sq(12),
+                      ),
+                      child: const Text(
+                        'Close',
+                        style: TextStyle(
+                          fontFamily: 'Rubik',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: copy,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colors.thirdCol,
+                        foregroundColor: colors.primaryFont,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: sq(12),
+                      ),
+                      child: const Text(
+                        'Copy',
+                        style: TextStyle(
+                          fontFamily: 'Rubik',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class RootScreen extends ConsumerStatefulWidget {
   const RootScreen({super.key});
 
@@ -825,6 +1122,7 @@ class _RootScreenState extends ConsumerState<RootScreen>
     with WidgetsBindingObserver {
   final _dialogQueue = Queue<Widget Function()>();
   bool _dialogShowing = false;
+  bool _textScreenShowing = false;
 
   late final PageController _pageController;
   late final ValueNotifier<double> _pagePosition;
@@ -994,6 +1292,22 @@ class _RootScreenState extends ConsumerState<RootScreen>
       if (next != null && show) {
         _enqueueDialog(() => FoundNearbyScreen(device: next));
         ref.read(nearbyDeviceFoundNotifierProvider.notifier).clear();
+      }
+    });
+
+    ref.listen(textMessageQueueProvider, (prev, next) {
+      if (next.isNotEmpty && !_textScreenShowing) {
+        _textScreenShowing = true;
+        _enqueueDialog(
+          () => IncomingTextScreen(
+            onClose: () {
+              _textScreenShowing = false;
+              ref
+                  .read(textMessageQueueProvider.notifier)
+                  .removeFirst();
+            },
+          ),
+        );
       }
     });
 

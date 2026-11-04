@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nectan_mobile/transfers.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nectan_mobile/themes.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 RoundedSuperellipseBorder sq(double radius) =>
     RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(radius));
@@ -300,6 +301,55 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with WidgetsBindingObserver {
   PermissionStatus? notificationPermission;
+  String _speedLabel = 'Unlimited';
+  bool _autoacceptNearby = false;
+  bool _autoacceptFavourites = false;
+  bool _notificationsEnabled = true;
+
+  Future<void> _loadNotifications() async {
+    final enabled = await NotificationSettings.enabled();
+    if (!mounted) return;
+    setState(() => _notificationsEnabled = enabled);
+  }
+
+  Future<void> _loadAutoaccept() async {
+    final nearby = await autoacceptNearby();
+    final favourites = await autoacceptFavourites();
+    if (!mounted) return;
+    setState(() {
+      _autoacceptNearby = nearby;
+      _autoacceptFavourites = favourites;
+    });
+  }
+
+  Future<void> _toggleAutoaccept(bool nearby, bool value) async {
+    if (value) {
+      final confirmed = await showConfirmDialog(
+        context,
+        title: 'Enable auto-accept?',
+        message: nearby
+            ? 'Transfers from devices on your local network will be accepted automatically. Files will be saved to your default download folder. Toggle this on only if you own or trust the other device.'
+            : 'Transfers from your favourite devices will be accepted automatically. Files will be saved to your default download folder. Toggle this on only if you own or trust the other device.',
+        keepLabel: 'Cancel',
+        removeLabel: 'Enable',
+        confirmDelaySeconds: 5,
+      );
+      if (confirmed != true) return;
+    }
+    if (nearby) {
+      setState(() => _autoacceptNearby = value);
+      await setAutoacceptNearby(value: value);
+    } else {
+      setState(() => _autoacceptFavourites = value);
+      await setAutoacceptFavourites(value: value);
+    }
+  }
+
+  Future<void> _loadSpeedLabel() async {
+    final label = await SpeedLimits.label(await SpeedLimits.load());
+    if (!mounted) return;
+    setState(() => _speedLabel = label);
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -325,6 +375,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       ref.read(userInfoProvider.notifier).refresh();
     });
     _loadPermissionsState();
+    _loadSpeedLabel();
+    _loadAutoaccept();
+    _loadNotifications();
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -447,6 +500,72 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                           onTap: () => Navigator.of(context).push(
                             FastRoute(builder: (_) => const ThemeScreen()),
                           ),
+                        ),
+                        const _RowDivider(),
+                        _SettingsRow(
+                          label: 'Speed limit',
+                          subtitle: _speedLabel,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.chevron_right,
+                                color: context.colors.primaryFont,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                          onTap: () => Navigator.of(context)
+                              .push(
+                                FastRoute(
+                                  builder: (_) => const SpeedLimitScreen(),
+                                ),
+                              )
+                              .then((_) => _loadSpeedLabel()),
+                        ),
+                        const _RowDivider(),
+                        _SettingsRow(
+                          label: 'Auto-accept from nearby',
+                          subtitle:
+                              'Accept transfers from devices on your local network without asking.',
+                          trailing: _SettingsSwitch(
+                            value: _autoacceptNearby,
+                            onChanged: (v) => _toggleAutoaccept(true, v),
+                          ),
+                          onTap: () =>
+                              _toggleAutoaccept(true, !_autoacceptNearby),
+                        ),
+                        const _RowDivider(),
+                        _SettingsRow(
+                          label: 'Auto-accept from favourites',
+                          subtitle:
+                              'Accept transfers from your favourite devices without asking.',
+                          trailing: _SettingsSwitch(
+                            value: _autoacceptFavourites,
+                            onChanged: (v) => _toggleAutoaccept(false, v),
+                          ),
+                          onTap: () => _toggleAutoaccept(
+                              false,
+                              !_autoacceptFavourites,
+                          ),
+                        ),
+                        const _RowDivider(),
+                        _SettingsRow(
+                          label: 'Notifications',
+                          subtitle:
+                              'Send notifications',
+                          trailing: _SettingsSwitch(
+                            value: _notificationsEnabled,
+                            onChanged: (v) async {
+                              setState(() => _notificationsEnabled = v);
+                              await NotificationSettings.setEnabled(v);
+                            },
+                          ),
+                          onTap: () async {
+                            final v = !_notificationsEnabled;
+                            setState(() => _notificationsEnabled = v);
+                            await NotificationSettings.setEnabled(v);
+                          },
                         ),
                       ],
                     ),
@@ -934,3 +1053,238 @@ class ToSScreen extends StatelessWidget {
     );
   }
 }
+
+class _SettingsSwitch extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const _SettingsSwitch({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        width: 40,
+        height: 24,
+        decoration: ShapeDecoration(
+          color: value ? colors.primaryFont : colors.thirdCol,
+          shape: const StadiumBorder(),
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: DecoratedBox(
+                decoration: ShapeDecoration(
+                  color: value ? colors.primaryCol : colors.thirdFont,
+                  shape: const CircleBorder(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class NotificationSettings {
+  static const _key = 'notifications_enabled';
+
+  static Future<bool> enabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_key) ?? true;
+  }
+
+  static Future<void> setEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_key, value);
+  }
+}
+
+class SpeedLimits {
+  static const _key = 'speed_limit_bps';
+
+  static Future<int> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_key) ?? 0;
+  }
+
+  static Future<void> save(int bps) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_key, bps);
+  }
+
+  static Future<String> label(int bps) async {
+    if (bps == 0) return 'Unlimited';
+    return formatSpeed(bps: bps.toDouble());
+  }
+
+  static Future<void> apply() async {
+    await setSpeedLimit(limitBps: BigInt.from(await load()));
+  }
+}
+
+class SpeedLimitScreen extends StatefulWidget {
+  const SpeedLimitScreen({super.key});
+
+  @override
+  State<SpeedLimitScreen> createState() => _SpeedLimitScreenState();
+}
+
+class _SpeedLimitScreenState extends State<SpeedLimitScreen> {
+  double _t = 0.0;
+  String _label = 'Unlimited';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final bps = await SpeedLimits.load();
+    if (!mounted) return;
+    final t = bps == 0 ? 0.0 : await unmapSpeed(bps: bps.toDouble());
+    final label = bps == 0 ? 'Unlimited' : await formatSpeed(bps: bps.toDouble());
+    setState(() {
+      _t = t;
+      _label = label;
+    });
+  }
+
+  Future<void> _onChanged(double t) async {
+    setState(() => _t = t);
+    if (t <= 0.0) {
+      setState(() => _label = 'Unlimited');
+      await setSpeedLimit(limitBps: BigInt.zero);
+      return;
+    }
+    final bps = await mapSpeed(t: t);
+    final label = await formatSpeed(bps: bps);
+    if (!mounted) return;
+    setState(() => _label = label);
+    await setSpeedLimit(limitBps: BigInt.from(bps.round()));
+  }
+
+  Future<void> _onChangeEnd(double t) async {
+    final bps = t <= 0.0 ? 0 : (await mapSpeed(t: t)).round();
+    await SpeedLimits.save(bps);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Scaffold(
+      backgroundColor: colors.primaryCol,
+      appBar: AppBar(
+        backgroundColor: colors.primaryCol,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left),
+          onPressed: () => Navigator.of(context).pop(),
+          iconSize: 20,
+          padding: EdgeInsets.zero,
+        ),
+        titleSpacing: 0,
+        title: Text(
+          'Speed limit',
+          style: TextStyle(
+            fontFamily: 'Rubik',
+            color: colors.primaryFont,
+            fontWeight: FontWeight.w600,
+            fontSize: 24,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Text(
+                      _label,
+                      style: TextStyle(
+                        fontFamily: 'Rubik',
+                        color: colors.primaryFont,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 40,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      'Limit outgoing transfer speed.',
+                      style: TextStyle(
+                        fontFamily: 'Rubik',
+                        color: colors.secondaryFont,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: colors.primaryFont,
+                      inactiveTrackColor: colors.thirdCol,
+                      thumbColor: colors.primaryFont,
+                      overlayColor: colors.primaryFont.withValues(alpha: 0.12),
+                      trackHeight: 4,
+                    ),
+                    child: Slider(
+                      value: _t.clamp(0.0, 1.0),
+                      onChanged: _onChanged,
+                      onChangeEnd: _onChangeEnd,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Unlimited',
+                          style: TextStyle(
+                            fontFamily: 'Rubik',
+                            color: colors.thirdFont,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          '50 Gbps',
+                          style: TextStyle(
+                            fontFamily: 'Rubik',
+                            color: colors.thirdFont,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

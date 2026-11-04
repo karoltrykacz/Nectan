@@ -132,6 +132,22 @@ pub fn show_connected_to_nearby() -> bool {
     true
 }
 
+pub fn set_autoaccept_nearby(value: bool) {
+    let _ = store().update(|s| s.autoaccept_from_nearby = value);
+}
+
+pub fn set_autoaccept_favourites(value: bool) {
+    let _ = store().update(|s| s.autoaccept_from_favourites = value);
+}
+
+pub fn autoaccept_nearby() -> bool {
+    store().autoaccept_from_nearby()
+}
+
+pub fn autoaccept_favourites() -> bool {
+    store().autoaccept_from_favourites()
+}
+
 pub fn init_engine(base_path: String) -> bool {
     setup_log_to_console(log::LevelFilter::Debug);
 
@@ -285,6 +301,9 @@ pub async fn init_app(
     transfers_sink: StreamSink<Vec<TransferMetaDto>>,
     transfer_offer_sink: StreamSink<TransferOfferDto>,
     found_device_nearby_sink: StreamSink<DeviceDto>,
+    text_message_sink: StreamSink<TextMessageDto>,
+    autoaccept_sink: StreamSink<String>,
+    found_nearby_sink: StreamSink<String>,
 ) -> Result<String, String> {
     let e = engine();
     if e.state.initialized() {
@@ -327,6 +346,9 @@ pub async fn init_app(
         transfer_offer_sink,
         transfers_sink,
         found_device_nearby_sink,
+        text_message_sink,
+        autoaccept_sink,
+        found_nearby_sink,
     );
 
     log::info!("App initialized.");
@@ -357,6 +379,11 @@ pub fn get_all_transfers() -> Vec<TransferMetaDto> {
 
 pub struct ConnectionRequest {
     pub username: String,
+}
+
+pub struct TextMessageDto {
+    pub sender: String,
+    pub content: String,
 }
 
 pub async fn get_failed_transfer_items(
@@ -463,6 +490,9 @@ fn start_event_listener(
     transfer_offer_sink: StreamSink<TransferOfferDto>,
     transfers_sink: StreamSink<Vec<TransferMetaDto>>,
     _found_device_nearby_sink: StreamSink<DeviceDto>,
+    text_message_sink: StreamSink<TextMessageDto>,
+    autoaccept_sink: StreamSink<String>,
+    found_nearby_sink: StreamSink<String>,
 ) {
     flutter_rust_bridge::spawn(async move {
         while let Some(ev) = event_rx.recv().await {
@@ -470,15 +500,16 @@ fn start_event_listener(
                 AppEvent::Autoaccepted { from } => {
                     println!("Autoaccepted from {from}.");
                     update_transfers(&transfers_sink);
+                    let _ = autoaccept_sink.add(from.to_string());
                 }
-                AppEvent::TextMessage {
-                    from,
-                    device_id,
-                    content,
-                } => {
+                AppEvent::TextMessage { from, content, .. } => {
                     println!(
                         "Incoming text message from {from} {content}"
                     );
+                    let _ = text_message_sink.add(TextMessageDto {
+                        sender: from.to_string(),
+                        content,
+                    });
                 }
                 AppEvent::TransfersUpdated => {
                     log::info!("Transfers changed.");
@@ -522,6 +553,8 @@ fn start_event_listener(
                 AppEvent::FoundNearby => {
                     log::info!("Found nearby device");
                     update_devices_sink(&devices_sink);
+                    let _ = found_nearby_sink
+                        .add("A device joined your local network".to_string());
                 }
                 AppEvent::Connected { .. } => {
                     log::info!("Connected to device");
@@ -572,6 +605,22 @@ pub async fn pause_resume_transfer(transfer_id: String) {
     //             .await;
     //     }
     // };
+}
+
+pub fn set_speed_limit(limit_bps: u64) {
+    nectan_core::transfers::set_speed_limit(limit_bps);
+}
+
+pub fn map_speed(t: f32) -> f32 {
+    nectan_core::format::map_speed(t)
+}
+
+pub fn unmap_speed(bps: f32) -> f32 {
+    nectan_core::format::unmap_speed(bps)
+}
+
+pub fn format_speed(bps: f32) -> String {
+    nectan_core::format::format_speed(bps)
 }
 
 /// Called after obtaining remote device endpoint id
@@ -633,6 +682,7 @@ pub struct DeviceDto {
     pub username: String,
     pub status: DeviceStatus,
     pub deleted: bool,
+    pub fav: bool,
 }
 
 /// flutter_rust_bridge:ignore
@@ -668,7 +718,14 @@ impl From<Device> for DeviceDto {
             status,
             username: d.username.as_string(),
             deleted: d.deleted,
+            fav: d.fav,
         }
+    }
+}
+
+pub fn toggle_favourite(device_id: String) {
+    if let Ok(id) = device_id_from_base64(&device_id) {
+        state().devices.toggle_favourite(id);
     }
 }
 
@@ -712,65 +769,6 @@ pub async fn delete_transfer(transfer_id: String) {
 
 pub async fn init_transfer() -> String {
     Uuid::new_v4().to_string()
-}
-
-pub async fn load_transfer_items_list(
-    device_id: String,
-    transfer_id: String,
-    start: u64,
-    end: u64,
-) -> Vec<TransferItemDto> {
-    Vec::new()
-    // let transfer_id = Uuid::parse_str(&transfer_id).unwrap();
-    // let device_id = device_id_from_base64(&device_id).unwrap();
-    //
-    // let Some(d) = state().devices_pool.get(&device_id) else {
-    //     return Vec::new();
-    // };
-    // let Some(conn) = d.connection.map(|c| c.inner) else {
-    //     return Vec::new();
-    // };
-    // let Ok((mut tx, mut rx)) = conn.open_bi().await else {
-    //     return Vec::new();
-    // };
-    //
-    // if write_message(
-    //     &mut tx,
-    //     &MessagePayload::GetItemsList {
-    //         transfer_id,
-    //         end,
-    //         start,
-    //     },
-    // )
-    // .await
-    // .is_err()
-    // {
-    //     return Vec::new();
-    // }
-    //
-    // let Ok(res) = read_message(&mut rx).await else {
-    //     return Vec::new();
-    // };
-    // let MessagePayload::ItemsList { items } = res else {
-    //     return Vec::new();
-    // };
-    //
-    // log::info!("Received list");
-    // items
-    //     .iter()
-    //     .map(|i| TransferItemDto {
-    //         id: i.id,
-    //         name: Path::new(&i.path)
-    //             .file_name()
-    //             .unwrap_or_default()
-    //             .to_string_lossy()
-    //             .to_string(),
-    //         path: "".to_string(),
-    //         size: i.file_size,
-    //         sent_bytes: i.sent_bytes,
-    //         error: i.err.map(SendItemErrorDto::from),
-    //     })
-    //     .collect()
 }
 
 pub struct WalkInfo {
@@ -875,15 +873,6 @@ pub async fn send_text(
 
 pub fn gen_transfer_name() -> String {
     nectan_core::common::gen_transfer_name()
-}
-
-pub async fn wipe_transfers() {
-    // if state().transfers_pool.wipe().await.is_ok() {
-    //     log::info!("🟧 Cleared transfers.");
-    // } else {
-    //     log::info!("🟧 Failed to clear transfers.");
-    // };
-    todo!()
 }
 
 pub fn get_ticket() -> Option<String> {
