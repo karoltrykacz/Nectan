@@ -3,9 +3,10 @@ use crate::{
     messages::AppEvent,
     protocol::{
         ALPN, NectanProtocol, NectanState, announce_endpoint,
-        start_mdns_discovery, start_registration_loop,
+        start_mdns_discovery,
     },
     storage::Storage,
+    transfers::Transfers,
 };
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
@@ -45,6 +46,7 @@ pub async fn setup_core(
     userinfo: UserInfo,
     signing_key: SigningKey,
     devices: Devices,
+    transfers: Transfers,
     storage: Arc<Storage>,
     local_only: bool,
 ) -> Result<Arc<NectanState>> {
@@ -76,6 +78,7 @@ pub async fn setup_core(
         device_id,
         signing_key,
         devices,
+        transfers,
         app_event_tx,
         storage,
         mdns,
@@ -89,7 +92,6 @@ pub async fn setup_core(
     s.attach_router(&router);
 
     // tokio::spawn(start_mdns_discovery(s.clone()));
-    start_registration_loop(&s);
     announce_endpoint(s.clone());
 
     Ok(s)

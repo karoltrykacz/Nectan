@@ -1029,7 +1029,7 @@ pub fn format_bps(bps: f32) -> String {
 }
 
 const MIN_BPS: f32 = 1_000.0;
-const MAX_BPS: f32 = 10_000_000_000.0;
+const MAX_BPS: f32 = 50_000_000_000.0;
 
 /// Exponential speed map (for speedlimit sliders)
 pub fn map_speed(t: f32) -> f32 {
@@ -1040,4 +1040,28 @@ pub fn map_speed(t: f32) -> f32 {
 pub fn unmap_speed(bps: f32) -> f32 {
     let bps = bps.clamp(MIN_BPS, MAX_BPS);
     (bps / MIN_BPS).ln() / (MAX_BPS / MIN_BPS).ln()
+}
+
+pub fn format_speed(bps: f32) -> String {
+    const UNITS: [&str; 4] = ["Bps", "Kbps", "Mbps", "Gbps"];
+    const LAST: usize = UNITS.len() - 1;
+
+    let mut value = bps.max(0.0);
+    let mut unit = 0;
+
+    while unit < LAST && value >= 1000.0 {
+        value /= 1000.0;
+        unit += 1;
+    }
+
+    let rounded = (value * 10.0).round() / 10.0;
+    if rounded >= 1000.0 && unit < LAST {
+        value = rounded / 1000.0;
+        unit += 1;
+    }
+
+    let s = format!("{:.1}", value);
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+
+    format!("{} {}", s, UNITS[unit])
 }

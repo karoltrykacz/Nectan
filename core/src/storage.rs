@@ -60,7 +60,6 @@ impl Default for Appearance {
 pub struct Settings {
     pub username: Option<Username>,
     pub key: Option<SigningKey>,
-    pub registered: bool,
     pub autoaccept_from_nearby: bool,
     pub autoaccept_from_favourites: bool,
     pub default_destination: PathBuf,
@@ -82,7 +81,6 @@ impl Default for Settings {
             username: None,
             shortcuts: HashMap::default(),
             key: None,
-            registered: false,
             autoaccept_from_nearby: false,
             notifications: Notifications {
                 connection: true,
@@ -131,10 +129,6 @@ impl Storage {
 
     pub fn appearance(&self) -> Appearance {
         self.read(|s| s.appearance.clone())
-    }
-
-    pub fn registered(&self) -> bool {
-        self.read(|s| s.registered)
     }
 
     pub fn username(&self) -> Option<Username> {

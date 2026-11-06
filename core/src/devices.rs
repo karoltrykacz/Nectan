@@ -8,9 +8,7 @@ use ed25519_dalek::VerifyingKey;
 use iroh::{EndpointId, endpoint::Connection};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::{Arc, RwLock},
+    collections::{HashMap, HashSet}, path::{Path, PathBuf}, sync::{Arc, RwLock},
 };
 use tracing::info;
 
@@ -161,13 +159,16 @@ impl Devices {
         let devices = devices.drain(..).map(|d| (d.id, d)).collect();
         *self.inner.write().unwrap() = devices;
     }
-    pub fn new(path: Option<PathBuf>) -> Self {
+    pub fn new(path: Option<impl AsRef<Path>>) -> Self {
+
         let base_path = match path {
-            Some(p) => p,
+            Some(p) => p.as_ref().to_path_buf(),
             None => dirs::data_dir()
                 .expect("No path provided and system data directory could not be determined")
-                .join("Nectan"),
+                
         };
+
+        let base_path = base_path.join("Nectan");
 
         let writer =
             DataWriter::new(base_path, "nectan_devices_store")
@@ -182,7 +183,7 @@ impl Devices {
             initial
         );
 
-        let initial = initial.drain(..).map(|d| (d.id, d)).collect();
+        let initial = initial.into_iter().map(|d| (d.id, d)).collect();
 
         Self {
             inner: Arc::new(RwLock::new(initial)),

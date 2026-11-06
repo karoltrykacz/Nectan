@@ -3,7 +3,9 @@ use crate::{
     messages::{AppEvent, NetMessage, StreamableMessage},
     protocol::{NectanState, TransferOffer},
     stream::StreamPair,
-    transfers::TransferDirection::Outcoming,
+    transfers::{
+        TransferDirection::Outcoming, TransferStatus::StorageFull,
+    },
 };
 use anyhow::{Context, Result, bail, ensure};
 use ed25519_dalek::VerifyingKey;
@@ -93,6 +95,7 @@ pub enum TransferItemError {
     StreamError,
     OpenFail,
     Terminated,
+    StorageFull,
 }
 impl Eq for TransferItemError {}
 
@@ -113,13 +116,19 @@ pub struct TransferMeta {
     pub sent_bytes: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct TransferItemHeader {
     id: u32,
     file_size: u64,
     sent_bytes: u64,
     is_dir: bool,
     path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum ItemStart {
+    Header(TransferItemHeader),
+    Error { id: u32, err: TransferItemError },
 }
 
 /// Send transfer offer to remote device
@@ -235,12 +244,18 @@ impl TransferDirection {
 const DUMB_ITEMS: TableDefinition<u32, TransferItem> =
     TableDefinition::new("items");
 
+static SPEED_LIMIT_BPS: AtomicU64 = AtomicU64::new(0);
+
+pub fn set_speed_limit(limit_bps: u64) {
+    SPEED_LIMIT_BPS.store(limit_bps, Relaxed);
+}
+
 #[derive(Clone, Copy)]
 pub enum TransferStatus {
     Downloading,
     Finished,
-    /// Explicit state so user will know what happened
     CancelledByRemote,
+    StorageFull,
 }
 
 impl TransferStatus {
@@ -249,6 +264,7 @@ impl TransferStatus {
             Self::Downloading => "Downloading",
             Self::CancelledByRemote => "Cancelled",
             Self::Finished => "Finished",
+            Self::StorageFull => "StorageFull",
         }
     }
 }
@@ -343,6 +359,7 @@ impl PendingTransfer {
         root_path: PathBuf,
         direction: TransferDirection,
         offer: TransferOffer,
+        db_root: PathBuf,
     ) -> Self {
         info!("New transfer from offer.");
 
@@ -353,8 +370,10 @@ impl PendingTransfer {
             TransferDirection::Outcoming => "out",
             TransferDirection::Incoming => "in",
         };
-        let db = redb::Database::create(transfers_db_path(dir, id))
-            .expect("Failed to create database");
+        let db = redb::Database::create(transfers_db_path(
+            &db_root, dir, id,
+        ))
+        .expect("Failed to create database");
 
         let txn = db.begin_write().unwrap();
         {
@@ -414,8 +433,6 @@ impl PendingTransfer {
 
     fn cancel(&self) {
         self.cancel_token.cancel()
-        // Two things need to happen here - the stream forwarder must know that the transfer is cancelled
-        // Also if the transfer if incoming - stop the motherfucker
     }
 
     /// Returns remaining items
@@ -666,7 +683,15 @@ impl PendingTransfer {
             "Transfer must be incoming."
         );
 
-        let header: TransferItemHeader = stream.read().await?;
+        let start: ItemStart = stream.read().await?;
+        let header = match start {
+            ItemStart::Header(header) => header,
+            ItemStart::Error { id, err } => {
+                println!("Sender reported item error [{err:?}]");
+                self.handle_item_err(id, err);
+                return Ok(());
+            }
+        };
         println!("Read header {:#?}", header);
 
         let id = header.id;
@@ -831,23 +856,6 @@ impl PendingTransfer {
         let path = item.path;
         info!("Sending {}", path.display());
 
-        let mut file = match tokio::fs::File::open(&path).await {
-            Ok(file) => file,
-            Err(e) => match e.kind() {
-                ErrorKind::PermissionDenied => {
-                    error!("Failed to open {path:?}");
-                    return Err(TransferItemError::PermissionDenied);
-                }
-                ErrorKind::NotFound => {
-                    error!("File not found {path:?}");
-                    return Err(TransferItemError::FileNotFound);
-                }
-                _ => {
-                    error!("Unhandled send item error - {e}");
-                    return Err(TransferItemError::OpenFail);
-                }
-            },
-        };
         stream
             .write(&NetMessage::TransferStream {
                 transfer_id: self.id,
@@ -866,14 +874,38 @@ impl PendingTransfer {
             }
         };
 
+        let mut file = match tokio::fs::File::open(&path).await {
+            Ok(file) => file,
+            Err(e) => {
+                let err = match e.kind() {
+                    ErrorKind::PermissionDenied => {
+                        error!("Failed to open {path:?}");
+                        TransferItemError::PermissionDenied
+                    }
+                    ErrorKind::NotFound => {
+                        error!("File not found {path:?}");
+                        TransferItemError::FileNotFound
+                    }
+                    _ => {
+                        error!("Unhandled send item error - {e}");
+                        TransferItemError::OpenFail
+                    }
+                };
+                let _ = stream
+                    .write(&ItemStart::Error { id: item.idx, err })
+                    .await;
+                return Err(err);
+            }
+        };
+
         stream
-            .write(&TransferItemHeader {
+            .write(&ItemStart::Header(TransferItemHeader {
                 id: item.idx,
                 file_size: item.size,
                 sent_bytes: item.sent_bytes,
                 is_dir: item.is_dir,
                 path: relative_path,
-            })
+            }))
             .await
             .map_err(|_| {
                 error!("Failed to send item header.");
@@ -903,6 +935,8 @@ impl PendingTransfer {
         const BUF_SIZE: usize = 64 * 1024;
 
         let mut buf = Vec::with_capacity(BUF_SIZE);
+        let pace_start = std::time::Instant::now();
+        let mut paced_bytes = item.sent_bytes;
 
         loop {
             tokio::select! {
@@ -940,6 +974,25 @@ impl PendingTransfer {
                             error!("Failed to write chunk.");
                             TransferItemError::StreamError
                         })?;
+
+                    paced_bytes += n as u64;
+                    let limit = SPEED_LIMIT_BPS.load(Relaxed);
+                    if limit > 0 {
+                        let expected = std::time::Duration::from_secs_f64(
+                            paced_bytes as f64 * 8.0 / limit as f64,
+                        );
+                        let elapsed = pace_start.elapsed();
+                        if expected > elapsed {
+                            tokio::select! {
+                                _ = tokio::time::sleep(expected - elapsed) => {}
+                                _ = self.cancelled() => {
+                                    warn!("Sending item [{}] terminated.", path.display());
+                                    reader.abort();
+                                    return Err(TransferItemError::Terminated);
+                                }
+                            }
+                        }
+                    }
                 }
             };
         }
@@ -962,9 +1015,16 @@ impl PendingTransfer {
         Ok(())
     }
 
-    /// Return remaining items
+    /// Returns remaining items
     fn handle_item_err(&self, id: u32, e: TransferItemError) -> u32 {
         match e {
+            TransferItemError::StorageFull => {
+                let _ = self.set_item_error(id, e);
+                self.failed.fetch_add(1, Relaxed);
+                self.cancel();
+                self.set_status(StorageFull);
+                self.item_finished(id)
+            }
             // Unrecoverable errors
             TransferItemError::PermissionDenied
             | TransferItemError::OpenFail
@@ -986,8 +1046,11 @@ impl PendingTransfer {
                             .unwrap()
                             .set_unchecked(id as usize, false);
                     }
+                    self.processed_items.load(Relaxed)
+                } else {
+                    self.failed.fetch_add(1, Relaxed);
+                    self.processed_items.fetch_add(1, Relaxed) + 1
                 }
-                self.processed_items.load(Relaxed)
             }
         }
     }
@@ -1034,33 +1097,20 @@ impl PendingTransfer {
     }
 }
 
-fn transfers_db_root() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| dirs::runtime_dir().unwrap())
-        .join("Nectan")
-        .join("transfers")
-}
-
-fn transfers_db_path(dir: &str, id: Uuid) -> PathBuf {
-    let root = transfers_db_root();
-    let _ = std::fs::create_dir_all(&root);
+fn transfers_db_path(
+    root: impl AsRef<Path>,
+    dir: &str,
+    id: Uuid,
+) -> PathBuf {
+    let root = root.as_ref();
+    let _ = std::fs::create_dir_all(root);
     root.join(format!("t-{dir}-{id}"))
 }
 
-fn wipe_transfers_db() {
-    if let Ok(entries) = std::fs::read_dir(transfers_db_root()) {
+fn wipe_transfers_db(path: impl AsRef<Path>) {
+    if let Ok(entries) = std::fs::read_dir(&path) {
         for entry in entries.flatten() {
             let _ = std::fs::remove_dir_all(entry.path());
-        }
-    }
-
-    let legacy_root = transfers_db_root().parent().unwrap().to_path_buf();
-    if let Ok(entries) = std::fs::read_dir(legacy_root) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            if name.to_string_lossy().starts_with("t-") {
-                let _ = std::fs::remove_dir_all(entry.path());
-            }
         }
     }
 }
@@ -1071,6 +1121,7 @@ pub struct PendingTransfers {
 
 pub struct Transfers {
     pending_transfers: PendingTransfers,
+    db_root: PathBuf,
     devices: Devices,
     event_tx: tokio::sync::mpsc::Sender<AppEvent>,
 }
@@ -1079,8 +1130,14 @@ impl Transfers {
     pub fn new(
         devices: Devices,
         event_tx: tokio::sync::mpsc::Sender<AppEvent>,
+        base_path: Option<impl AsRef<Path>>,
     ) -> Self {
-        wipe_transfers_db();
+        // wipe_transfers_db(&db_root);
+        let base_path = match base_path {
+            Some(p) => p.as_ref().to_path_buf(),
+            None => dirs::data_dir().unwrap(),
+        };
+        let db_root = base_path.join("nectan").join("transfers");
 
         let pending_transfers = PendingTransfers {
             inner: std::sync::RwLock::new(HashMap::new()),
@@ -1089,6 +1146,7 @@ impl Transfers {
         Transfers {
             event_tx,
             pending_transfers,
+            db_root,
             devices,
         }
     }
@@ -1136,6 +1194,7 @@ impl Transfers {
             root_path,
             direction,
             offer,
+            self.db_root.clone(),
         ));
 
         self.pending_transfers()
@@ -1167,7 +1226,7 @@ impl Transfers {
         };
         t.clone().process_stream(stream).await?;
 
-        if t.processed_items.load(Relaxed) == t.total_items
+        if t.processed_items.load(Relaxed) >= t.total_items
             && !matches!(t.status(), TransferStatus::Finished)
         {
             t.set_status(TransferStatus::Finished);

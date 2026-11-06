@@ -10,7 +10,7 @@ use iroh::{
 use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
 use n0_error::e;
 use rand::{rand_core::UnwrapErr, rngs::SysRng};
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, ClientBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{
@@ -39,7 +39,7 @@ use crate::{
     },
     storage::Storage,
     stream::StreamPair,
-    transfers::{TransferDirection, Transfers},
+    transfers::{self, TransferDirection, Transfers},
     walker::TransferEntry,
 };
 
@@ -360,6 +360,12 @@ async fn handle_transfer_offer(
         info!("Auto-accepted transfer.");
 
         state
+            .emit(AppEvent::Autoaccepted {
+                from: sender_name.clone(),
+            })
+            .await;
+
+        state
             .transfers
             .add_transfer(
                 sender,
@@ -446,7 +452,6 @@ pub struct NectanState {
     userinfo: UserInfo,
     device_id: DeviceId,
     http_client: Client,
-    pub seq_num: SeqNumber,
     pub storage: Arc<Storage>,
 }
 
@@ -456,15 +461,31 @@ impl NectanState {
         device_id: DeviceId,
         signing_key: SigningKey,
         devices: Devices,
+        transfers: Transfers,
         app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
         storage: Arc<Storage>,
         mdns: Arc<Mutex<Option<MdnsAddressLookup>>>,
     ) -> Self {
+        let mut client_builder = ClientBuilder::new();
+
+        #[cfg(target_os = "android")]
+        {
+            let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+                .iter()
+                .map(|cert| {
+                    reqwest::Certificate::from_der(cert.as_ref())
+                })
+                .collect::<reqwest::Result<Vec<_>>>()
+                .expect("Failed to get roots");
+            client_builder = client_builder.tls_certs_only(roots);
+        }
+
+        let http_client = client_builder
+            .build()
+            .expect("Failed to build http client.");
+
         NectanState {
-            transfers: Arc::new(Transfers::new(
-                devices.clone(),
-                app_event_tx.clone(),
-            )),
+            transfers: Arc::new(transfers),
             app_event_tx,
             conn_offer: Arc::new(Mutex::new(None)),
             transfer_offer: Arc::new(Mutex::new(None)),
@@ -474,8 +495,7 @@ impl NectanState {
             signing_key,
             userinfo,
             device_id,
-            http_client: Client::new(),
-            seq_num: SeqNumber::new(),
+            http_client,
             storage,
         }
     }
@@ -781,236 +801,235 @@ pub fn gen_device_id() -> (DeviceId, SigningKey) {
     (key.verifying_key(), key)
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct SeqNumber {
-    inner: Arc<OnceLock<AtomicU64>>,
-}
-
-impl SeqNumber {
-    pub fn new() -> Self {
-        Self {
-            inner: Arc::new(OnceLock::new()),
-        }
-    }
-
-    pub fn set(&self, val: u64) {
-        self.inner.set(AtomicU64::new(val)).ok();
-    }
-
-    pub fn get_and_inc(&self) -> Option<u64> {
-        self.inner.get().map(|s| s.fetch_add(1, SeqCst))
-    }
-}
-
 #[derive(Deserialize, Serialize)]
 pub struct EndpointAnnouncePayload {
     pub device_id: DeviceId,
     pub endpoint_id: EndpointId,
+    pub devices_to_resolve: Vec<DeviceId>,
+    pub nonce: Uuid,
     pub signature: Signature,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct EndpointAnncounceResponse {
-    pub seq_num: u64,
+    pub devices: Vec<(DeviceId, EndpointId)>,
 }
 
-pub fn announce_endpoint(state: Arc<NectanState>) {
-    tokio::spawn(async move {
-        let endpoint_id = state.endpoint_id().unwrap();
-        let device_id = state.device_id();
-        let signature: Signature = state.sign(endpoint_id.as_bytes());
+#[derive(Clone, Deserialize, Serialize)]
+pub struct Nonce {
+    pub inner: Uuid,
+}
+
+pub async fn get_nonce(state: &NectanState) -> anyhow::Result<Uuid> {
+    let r = state
+        .http()
+        .post(format!("{}/nonce", DISCOVERY_URL))
+        .send()
+        .await?;
+    let bytes = r.bytes().await?;
+    Ok(postcard::from_bytes::<Nonce>(&bytes)?.inner)
+}
+
+pub async fn announce_endpoint(state: Arc<NectanState>) {
+    let endpoint_id = state.endpoint_id().unwrap();
+    let device_id = state.device_id();
+    let devices_to_resolve = state.devices.get_all_ids();
+    let response = loop {
+        info!("Announcing");
+
+        let Ok(nonce) = get_nonce(&state).await else {
+            info!("Failed to get nonce");
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+            continue;
+        };
+        info!("Generated nonce {:?}", nonce);
+
+        let message = (
+            device_id.as_bytes(),
+            endpoint_id.as_bytes(),
+            &nonce.to_bytes_le(),
+        );
+        let signature: Signature =
+            state.sign(&postcard::to_allocvec(&message).unwrap());
+
         let payload = EndpointAnnouncePayload {
             device_id,
             endpoint_id,
             signature,
+            devices_to_resolve: devices_to_resolve.clone(),
+            nonce,
         };
         let payload = postcard::to_allocvec(&payload).unwrap();
 
-        let seq = loop {
-            info!("Announcing");
-
-            match state
-                .http()
-                .post(format!("{}/announce_endpoint", DISCOVERY_URL))
-                .body(payload.clone())
-                .send()
-                .await
-            {
-                Ok(response) => match response.status() {
-                    StatusCode::OK => {
-                        let bytes = response.bytes().await;
-                        match bytes {
-                            Ok(body) => {
-                                info!("Announced endpoint");
-                                break postcard::from_bytes::<
-                                    EndpointAnncounceResponse,
-                                >(
-                                    &body
-                                )
-                                .unwrap()
-                                .seq_num;
-                            }
-                            Err(e) => error!(
-                                "Annouce endpoint. Failed to parse response: {:?}, retrying...",
-                                e
-                            ),
+        match state
+            .http()
+            .post(format!("{}/announce_endpoint", DISCOVERY_URL))
+            .body(payload.clone())
+            .send()
+            .await
+        {
+            Ok(response) => match response.status() {
+                StatusCode::OK => {
+                    let bytes = response.bytes().await;
+                    match bytes {
+                        Ok(body) => {
+                            info!("Announced endpoint");
+                            break postcard::from_bytes::<
+                                EndpointAnncounceResponse,
+                            >(
+                                &body
+                            )
+                            .unwrap();
                         }
+                        Err(e) => error!(
+                            "Annouce endpoint. Failed to parse response: {:?}, retrying...",
+                            e
+                        ),
                     }
-                    StatusCode::NOT_FOUND => {
-                        error!("Announce endpoint. NOT_FOUND");
-                        // panic here ??? - register???
-                        return;
-                    }
-                    StatusCode::UNAUTHORIZED => {
-                        error!("Announce endpoint. UNAUTHORIZED");
-                        return;
-                    }
-                    status => {
-                        error!(
-                            "Announce endpoint unexpected status: {status}, retrying..."
-                        )
-                    }
-                },
-                Err(e) => {
-                    error!("Announce enpoint network error {e}.");
                 }
-            }
-            warn!("Announce endpoint retry.");
-            tokio::time::sleep(Duration::from_millis(5000)).await;
-        };
-
-        trace!("Endpoint announced. Recovered sequence number {seq}");
-        state.seq_num.set(seq + 1);
-
-        // After announcing resolve devices
-        if let Ok(response) = resolve_devices(&state, None).await {
-            for (_device_id, endpoint_id) in response.devices {
-                connect(
-                    state.clone(),
-                    EndpointAddr::from(endpoint_id),
-                );
-            }
-        }
-    });
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct DeviceCreateRequest {
-    pub device_id: DeviceId,
-}
-
-pub fn start_registration_loop(
-    state: &NectanState,
-) -> JoinHandle<()> {
-    let state = state.clone();
-    tokio::spawn(async move {
-        let payload = DeviceCreateRequest {
-            device_id: state.device_id(),
-        };
-        let payload = postcard::to_allocvec(&payload).unwrap();
-
-        loop {
-            if state.storage.registered() {
-                info!("User registered.");
-                break;
-            }
-
-            match state
-                .http()
-                .post(format!("{DISCOVERY_URL}/create_device"))
-                .body(payload.clone())
-                .send()
-                .await
-            {
-                Ok(response) => match response.status() {
-                    StatusCode::CREATED => {
-                        info!("Device succesfully registered");
-                        let _ = state.storage.update(|s| {
-                            s.registered = true;
-                        });
-                    }
-                    StatusCode::OK => {
-                        break;
-                    }
-                    status => {
-                        warn!(
-                            "Unexpected register status: {}, retrying...",
-                            status
-                        );
-                        tokio::time::sleep(Duration::from_secs(5))
-                            .await;
-                    }
-                },
-                Err(e) => {
+                StatusCode::UNAUTHORIZED => {
+                    error!("Announce endpoint. UNAUTHORIZED");
+                    return;
+                }
+                status => {
                     error!(
-                        "Register request failed: {:?}, retrying...",
-                        e
-                    );
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                        "Announce endpoint unexpected status: {status}, retrying..."
+                    )
                 }
+            },
+            Err(e) => {
+                error!("Announce enpoint network error {e}.");
             }
         }
-    })
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct ResolveDevicesResponse {
-    pub devices: Vec<(DeviceId, EndpointId)>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ResolveDevicesRequest {
-    pub devices: Vec<DeviceId>,
-    pub endpoint_id: EndpointId,
-    pub device_id: DeviceId,
-    pub signature: Signature,
-}
-
-pub async fn resolve_devices(
-    state: &NectanState,
-    devices: Option<Vec<DeviceId>>,
-) -> anyhow::Result<ResolveDevicesResponse> {
-    let client = state.http_client.clone();
-
-    let devices = match devices {
-        None => state.devices.get_all_ids(),
-        Some(d) => d,
+        warn!("Announce endpoint retry.");
+        tokio::time::sleep(Duration::from_millis(5000)).await;
     };
 
-    if devices.is_empty() {
-        info!("No devices to resolve.");
-        return Ok(ResolveDevicesResponse { devices: vec![] });
+    trace!("Endpoint announced.");
+
+    for (_device_id, endpoint_id) in response.devices {
+        connect(state.clone(), EndpointAddr::from(endpoint_id));
     }
-
-    info!("Resolving [{}] devices.", devices.len());
-
-    let endpoint_id = state.endpoint_id().unwrap();
-    let device_id = state.device_id;
-    let signature = state.sign(endpoint_id.as_bytes());
-
-    let payload = ResolveDevicesRequest {
-        devices,
-        endpoint_id,
-        device_id,
-        signature,
-    };
-    let payload = postcard::to_allocvec(&payload).unwrap();
-
-    let response = client
-        .post(format!("{DISCOVERY_URL}/resolve_devices"))
-        .body(payload)
-        .send()
-        .await?;
-
-    info!("Resolve devices response status {}", response.status());
-    let bytes = response.bytes().await?;
-    let response: ResolveDevicesResponse =
-        postcard::from_bytes(&bytes)?;
-
-    info!("Resolved devices");
-
-    Ok(response)
 }
+
+// Collapsed into announce endpoint
+// #[derive(Deserialize, Serialize)]
+// pub struct DeviceCreateRequest {
+//     pub device_id: DeviceId,
+// }
+//
+// pub fn start_registration_loop(
+//     state: &NectanState,
+// ) -> JoinHandle<()> {
+//     let state = state.clone();
+//     tokio::spawn(async move {
+//         let payload = DeviceCreateRequest {
+//             device_id: state.device_id(),
+//         };
+//         let payload = postcard::to_allocvec(&payload).unwrap();
+//
+//         loop {
+//             if state.storage.registered() {
+//                 info!("User registered.");
+//                 break;
+//             }
+//
+//             match state
+//                 .http()
+//                 .post(format!("{DISCOVERY_URL}/create_device"))
+//                 .body(payload.clone())
+//                 .send()
+//                 .await
+//             {
+//                 Ok(response) => match response.status() {
+//                     StatusCode::CREATED => {
+//                         info!("Device succesfully registered");
+//                         let _ = state.storage.update(|s| {
+//                             s.registered = true;
+//                         });
+//                     }
+//                     StatusCode::OK => {
+//                         break;
+//                     }
+//                     status => {
+//                         warn!(
+//                             "Unexpected register status: {}, retrying...",
+//                             status
+//                         );
+//                         tokio::time::sleep(Duration::from_secs(5))
+//                             .await;
+//                     }
+//                 },
+//                 Err(e) => {
+//                     error!(
+//                         "Register request failed: {:?}, retrying...",
+//                         e
+//                     );
+//                     tokio::time::sleep(Duration::from_secs(5)).await;
+//                 }
+//             }
+//         }
+//     })
+// }
+
+// #[derive(Deserialize, Serialize)]
+// pub struct ResolveDevicesResponse {
+//     pub devices: Vec<(DeviceId, EndpointId)>,
+// }
+//
+// #[derive(Serialize, Deserialize)]
+// pub struct ResolveDevicesRequest {
+//     pub devices: Vec<DeviceId>,
+//     pub endpoint_id: EndpointId,
+//     pub device_id: DeviceId,
+//     pub signature: Signature,
+// }
+//
+// pub async fn resolve_devices(
+//     state: &NectanState,
+//     devices: Option<Vec<DeviceId>>,
+// ) -> anyhow::Result<ResolveDevicesResponse> {
+//     let client = state.http_client.clone();
+//
+//     let devices = match devices {
+//         None => state.devices.get_all_ids(),
+//         Some(d) => d,
+//     };
+//
+//     if devices.is_empty() {
+//         info!("No devices to resolve.");
+//         return Ok(ResolveDevicesResponse { devices: vec![] });
+//     }
+//
+//     info!("Resolving [{}] devices.", devices.len());
+//
+//     let endpoint_id = state.endpoint_id().unwrap();
+//     let device_id = state.device_id;
+//     let signature = state.sign(endpoint_id.as_bytes());
+//
+//     let payload = ResolveDevicesRequest {
+//         devices,
+//         endpoint_id,
+//         device_id,
+//         signature,
+//     };
+//     let payload = postcard::to_allocvec(&payload).unwrap();
+//
+//     let response = client
+//         .post(format!("{DISCOVERY_URL}/resolve_devices"))
+//         .body(payload)
+//         .send()
+//         .await?;
+//
+//     info!("Resolve devices response status {}", response.status());
+//     let bytes = response.bytes().await?;
+//     let response: ResolveDevicesResponse =
+//         postcard::from_bytes(&bytes)?;
+//
+//     info!("Resolved devices");
+//
+//     Ok(response)
+// }
 
 fn should_auto_accept(s: &NectanState, device: DeviceId) -> bool {
     let device = s.devices.get(&device).unwrap();

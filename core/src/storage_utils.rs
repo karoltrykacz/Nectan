@@ -80,7 +80,10 @@ impl<S: Serializer, D: Deserializer> DataWriter<S, D> {
     pub fn write<T: Serialize>(&self, data: &T) -> Result<usize, std::io::Error> {
         let _guard = self.write_lock.lock().unwrap();
 
-        let data = self.serializer.serialize(data).unwrap();
+        let data = self
+            .serializer
+            .serialize(data)
+            .expect("failed to serialize storage payload");
         let len = data.len();
 
         let tmp_path = self.storage_path.with_extension("temp_data.tmp");
