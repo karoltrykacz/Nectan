@@ -1,0 +1,14 @@
+[package]
+name = "utils"
+version = "0.1.0"
+edition = "2024"
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+postcard = { version = "1.1.3", features = ["alloc"] }
+dirs = "7.0.0"
+ed25519-dalek = { version = "3.0.0", features = ["serde"] }
