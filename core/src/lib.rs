@@ -1,3 +1,4 @@
+#![allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
 use crate::{
     devices::{DeviceId, Devices, UserInfo},
     messages::AppEvent,
@@ -13,15 +14,13 @@ use ed25519_dalek::SigningKey;
 use iroh::{
     Endpoint,
     endpoint::{
-        Builder, QuicTransportConfig,
-        presets::{self, Minimal, Preset},
+        QuicTransportConfig,
+        presets::{self},
     },
     protocol::Router,
 };
-use iroh_mdns_address_lookup::MdnsAddressLookup;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
 
 pub use iroh::{EndpointAddr, EndpointId};
 
@@ -34,12 +33,12 @@ pub mod messages;
 pub mod path_tree;
 pub mod protocol;
 pub mod storage;
-mod storage_utils;
 pub mod stream;
 pub mod transfers;
 pub mod utils;
 pub mod walker;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn setup_core(
     app_event_tx: tokio::sync::mpsc::Sender<AppEvent>,
     device_id: DeviceId,
@@ -82,8 +81,7 @@ pub async fn setup_core(
         app_event_tx,
         storage,
         mdns,
-    )
-    .await;
+    );
 
     let s = Arc::new(state.clone());
     let prot = NectanProtocol::new(endpoint.clone(), s.clone());
@@ -91,8 +89,8 @@ pub async fn setup_core(
 
     s.attach_router(&router);
 
-    // tokio::spawn(start_mdns_discovery(s.clone()));
-    announce_endpoint(s.clone());
+    tokio::spawn(start_mdns_discovery(s.clone()));
+    tokio::spawn(announce_endpoint(s.clone()));
 
     Ok(s)
 }

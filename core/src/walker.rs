@@ -42,7 +42,10 @@ pub struct WalkControllerInner {
     pub entries: Mutex<Option<Vec<TransferEntry>>>,
 }
 
-pub fn merge_all<T>(s: &mut Vec<T>, vecs: impl IntoIterator<Item = Vec<T>>) {
+pub fn merge_all<T>(
+    s: &mut Vec<T>,
+    vecs: impl IntoIterator<Item = Vec<T>>,
+) {
     for v in vecs {
         s.extend(v);
     }
@@ -52,26 +55,32 @@ pub fn merge_all<T>(s: &mut Vec<T>, vecs: impl IntoIterator<Item = Vec<T>>) {
 pub struct Walker(Arc<WalkControllerInner>);
 
 impl Walker {
+    #[must_use]
     pub fn finished(&self) -> bool {
         self.finished.load(Ordering::SeqCst)
     }
 
+    #[must_use]
     pub fn should_abort(&self) -> bool {
         self.stop_token.load(Ordering::SeqCst)
     }
 
+    #[must_use]
     pub fn take_entries(&self) -> Option<Vec<TransferEntry>> {
         self.entries.lock().unwrap().take()
     }
 
+    #[must_use]
     pub fn total_entries(&self) -> u32 {
         self.total_entries.load(Ordering::Relaxed)
     }
 
+    #[must_use]
     pub fn total_size(&self) -> u64 {
         self.total_size.load(Ordering::Relaxed)
     }
 
+    #[must_use]
     pub fn new(paths: Vec<PathBuf>) -> Self {
         Walker(Arc::new(WalkControllerInner {
             total_entries: AtomicU32::new(0),
@@ -94,9 +103,8 @@ impl Walker {
                 if self.should_abort() {
                     std::thread::sleep(Duration::from_micros(1));
                     continue;
-                } else {
-                    break;
                 }
+                break;
             }
         }
 
@@ -105,7 +113,7 @@ impl Walker {
     }
 
     pub fn stop(&self) {
-        self.stop_token.store(true, SeqCst)
+        self.stop_token.store(true, SeqCst);
     }
 
     fn rearm(&self) {
@@ -120,7 +128,7 @@ impl Walker {
         std::thread::spawn(move || {
             let start = Instant::now();
             let mut entries = Vec::new();
-            for p in c.paths.iter() {
+            for p in &c.paths {
                 let (tx, rx) = channel::<Vec<TransferEntry>>();
                 let walker = WalkBuilder::new(p).build_parallel();
 
@@ -144,11 +152,14 @@ impl Walker {
                             #[cfg(not(unix))]
                             let size = meta.len();
 
-                            let entry = TransferEntry { size, path, is_dir };
+                            let entry =
+                                TransferEntry { path, size, is_dir };
                             flush.inner.push(entry);
 
-                            c.total_entries.fetch_add(1, Ordering::Relaxed);
-                            c.total_size.fetch_add(size, Ordering::Relaxed);
+                            c.total_entries
+                                .fetch_add(1, Ordering::Relaxed);
+                            c.total_size
+                                .fetch_add(size, Ordering::Relaxed);
                         }
                         if c.should_abort() {
                             c.rearm();
@@ -232,6 +243,9 @@ mod tests {
         let count_start = Instant::now();
         let x = entries.len();
 
-        println!("Count took [{:?}] Result [{x}]", count_start.elapsed(),);
+        println!(
+            "Count took [{:?}] Result [{x}]",
+            count_start.elapsed(),
+        );
     }
 }

@@ -6,6 +6,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+utils = {path = "../utils"}
 anyhow = "1.0.104"
 futures = "0.3.34"
 ignore = "0.4.33"

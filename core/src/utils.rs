@@ -14,6 +14,7 @@ struct Inner {
 }
 
 impl CancelToken {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -30,6 +31,7 @@ impl CancelToken {
         self.0.cancelled.store(false, Ordering::Release);
     }
 
+    #[must_use]
     pub fn is_cancelled(&self) -> bool {
         self.0.cancelled.load(Ordering::Acquire)
     }

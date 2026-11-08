@@ -1,6 +1,5 @@
-use crate::{
-    devices::DeviceStatus::Offline, storage_utils::DataWriter,
-};
+use crate::devices::DeviceStatus::Offline;
+use utils::storage_utils::DataWriter;
 use anyhow::{Result, anyhow, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use core::fmt;
@@ -8,7 +7,7 @@ use ed25519_dalek::VerifyingKey;
 use iroh::{EndpointId, endpoint::Connection};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet}, path::{Path, PathBuf}, sync::{Arc, RwLock},
+    collections::{HashMap, HashSet}, path::Path, sync::{Arc, RwLock},
 };
 use tracing::info;
 
@@ -46,6 +45,7 @@ impl Username {
         Ok(Self { inner: username })
     }
 
+    #[must_use]
     pub fn as_string(self) -> String {
         self.inner
     }
@@ -67,11 +67,13 @@ pub struct UserInfoInner {
 pub struct UserInfo(Arc<std::sync::Mutex<UserInfoInner>>);
 
 impl UserInfo {
+    #[must_use]
     pub fn new(username: Username) -> Self {
         UserInfo(Arc::new(std::sync::Mutex::new(UserInfoInner {
             username,
         })))
     }
+    #[must_use]
     pub fn username(&self) -> Username {
         self.0.lock().unwrap().username.clone()
     }
@@ -174,7 +176,7 @@ impl Devices {
             DataWriter::new(base_path, "nectan_devices_store")
                 .expect("Failed to create devices storage.");
 
-        let mut initial: Vec<Device> =
+        let initial: Vec<Device> =
             writer.load().unwrap_or_default();
 
         println!(
@@ -200,18 +202,22 @@ impl Devices {
         self.writer.write(&stored)
     }
 
+    #[must_use]
     pub fn get(&self, target: &DeviceId) -> Option<Device> {
         self.inner.read().unwrap().get(target).cloned()
     }
 
+    #[must_use]
     pub fn get_all(&self) -> Vec<Device> {
         self.inner.read().unwrap().values().cloned().collect()
     }
 
+    #[must_use]
     pub fn get_all_ids(&self) -> Vec<DeviceId> {
-        self.inner.read().unwrap().keys().cloned().collect()
+        self.inner.read().unwrap().keys().copied().collect()
     }
 
+    #[must_use]
     pub fn is_nearby(&self, endpoint_id: &EndpointId) -> bool {
         self.nearby_endpoints
             .read()
@@ -226,6 +232,7 @@ impl Devices {
 
     /// Returns whether the value was newly inserted.
     /// If device is known, and device is online, connection state will be upgraded to nearby.
+    #[must_use]
     pub fn add_nearby(&self, endpoint_id: EndpointId) -> bool {
         let new = self
             .nearby_endpoints
@@ -261,6 +268,7 @@ impl Devices {
         info!("Persisted {device:#?}");
         Ok(old)
     }
+    #[must_use]
     pub fn get_unresolved_devices(&self) -> Vec<DeviceId> {
         let mut unresolved_devices = Vec::new();
         let read_lock = self.inner.read().unwrap();
@@ -273,6 +281,7 @@ impl Devices {
         }
         unresolved_devices
     }
+    #[must_use]
     pub fn is_alive(&self, target: EndpointId) -> bool {
         self.inner.read().unwrap().iter().any(|(_, device)| {
             device.connection.as_ref().is_some_and(|c| {
@@ -280,6 +289,7 @@ impl Devices {
             })
         })
     }
+    #[must_use]
     pub fn remove_conn(
         &self,
         target: DeviceId,
@@ -301,6 +311,7 @@ impl Devices {
         }
         false
     }
+    #[must_use]
     pub fn get_connection(
         &self,
         device_id: DeviceId,
@@ -313,11 +324,9 @@ impl Devices {
     }
 
     pub fn toggle_favourite(&self, id: DeviceId) {
-        self.inner
-            .write()
-            .unwrap()
-            .get_mut(&id)
-            .map(|d| d.fav = !d.fav);
+        if let Some(device ) = self.inner.write().unwrap().get_mut(&id){
+            device.fav = !device.fav;
+        }
     }
 }
 
@@ -329,6 +338,7 @@ pub fn device_id_from_base64(s: &str) -> Result<DeviceId> {
     Ok(VerifyingKey::from_bytes(&arr)?)
 }
 
+#[must_use]
 pub fn device_id_to_base64(device_id: &DeviceId) -> String {
     STANDARD.encode(device_id.as_bytes())
 }

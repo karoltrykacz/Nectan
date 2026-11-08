@@ -15,6 +15,7 @@ use crate::storage::Storage;
 // }
 
 /// Only for absolute paths
+#[must_use]
 pub fn common_parent(paths: &[PathBuf]) -> PathBuf {
     let Some(first) = paths.first() else {
         return PathBuf::new();
@@ -45,11 +46,16 @@ pub fn get_signing_key(storage: &Storage) -> SigningKey {
     }
 }
 
-pub fn signing_key_to_string(key: &ed25519_dalek::SigningKey) -> String {
+#[must_use]
+pub fn signing_key_to_string(
+    key: &ed25519_dalek::SigningKey,
+) -> String {
     STANDARD.encode(key.as_bytes())
 }
 
-pub fn signing_key_from_string(key: &str) -> Result<SigningKey, base64::DecodeError> {
+pub fn signing_key_from_string(
+    key: &str,
+) -> Result<SigningKey, base64::DecodeError> {
     let bytes = STANDARD.decode(key)?;
     let arr: [u8; 32] = bytes
         .try_into()
@@ -57,15 +63,18 @@ pub fn signing_key_from_string(key: &str) -> Result<SigningKey, base64::DecodeEr
     Ok(SigningKey::from_bytes(&arr))
 }
 
+#[must_use]
 pub fn gen_transfer_name() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const ADJECTIVES: &[&str] = &[
-        "Red", "Blue", "Green", "Yellow", "Pink", "Purple", "Orange", "White", "Black", "Gold",
-        "Silver", "Neon", "Round", "Square", "Tiny", "Huge", "Long", "Short", "Tall", "Flat",
-        "Happy", "Sad", "Angry", "Calm", "Shy", "Silly", "Sleepy", "Brave", "Proud", "Scared",
-        "Soft", "Hard", "Fast", "Slow", "Warm", "Cold", "Sweet", "Fresh", "Bright", "Dark",
-        "Clean", "Shiny",
+        "Red", "Blue", "Green", "Yellow", "Pink", "Purple", "Orange",
+        "White", "Black", "Gold", "Silver", "Neon", "Round",
+        "Square", "Tiny", "Huge", "Long", "Short", "Tall", "Flat",
+        "Happy", "Sad", "Angry", "Calm", "Shy", "Silly", "Sleepy",
+        "Brave", "Proud", "Scared", "Soft", "Hard", "Fast", "Slow",
+        "Warm", "Cold", "Sweet", "Fresh", "Bright", "Dark", "Clean",
+        "Shiny",
     ];
 
     const CREATURES: &[&str] = &[
@@ -116,9 +125,10 @@ pub fn gen_transfer_name() -> String {
         .unwrap()
         .subsec_nanos() as usize;
 
-    let seed = nanos.wrapping_mul(2654435761);
+    let seed = nanos.wrapping_mul(2_654_435_761);
     let adj = ADJECTIVES[seed % ADJECTIVES.len()];
-    let creature = CREATURES[(seed / ADJECTIVES.len()) % CREATURES.len()];
+    let creature =
+        CREATURES[(seed / ADJECTIVES.len()) % CREATURES.len()];
 
     format!("{adj} {creature}")
 }

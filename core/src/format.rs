@@ -102,7 +102,7 @@ impl<F: Amounts> NumberPrefix<F> {
     /// );
     /// ```
     pub fn decimal(amount: F) -> Self {
-        use self::Prefix::*;
+        use self::Prefix::{Kilo, Mega, Giga, Tera, Peta, Exa, Zetta, Yotta};
         Self::format_number(
             amount,
             Amounts::NUM_1000,
@@ -126,7 +126,7 @@ impl<F: Amounts> NumberPrefix<F> {
     /// );
     /// ```
     pub fn binary(amount: F) -> Self {
-        use self::Prefix::*;
+        use self::Prefix::{Kibi, Mebi, Gibi, Tebi, Pebi, Exbi, Zebi, Yobi};
         Self::format_number(
             amount,
             Amounts::NUM_1024,
@@ -183,8 +183,9 @@ impl Prefix {
     /// assert_eq!("GIGA", Prefix::Giga.upper());
     /// assert_eq!("GIBI", Prefix::Gibi.upper());
     /// ```
+    #[must_use]
     pub fn upper(self) -> &'static str {
-        use self::Prefix::*;
+        use self::Prefix::{Kilo, Mega, Giga, Tera, Peta, Exa, Zetta, Yotta, Kibi, Mebi, Gibi, Tebi, Pebi, Exbi, Zebi, Yobi};
         match self {
             Kilo => "KILO",
             Mega => "MEGA",
@@ -215,8 +216,9 @@ impl Prefix {
     /// assert_eq!("Giga", Prefix::Giga.caps());
     /// assert_eq!("Gibi", Prefix::Gibi.caps());
     /// ```
+    #[must_use]
     pub fn caps(self) -> &'static str {
-        use self::Prefix::*;
+        use self::Prefix::{Kilo, Mega, Giga, Tera, Peta, Exa, Zetta, Yotta, Kibi, Mebi, Gibi, Tebi, Pebi, Exbi, Zebi, Yobi};
         match self {
             Kilo => "Kilo",
             Mega => "Mega",
@@ -247,8 +249,9 @@ impl Prefix {
     /// assert_eq!("giga", Prefix::Giga.lower());
     /// assert_eq!("gibi", Prefix::Gibi.lower());
     /// ```
+    #[must_use]
     pub fn lower(self) -> &'static str {
-        use self::Prefix::*;
+        use self::Prefix::{Kilo, Mega, Giga, Tera, Peta, Exa, Zetta, Yotta, Kibi, Mebi, Gibi, Tebi, Pebi, Exbi, Zebi, Yobi};
         match self {
             Kilo => "kilo",
             Mega => "mega",
@@ -279,8 +282,9 @@ impl Prefix {
     /// assert_eq!("G", Prefix::Giga.symbol());
     /// assert_eq!("Gi", Prefix::Gibi.symbol());
     /// ```
+    #[must_use]
     pub fn symbol(self) -> &'static str {
-        use self::Prefix::*;
+        use self::Prefix::{Kilo, Mega, Giga, Tera, Peta, Exa, Zetta, Yotta, Kibi, Mebi, Gibi, Tebi, Pebi, Exbi, Zebi, Yobi};
         match self {
             Kilo => "k",
             Mega => "M",
@@ -493,10 +497,10 @@ mod test {
 
 const SECOND: Duration = Duration::from_secs(1);
 const MINUTE: Duration = Duration::from_secs(60);
-const HOUR: Duration = Duration::from_secs(60 * 60);
-const DAY: Duration = Duration::from_secs(24 * 60 * 60);
-const WEEK: Duration = Duration::from_secs(7 * 24 * 60 * 60);
-const YEAR: Duration = Duration::from_secs(365 * 24 * 60 * 60);
+const HOUR: Duration = Duration::from_hours(1);
+const DAY: Duration = Duration::from_hours(24);
+const WEEK: Duration = Duration::from_hours(168);
+const YEAR: Duration = Duration::from_hours(8760);
 
 /// Wraps an std duration for human basic formatting.
 #[derive(Debug)]
@@ -1004,6 +1008,7 @@ impl fmt::Display for RoundedBinaryBytes {
     }
 }
 
+#[must_use]
 pub fn format_bps(bps: f32) -> String {
     const UNITS: [&str; 4] = ["Bps", "Kbps", "Mbps", "Gbps"];
     const LAST: usize = UNITS.len() - 1;
@@ -1022,7 +1027,7 @@ pub fn format_bps(bps: f32) -> String {
         unit += 1;
     }
 
-    let s = format!("{:.1}", value);
+    let s = format!("{value:.1}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
 
     format!("{} {}", s, UNITS[unit])
@@ -1032,16 +1037,19 @@ const MIN_BPS: f32 = 1_000.0;
 const MAX_BPS: f32 = 50_000_000_000.0;
 
 /// Exponential speed map (for speedlimit sliders)
+#[must_use]
 pub fn map_speed(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     MIN_BPS * (MAX_BPS / MIN_BPS).powf(t)
 }
 
+#[must_use]
 pub fn unmap_speed(bps: f32) -> f32 {
     let bps = bps.clamp(MIN_BPS, MAX_BPS);
     (bps / MIN_BPS).ln() / (MAX_BPS / MIN_BPS).ln()
 }
 
+#[must_use]
 pub fn format_speed(bps: f32) -> String {
     const UNITS: [&str; 4] = ["Bps", "Kbps", "Mbps", "Gbps"];
     const LAST: usize = UNITS.len() - 1;
@@ -1060,7 +1068,7 @@ pub fn format_speed(bps: f32) -> String {
         unit += 1;
     }
 
-    let s = format!("{:.1}", value);
+    let s = format!("{value:.1}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
 
     format!("{} {}", s, UNITS[unit])

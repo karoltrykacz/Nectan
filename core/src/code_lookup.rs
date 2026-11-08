@@ -113,33 +113,35 @@ pub async fn issue_code(
     state: &NectanState,
     code: String,
 ) -> Result<String> {
-    let Ok(nonce) = get_nonce(&state).await else {
-        info!("Failed to get nonce");
-        bail!(
-            "Connection error. Make sure you are connected to the internet and try again."
-        )
-    };
     let device_id = state.device_id();
-
-    let message =
-        (device_id.as_bytes(), code.as_bytes(), &nonce.to_bytes_le());
-
-    let signature: Signature =
-        state.sign(&postcard::to_allocvec(&message).unwrap());
-
-    let payload = CodeIssueRequest {
-        device_id,
-        code: code.clone(),
-        nonce,
-        signature,
-    };
-    let payload = postcard::to_allocvec(&payload).unwrap();
-
     let url = format!("{DISCOVERY_URL}/issue_code");
     let max_attempts = 3;
-    let mut delay_ms = 200;
+    let mut delay_ms = 400;
 
     for attempt in 1..=max_attempts {
+        let Ok(nonce) = get_nonce(state).await else {
+            info!("Failed to get nonce");
+            bail!(
+                "Connection error. Make sure you are connected to the internet and try again."
+            )
+        };
+        let message = (
+            device_id.as_bytes(),
+            code.as_bytes(),
+            &nonce.to_bytes_le(),
+        );
+
+        let signature: Signature =
+            state.sign(&postcard::to_allocvec(&message).unwrap());
+
+        let payload = CodeIssueRequest {
+            device_id,
+            code: code.clone(),
+            nonce,
+            signature,
+        };
+        let payload = postcard::to_allocvec(&payload).unwrap();
+
         info!("Attempting to issue code");
 
         match state
@@ -181,6 +183,7 @@ pub async fn issue_code(
     )
 }
 
+#[must_use]
 pub fn gen_code() -> String {
     let mut r = String::new();
     for _ in 0..6 {
