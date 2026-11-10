@@ -8,37 +8,51 @@ import {
     PrimarySmallButton,
     Dropdown,
 } from "elements.slint";
+import { Icons } from "icons.slint";
+import { WindowBridge } from "window.slint";
+
+export global HasherBridge {
+    in-out property <bool> open;
+    in-out property <bool> busy;
+    in-out property <string> output;
+
+    callback compute(string, string);
+    callback abort-compute();
+
+    function open-hasher() {
+        abort-compute();
+        open = true;
+        busy = false;
+        output = "";
+    }
+}
 
 export component Hasher inherits GeneralModal {
 
-    in property <[DropDownOption]> algorithms: [
+    on-close => { HasherBridge.output = ""; HasherBridge.open = false; }
+
+    property <[DropDownOption]> algorithms: [
         { code: "md5", name: "MD5" },
         { code: "sha1", name: "SHA-1" },
         { code: "sha224", name: "SHA-224" },
         { code: "sha256", name: "SHA-256" },
         { code: "sha384", name: "SHA-384" },
         { code: "sha512", name: "SHA-512" },
+        { code: "sha512-224", name: "SHA-512/224" },
+        { code: "sha512-256", name: "SHA-512/256" },
         { code: "sha3-224", name: "SHA3-224" },
         { code: "sha3-256", name: "SHA3-256" },
         { code: "sha3-384", name: "SHA3-384" },
         { code: "sha3-512", name: "SHA3-512" },
-        { code: "ripemd160", name: "RIPEMD-160" },
-        { code: "blake2b", name: "BLAKE2b" },
-        { code: "blake2s", name: "BLAKE2s" },
+        { code: "blake2b", name: "BLAKE2b-512" },
+        { code: "blake2s", name: "BLAKE2s-256" },
         { code: "blake3", name: "BLAKE3" },
-        { code: "crc32", name: "CRC32" },
-        { code: "murmur3-32", name: "Murmur3 (32-bit)" },
-        { code: "murmur3-128", name: "Murmur3 (128-bit)" },
-        { code: "cityhash128", name: "CityHash128" },
-        { code: "xxh32", name: "xxHash32" },
-        { code: "xxh64", name: "xxHash64" },
-        { code: "xxh3-64", name: "XXH3 (64-bit)" },
-        { code: "xxh3-128", name: "XXH3 (128-bit)" },
-        { code: "fnv1a-32", name: "FNV-1a (32-bit)" },
-        { code: "fnv1a-64", name: "FNV-1a (64-bit)" },
-        { code: "djb2", name: "djb2" },
+        { code: "keccak224", name: "Keccak-224" },
+        { code: "keccak256", name: "Keccak-256" },
+        { code: "keccak384", name: "Keccak-384" },
+        { code: "keccak512", name: "Keccak-512" },
     ];
-    in property <[DropDownOption]> formats: [
+    property <[DropDownOption]> formats: [
         { code: "hex", name: "Hex" },
         { code: "hex-upper", name: "Hex (uppercase)" },
         { code: "base64", name: "Base64" },
@@ -54,15 +68,11 @@ export component Hasher inherits GeneralModal {
 
     in-out property <int> algorithm-index: 0;
     in-out property <int> format-index: 0;
-    in-out property <string> result;
-    in property <bool> busy: false;
+
     property <bool> copied: false;
 
-    callback compute(string, string);
-    callback copy();
-
     function start-compute() {
-        root.compute(
+        HasherBridge.compute(
                 root.algorithms[root.algorithm-index].code,
                 root.formats[root.format-index].code);
     }
@@ -131,7 +141,7 @@ export component Hasher inherits GeneralModal {
 
                             selected(idx) => {
                                 root.algorithm-index = idx;
-                                root.result = "";
+                                HasherBridge.output = "";
                             }
                         }
                     }
@@ -152,6 +162,7 @@ export component Hasher inherits GeneralModal {
 
                             selected(idx) => {
                                 root.format-index = idx;
+                                HasherBridge.output = "";
                             }
                         }
                     }
@@ -188,10 +199,10 @@ export component Hasher inherits GeneralModal {
                             Text {
                                 wrap: char-wrap;
                                 font-size: 13px;
-                                text: root.busy ? @tr("Hashing...")
-                                    : root.result != "" ? root.result
+                                text: HasherBridge.busy ? @tr("Hashing...")
+                                    : HasherBridge.output != "" ? HasherBridge.output
                                     : @tr("No hash");
-                                color: root.result != "" ? Theme.colors.primary-font
+                                color: HasherBridge.output != "" ? Theme.colors.primary-font
                                     : Theme.colors.third-font;
                             }
                         }
@@ -205,14 +216,27 @@ export component Hasher inherits GeneralModal {
 
                 PrimaryButton {
                     alt: true;
-                    text: @tr("Cancel");
+                    text: @tr("Close");
                     clicked => { root.close-modal(); }
                 }
 
+                if HasherBridge.output != "" && !HasherBridge.busy: PrimaryButton {
+                    text: root.copied ? @tr("Copied") : @tr("Copy");
+                    image: Icons.clipboard;
+                    button-loading: HasherBridge.busy;
+                    clicked => {
+                        WindowBridge.copy_str(HasherBridge.output);
+                        root.copied = true;
+                    }
+                }
+
                 PrimaryButton {
-                    text: @tr("Hash");
-                    button-loading: root.busy;
-                    clicked => { root.start-compute(); }
+                    text: HasherBridge.busy ? @tr("Hashing") : @tr("Hash");
+                    button-loading: HasherBridge.busy;
+                    image: Icons.cpu;
+                    clicked => {
+                        root.start-compute();
+                    }
                 }
             }
         }
