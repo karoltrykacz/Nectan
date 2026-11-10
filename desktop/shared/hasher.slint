@@ -1,0 +1,220 @@
+import { Theme } from "theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { DropDownOption } from "dropdown.slint";
+import {
+    GeneralModal,
+    PlainLineEdit,
+    PrimaryButton,
+    PrimarySmallButton,
+    Dropdown,
+} from "elements.slint";
+
+export component Hasher inherits GeneralModal {
+
+    in property <[DropDownOption]> algorithms: [
+        { code: "md5", name: "MD5" },
+        { code: "sha1", name: "SHA-1" },
+        { code: "sha224", name: "SHA-224" },
+        { code: "sha256", name: "SHA-256" },
+        { code: "sha384", name: "SHA-384" },
+        { code: "sha512", name: "SHA-512" },
+        { code: "sha3-224", name: "SHA3-224" },
+        { code: "sha3-256", name: "SHA3-256" },
+        { code: "sha3-384", name: "SHA3-384" },
+        { code: "sha3-512", name: "SHA3-512" },
+        { code: "ripemd160", name: "RIPEMD-160" },
+        { code: "blake2b", name: "BLAKE2b" },
+        { code: "blake2s", name: "BLAKE2s" },
+        { code: "blake3", name: "BLAKE3" },
+        { code: "crc32", name: "CRC32" },
+        { code: "murmur3-32", name: "Murmur3 (32-bit)" },
+        { code: "murmur3-128", name: "Murmur3 (128-bit)" },
+        { code: "cityhash128", name: "CityHash128" },
+        { code: "xxh32", name: "xxHash32" },
+        { code: "xxh64", name: "xxHash64" },
+        { code: "xxh3-64", name: "XXH3 (64-bit)" },
+        { code: "xxh3-128", name: "XXH3 (128-bit)" },
+        { code: "fnv1a-32", name: "FNV-1a (32-bit)" },
+        { code: "fnv1a-64", name: "FNV-1a (64-bit)" },
+        { code: "djb2", name: "djb2" },
+    ];
+    in property <[DropDownOption]> formats: [
+        { code: "hex", name: "Hex" },
+        { code: "hex-upper", name: "Hex (uppercase)" },
+        { code: "base64", name: "Base64" },
+        { code: "base64-nopad", name: "Base64 (no padding)" },
+        { code: "base64-url", name: "Base64 URL-safe" },
+        { code: "base64-url-nopad", name: "Base64 URL-safe (no padding)" },
+        { code: "base32", name: "Base32" },
+        { code: "base32-nopad", name: "Base32 (no padding)" },
+        { code: "base32-hex", name: "Base32 (extended hex)" },
+        { code: "binary", name: "Binary" },
+        { code: "decimal", name: "Decimal" },
+    ];
+
+    in-out property <int> algorithm-index: 0;
+    in-out property <int> format-index: 0;
+    in-out property <string> result;
+    in property <bool> busy: false;
+    property <bool> copied: false;
+
+    callback compute(string, string);
+    callback copy();
+
+    function start-compute() {
+        root.compute(
+                root.algorithms[root.algorithm-index].code,
+                root.formats[root.format-index].code);
+    }
+
+    function close-modal() {
+        root.restore-focus();
+        root.on-close();
+    }
+
+    Timer {
+        interval: 1200ms;
+        running: root.copied;
+        triggered => { root.copied = false; }
+    }
+
+    card := Rectangle {
+        width: min(560px, parent.width - 48px);
+        height: content.preferred-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+
+        background: Theme.colors.primary-col;
+        border-radius: Theme.config.round-edges ? 24px : 4px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        border-width: 1px;
+        border-color: Theme.colors.fourth-col;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000050;
+        drop-shadow-offset-y: 8px;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        content := VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            Text {
+                color: Theme.colors.primary-font;
+                text: @tr("Hash file");
+                font-weight: 600;
+                font-size: 20px;
+            }
+
+            Rectangle {
+                z: 10;
+                height: 56px;
+
+                HorizontalLayout {
+                    spacing: 16px;
+
+                    VerticalLayout {
+
+                        Text {
+                            text: @tr("Algorithm");
+                            font-size: 12px;
+                            font-weight: 500;
+                            color: Theme.colors.secondary-font;
+                        }
+
+                        d1 := Dropdown {
+                            list-min-height: 256px;
+                            options: root.algorithms;
+                            current: root.algorithm-index;
+
+                            selected(idx) => {
+                                root.algorithm-index = idx;
+                                root.result = "";
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+
+                        Text {
+                            text: @tr("Output format");
+                            font-size: 12px;
+                            font-weight: 500;
+                            color: Theme.colors.secondary-font;
+                        }
+
+                        Dropdown {
+                            list-min-height: 256px;
+                            options: root.formats;
+                            current: root.format-index;
+
+                            selected(idx) => {
+                                root.format-index = idx;
+                            }
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 6px;
+
+                Text {
+                    text: @tr("Result");
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: Theme.colors.secondary-font;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    height: 112px;
+                    border-radius: 12px;
+                    border-corner-shape: superellipse(Theme.config.edges-shape);
+                    background: Theme.colors.secondary-col;
+                    border-width: 1px;
+                    border-color: Theme.colors.hover-col;
+                    clip: true;
+
+                    ScrollView {
+                        width: parent.width;
+                        height: parent.height;
+
+                        VerticalLayout {
+                            padding: 12px;
+
+                            Text {
+                                wrap: char-wrap;
+                                font-size: 13px;
+                                text: root.busy ? @tr("Hashing...")
+                                    : root.result != "" ? root.result
+                                    : @tr("No hash");
+                                color: root.result != "" ? Theme.colors.primary-font
+                                    : Theme.colors.third-font;
+                            }
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+
+                PrimaryButton {
+                    alt: true;
+                    text: @tr("Cancel");
+                    clicked => { root.close-modal(); }
+                }
+
+                PrimaryButton {
+                    text: @tr("Hash");
+                    button-loading: root.busy;
+                    clicked => { root.start-compute(); }
+                }
+            }
+        }
+    }
+}

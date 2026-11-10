@@ -92,11 +92,12 @@ export component KeysBadge inherits Rectangle {
 
     width: max(48px, label.preferred-width + 40px);
     height: 26px;
-    border-radius: 5px;
+    border-radius: 8px;
+    border-corner-shape: superellipse(Theme.config.edges-shape);
     background: Theme.colors.third-font;
 
     Rectangle {
-        y: (root.pressed || ta.pressed) ? 0 : -1.25px;
+        y: (root.pressed || ta.pressed) ? 0 : -1px;
         width: 100%;
         height: 24px;
         border-radius: 5px;
@@ -118,5 +119,80 @@ export component KeysBadge inherits Rectangle {
         enabled: root.interactive;
         mouse-cursor: pointer;
         clicked => { Keys.open-change(root.shortcut-id, root.alt); }
+    }
+}
+
+export component ShortcutGroupView inherits VerticalLayout {
+    in property <string> category;
+    in property <[ShortcutItem]> items;
+
+    alignment: start;
+    spacing: 4px;
+
+    Text {
+        x: 12px;
+        text: root.category;
+        color: Theme.colors.secondary-font;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+
+    Rectangle {
+        background: Theme.colors.secondary-col;
+        border-radius: 20px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+
+        VerticalLayout {
+            padding: 20px;
+            padding-bottom: 0;
+            padding-top: 0;
+
+            for item[i] in root.items: Rectangle {
+                height: 48px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: item.title;
+                        color: Theme.colors.primary-font;
+                        font-size: 13px;
+                        font-weight: 400;
+                        vertical-alignment: center;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        cross-axis-alignment: center;
+
+                        KeysBadge {
+                            shortcut-id: item.id;
+                            keys: item.keys;
+                        }
+
+                        if item.alt-keys.to-string() != "": Text {
+                            text: @tr(" | ");
+                            color: Theme.colors.third-font;
+                            font-size: 11px;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
+
+                        if item.alt-keys.to-string() != "": KeysBadge {
+                            shortcut-id: item.id;
+                            alt: true;
+                            keys: item.alt-keys;
+                        }
+                    }
+                }
+
+                if i != root.items.length - 1: Rectangle {
+                    y: parent.height - self.height;
+                    height: 1px;
+                    background: Theme.colors.fourth-col.with-alpha(0.5);
+                }
+            }
+        }
     }
 }

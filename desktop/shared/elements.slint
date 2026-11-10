@@ -56,7 +56,7 @@ export component SettingsRow {
                     text: root.title;
                     color: Theme.colors.primary-font;
                     font-size: 1rem;
-                    font-weight: 600;
+                    font-weight: 500;
                 }
 
                 Text {
@@ -285,6 +285,8 @@ export component PlainLineEdit inherits Rectangle {
             selection-background-color: Theme.colors.third-font;
             selection-foreground-color: Theme.colors.primary-font;
             color: Theme.colors.primary-font;
+            font-size: 14px;
+            font-weight: 400;
 
             edited => {
                 root.edited(self.text);
@@ -321,29 +323,46 @@ export component GeneralModal inherits Rectangle {
     forward-focus: focus-scope;
 
     focus-scope := FocusScope {
+        focus-lost(reason) => {
+            root.restore-focus();
+            root.on-close();
+        }
 
         KeyBinding {
             keys: @keys(Control + W);
-            activated => { root.restore-focus(); root.on-close(); }
+            activated => {
+                root.restore-focus();
+                root.on-close();
+            }
         }
 
         KeyBinding {
             keys: @keys(Escape);
-            activated => { root.restore-focus(); root.on-close(); }
+            activated => {
+                root.restore-focus();
+                root.on-close();
+            }
         }
 
         KeyBinding {
             keys: @keys(Return);
-            activated => { root.restore-focus(); root.on-enter(); }
+            activated => {
+                root.restore-focus();
+                root.on-enter();
+            }
         }
 
         Rectangle {
             background: #00000088;
             border-radius: Theme.config.round-edges ? 24px : 0;
             border-corner-shape: superellipse(Theme.config.edges-shape);
+            // backdrop-blur: 2px;
 
             TouchArea {
-                clicked => { root.on-close(); }
+                clicked => {
+                    root.restore-focus();
+                    root.on-close();
+                }
             }
         }
 
@@ -434,14 +453,9 @@ export component Switch inherits Rectangle {
         background: root.checked ? Theme.colors.primary-font : Theme.colors.secondary-col;
         transform-scale: ta.pressed ? 0.975 : 1.0;
 
-        animate transform-scale {
-            duration: 100ms;
-            easing: ease;
-        }
-
-        animate background {
-            duration: 100ms;
-            easing: ease;
+        animate transform-scale, background {
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
         }
 
         Rectangle {
@@ -451,16 +465,11 @@ export component Switch inherits Rectangle {
             height: 18px;
             border-radius: 9px;
             background: (root.checked ? Theme.colors.secondary-col : Theme.colors.fourth-font);
-
             transform-scale: ta.pressed ? 0.9 : 1.0;
-            animate transform-scale {
-                duration: 100ms;
-                easing: ease;
-            }
 
-            animate x {
-                duration: 100ms;
-                easing: ease;
+            animate transform-scale, x {
+                duration: Theme.animation-speed;
+                easing: Theme.easing;
             }
         }
     }
@@ -817,12 +826,8 @@ export component SelectionOverlay inherits Rectangle {
     }
 }
 
-    export component HeaderText inherits Text {
-    font-size: 20px;
-    font-weight: 600;
-}
 
-    export component LinkButton inherits Text {
+export component LinkButton inherits Text {
     callback clicked;
 
     color: touch.has-hover ? Theme.colors.primary-font : Theme.colors.secondary-font;
@@ -866,7 +871,8 @@ export component Dropdown inherits Rectangle {
 
     property <bool> expanded: false;
     property <length> scroll-y: 0px;
-    property <length> list-height: min(156px, root.options.length * 36px);
+    in property <length> list-min-height:156px;
+    property <length> list-height: min(list-min-height, root.options.length * 36px);
 
     function make-visible(idx: int) {
         if (idx * 36px < -root.scroll-y) {
@@ -907,6 +913,10 @@ export component Dropdown inherits Rectangle {
     height: 32px;
 
     fs := FocusScope {
+        focus-lost(reason) => {
+            close();
+        }
+
         changed has-focus => {
             if (!self.has-focus) {
                 root.close();
@@ -1512,5 +1522,58 @@ export component ContextMenu inherits Rectangle {
                 @children
             }
         }
+    }
+}
+
+export component MenuRow inherits Rectangle {
+
+    in property <string> text;
+    in property <image> icon;
+
+    callback clicked;
+
+    height: 28px;
+
+    Rectangle {
+        background: ta.pressed ? Theme.colors.fourth-col :
+            ta.has-hover ? Theme.colors.third-col : transparent;
+        border-radius: 12px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        transform-scale: ta.pressed ? 0.9875 : 1.0;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 8px;
+            cross-axis-alignment: center;
+            alignment: space-between;
+
+            Text {
+                text: root.text;
+                font-size: 0.9rem;
+                color: Theme.colors.primary-font;
+                vertical-alignment: center;
+            }
+
+            if root.icon.width != 0: Image {
+                source: icon;
+                width: 16px;
+                height: 16px;
+            }
+        }
+    }
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component MenuSeparator inherits Rectangle {
+    height: 9px;
+
+    Rectangle {
+        y: 4px;
+        height: 1px;
+        background: Theme.colors.border-col;
     }
 }

@@ -14,7 +14,7 @@ export global WindowBridge {
     in-out property <bool> maximized;
     in-out property <bool> sidebar-visible: true;
     in-out property <bool> sidebar-hover: true;
-    in-out property <length> sidebar-width: 220px;
+    in-out property <length> sidebar-width: 200px;
     in-out property <bool> topbar-hover: false;
 
     callback drag-window();
@@ -31,13 +31,16 @@ export global WindowBridge {
     in-out property <[DropDownOption]> languages;
     in-out property <int> selected-language-idx;
     callback select-language(string);
+
+    callback join_discord();
+    callback open_github();
+    callback open_privacy();
 }
 
 export component TopBarShower inherits Rectangle {
     x: WindowBridge.sidebar-hover || WindowBridge.sidebar-visible ? WindowBridge.sidebar-width + 20px : 0;
     z: 3;
     y: 0;
-    // background: WindowBridge.topbar-hover ? red : blue;
     width: 100%;
     height: 25px;
 
@@ -51,6 +54,7 @@ export component TopBarShower inherits Rectangle {
                 if self.mouse-y < 20px {
                     WindowBridge.topbar-hover = true;
                 }
+                EventResult.reject
             }
         }
     }

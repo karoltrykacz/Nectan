@@ -1,0 +1,377 @@
+import {
+    GeneralModal,
+    PrimaryButton,
+    IconButton,
+    SvgIcon,
+    PlainLineEdit,
+} from "elements.slint";
+import { KeysBadge, Keys } from "keys_shared.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+
+export component IconsEditor inherits GeneralModal {
+    in property <[image]> icons;
+
+    on-enter => {
+        root.on-close();
+    }
+
+    init => { self.focus(); }
+
+    TouchArea {
+        clicked => { root.on-close(); }
+    }
+
+    Rectangle {
+
+        width: min(512px, parent.width - 40px);
+        height: min(320px, parent.height - 40px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        // border-corner-shape: superellipse(Theme.config.edges-shape);
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 16px;
+
+            Text {
+                text: @tr("Edit icons");
+                font-size: 1.5rem;
+                color: Theme.colors.primary-font;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                height: 2px;
+            }
+
+            Text {
+                wrap: word-wrap;
+                text: @tr("Supported formats: PNG, JPEG, SVG");
+                font-size: 0.9rem;
+                color: Theme.colors.secondary-font;
+            }
+
+            Rectangle { }
+
+            FlexboxLayout {
+                cross-axis-self-alignment: center;
+                spacing-horizontal: 12px;
+                spacing-vertical: 20px;
+                cross-axis-alignment: center;
+                width: 320px;
+                alignment: center;
+                for icon[i] in icons: IconButton {
+                    width: 28px;
+                    height: 28px;
+                    SvgIcon {
+                        source: icon;
+                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                        size: 18px;
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            PrimaryButton {
+
+                cross-axis-self-alignment: end;
+                text: @tr("Save");
+                image: Icons.save;
+
+                clicked => {
+                    root.on-close();
+                }
+            }
+        }
+    }
+}
+
+export component ChangeShortcut inherits GeneralModal {
+    property <keys> new-keys;
+    property <string> shortcut-id: Keys.change-shortcut-id;
+    property <bool> is-primary: !Keys.change-shortcut-alt;
+    property <bool> pushed-down;
+
+    function save() {
+        if new-keys.to-string() != "" {
+            Keys.save-shortcut(shortcut-id, new-keys, is-primary);
+        }
+        root.on-close();
+    }
+
+    on-close => {}
+
+    init => { fs.focus(); }
+
+    forward-focus: fs;
+
+    fs := FocusScope {
+
+        capture-key-pressed(event) => {
+            pushed-down = true;
+            EventResult.reject
+        }
+
+        capture-key-released(event) => {
+            pushed-down = false;
+            EventResult.reject
+        }
+
+        KeyBinding {
+            keys: @keys(Return);
+            activated => { save(); }
+        }
+
+        KeyBinding {
+            keys: @keys(Escape);
+            activated => {
+                root.restore-focus();
+                Keys.close-change();
+            }
+        }
+
+        key-released(event) => {
+            EventResult.accept
+        }
+
+        key-pressed(event) => {
+            root.new-keys = Keys.make-keys(event);
+            EventResult.accept
+        }
+
+        Rectangle {
+
+            width: min(520px, parent.width - 80px);
+            height: min(256px, parent.height - 80px);
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 28px;
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            clip: true;
+
+            TouchArea {
+                clicked => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 14px;
+
+                VerticalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    Text {
+                        text: @tr("Change shortcut");
+                        font-size: 20px;
+                        color: Theme.colors.primary-font;
+                        font-weight: 600;
+                    }
+
+                    VerticalLayout {
+                        alignment: start;
+                        Text {
+                            text: @tr("Click enter to confirm.");
+                            font-size: 13px;
+                            color: Theme.colors.secondary-font;
+                        }
+                    }
+                }
+
+                Rectangle { }
+
+                KeysBadge {
+                    interactive: false;
+                    cross-axis-self-alignment: center;
+                    pressed: root.pushed-down;
+                    keys: root.new-keys;
+                }
+
+                Rectangle { }
+
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton {
+                        text: @tr("Cancel");
+                        alt: true;
+                        clicked => {
+                            root.on-close();
+                        }
+                    }
+
+                    Rectangle {
+                        width: 12px;
+                    }
+
+                    PrimaryButton {
+                        text: @tr("Save");
+                        image: Icons.save;
+                        clicked => { save(); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component FontModal inherits GeneralModal {
+    property <string> new-font;
+
+    function save() {
+        Theme.config.font = new-font;
+        Theme.config-changed();
+        root.on-close();
+    }
+
+    on-enter => { save(); }
+
+    Rectangle {
+
+        width: min(520px, parent.width - 80px);
+        height: min(256px, parent.height - 80px);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 24px;
+        // border-corner-shape: superellipse(Theme.config.edges-shape);
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+        clip: true;
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 14px;
+
+            VerticalLayout {
+                spacing: 4px;
+                alignment: start;
+                Text {
+                    text: @tr("Change font");
+                    font-size: 20px;
+                    color: Theme.colors.primary-font;
+                    font-weight: 600;
+                }
+
+                VerticalLayout {
+                    alignment: start;
+                    Text {
+                        wrap: word-wrap;
+                        text: @tr("Use fc-list : family to see the installed fonts.\nWarning! Font names are case-sensitive.");
+                        font-size: 13px;
+                        color: Theme.colors.secondary-font;
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            Rectangle {
+                border-radius: 8px;
+                background: Theme.colors.third-col;
+                height: 32px;
+                VerticalLayout {
+                    PlainLineEdit {
+                        input-text <=> new-font;
+                        placeholder-text: @tr("Enter font family name");
+                        rejected => { root.on-close(); }
+                        accepted => { save(); }
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                alignment: end;
+                PrimaryButton {
+                    text: @tr("Cancel");
+                    alt: true;
+                    clicked => {
+                        root.on-close();
+                    }
+                }
+
+                Rectangle {
+                    width: 12px;
+                }
+
+                PrimaryButton {
+                    text: @tr("Save");
+                    image: Icons.save;
+                    clicked => { save(); }
+                }
+            }
+        }
+    }
+}
+
+export component SettingsRow {
+
+    in property <string> title;
+    in property <string> subtitle;
+    in property <int> idx;
+    property <bool> selected: false;
+
+    callback activate();
+
+    changed selected => {
+        if selected {
+            fs.focus();
+        }
+    }
+
+    fs := FocusScope {
+        KeyBinding {
+            keys: @keys(Return);
+            activated => {
+                activate();
+            }
+        }
+
+        Rectangle {
+            x: 0;
+            height: 52px;
+            border-radius: 8px;
+            background: selected ? Theme.colors.third-col : transparent;
+        }
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding: 4px;
+            alignment: space-between;
+
+            VerticalLayout {
+                spacing: 2px;
+                alignment: center;
+
+                Text {
+                    text: root.title;
+                    color: Theme.colors.primary-font;
+                    font-size: 1rem;
+                    font-weight: 600;
+                }
+
+                Text {
+                    text: root.subtitle;
+                    color: Theme.colors.third-font;
+                    font-size: 0.9rem;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                @children
+            }
+        }
+    }
+}

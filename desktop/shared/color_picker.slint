@@ -1,0 +1,542 @@
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { Switch } from "elements.slint";
+
+
+component Preset inherits Rectangle {
+    in property <color> fill;
+    callback clicked;
+
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    border-corner-shape: superellipse(Theme.config.edges-shape);
+    border-width: ta.has-hover ? 2px : 1px;
+    border-color: ta.has-hover ? Theme.colors.primary-font : Theme.colors.border-col;
+    background: @linear-gradient(135deg, root.fill.brighter(0.25) 0%, root.fill.darker(0.35) 100%);
+
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component RotaryEncoder inherits Rectangle {
+    in property <length> size: 64px;
+    in property <int> steps: 5;
+    in property <float> arc-angle-deg: 140.0;
+    in property <float> sensitivity: 1.0;
+
+    in-out property <int> current-step: 0;
+
+    callback changed(int, angle);
+
+    width: root.size;
+    height: root.size;
+
+    private property <float> min-angle-deg: -root.arc-angle-deg / 2.0;
+    private property <float> max-angle-deg: root.arc-angle-deg / 2.0;
+    private property <float> step-angle: root.steps > 1 ? root.arc-angle-deg / (root.steps - 1) : 0.0;
+    private property <length> dot-radius: (root.size / 2) + 8px;
+
+    private property <float> snapped-angle-deg: root.min-angle-deg + root.current-step * root.step-angle;
+    private property <float> raw-angle-deg: 0.0;
+
+    private property <angle> current-rotation:
+        (touch.pressed ? root.raw-angle-deg : root.snapped-angle-deg) * 1deg;
+
+    animate current-rotation {
+        duration: touch.pressed ? 0ms : 150ms;
+        easing: ease-out;
+    }
+
+    function set-step(new-step: int) {
+        if new-step != root.current-step {
+            root.current-step = new-step;
+            root.changed(new-step, (root.min-angle-deg + new-step * root.step-angle) * 1deg);
+        }
+    }
+
+    for idx in root.steps: Rectangle {
+        private property <float> dot-angle-deg: root.min-angle-deg + idx * root.step-angle;
+        private property <bool> is-active: idx == root.current-step;
+
+        x: (root.size / 2) + root.dot-radius * Math.sin(self.dot-angle-deg * 1deg) - (self.width / 2);
+        y: (root.size / 2) - root.dot-radius * Math.cos(self.dot-angle-deg * 1deg) - (self.height / 2);
+
+        width: 6px;
+        height: 6px;
+        background: self.is-active ? Theme.colors.primary-font : Theme.colors.fourth-font;
+        border-radius: self.width / 2;
+        drop-shadow-blur: 6px;
+        drop-shadow-color: self.is-active ? #ffffff : transparent;
+
+        animate background, drop-shadow-color {
+            duration: 180ms;
+            easing: ease-in-out;
+        }
+    }
+
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: Icons.knob;
+        transform-rotation: root.current-rotation;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.ns-resize;
+
+        property <length> last-y;
+        property <float> accumulated-scroll: 0.0;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                self.last-y = self.mouse-y;
+                root.raw-angle-deg = root.snapped-angle-deg;
+            }
+        }
+
+        moved => {
+            if self.pressed && root.steps > 1 {
+                let dy = (self.last-y - self.mouse-y) / 1px;
+                self.last-y = self.mouse-y;
+
+                root.raw-angle-deg = Math.max(root.min-angle-deg,
+                    Math.min(root.max-angle-deg, root.raw-angle-deg + dy * root.sensitivity));
+
+                let normalized = (root.raw-angle-deg - root.min-angle-deg) / root.step-angle;
+                root.set-step(Math.max(0, Math.min(root.steps - 1, Math.round(normalized))));
+            }
+        }
+
+        scroll-event(e) => {
+            if root.steps > 1 {
+                self.accumulated-scroll += (e.delta-y / 1px + e.delta-x / 1px) * 0.02;
+
+                if Math.abs(self.accumulated-scroll) >= 1.0 {
+                    let dir = self.accumulated-scroll > 0.0 ? 1 : -1;
+                    root.set-step(Math.max(0, Math.min(root.steps - 1, root.current-step + dir)));
+                    self.accumulated-scroll = 0.0;
+                }
+            }
+            accept
+        }
+    }
+}
+
+export component Knob inherits Rectangle {
+    in property <length> size: 64px;
+    in property <float> min-angle-deg: -135.0;
+    in property <float> max-angle-deg: 135.0;
+    in property <float> sensitivity: 1.2;
+    in-out property <angle> rotation: -90deg;
+    in-out property <bool> dragging: ta.pressed;
+
+    callback changed(angle);
+    callback released();
+
+    width: root.size;
+    height: root.size;
+
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: Icons.knob;
+        transform-rotation: root.rotation;
+        rotation-origin-x: self.width / 2;
+        rotation-origin-y: self.height / 2;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.ns-resize;
+
+        property <length> last-y;
+
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                self.last-y = self.mouse-y;
+            } else if e.kind == PointerEventKind.up {
+                root.released();
+            }
+        }
+
+        moved => {
+            if self.pressed {
+                let dy = (self.last-y - self.mouse-y) / 1px;
+                self.last-y = self.mouse-y;
+
+                let delta-deg = dy * root.sensitivity;
+                let current-deg = root.rotation / 1deg;
+
+                let clamped-deg = Math.max(root.min-angle-deg, Math.min(root.max-angle-deg, current-deg + delta-deg));
+
+                root.rotation = clamped-deg * 1deg;
+                root.changed(root.rotation);
+            }
+        }
+
+        scroll-event(e) => {
+            let scroll-delta = -e.delta-y / 1px + e.delta-x / 1px;
+            let current-deg = root.rotation / 1deg;
+            let delta-deg = scroll-delta * root.sensitivity * 0.4;
+
+            let clamped-deg = Math.max(root.min-angle-deg, Math.min(root.max-angle-deg, current-deg + delta-deg));
+
+            root.rotation = clamped-deg * 1deg;
+            root.changed(root.rotation);
+            accept
+        }
+    }
+}
+
+export struct GradientStop {
+    color: color,
+    position: float,
+    hue-offset: float,
+    val: float,
+}
+
+export component ColorPicker inherits Rectangle {
+    width: 512px;
+    height: 256px;
+
+    in property <[color]> initial;
+    property <bool> is-dragging: false;
+    property <float> center-hue: 226;
+    property <float> center-dist-ratio: 0.6;
+    property <angle> harmony-angle: 50deg;
+
+    property <bool> single-color-mode;
+
+    property <int> stop-count: 1;
+    property <[GradientStop]> stops: [
+        { color: #ffffff, position: 0.0, hue-offset: 0.0, val: 0.86 },
+        { color: #ffffff, position: 0.5, hue-offset: -50.0, val: 0.8 },
+        { color: #ffffff, position: 1.0, hue-offset: 50.0, val: 0.8 }
+    ];
+    property <int> active-stop-index: 0;
+
+    callback preview([color]);
+    callback committed([color]);
+
+    property <length> handle-size: 24px;
+    property <length> step: 6px;
+
+    property <length> reach:
+        (Math.min(color-pad.width, color-pad.height) - root.handle-size) / 2;
+
+    init => {
+        let n = Math.min(3, root.initial.length);
+        if n > 0 {
+            let h0 = root.initial[0].to-hsv();
+            let l = h0.value * (1.0 - h0.saturation / 2.0);
+            root.center-hue = h0.hue;
+            root.center-dist-ratio = Math.min(1.0, l / Math.max(0.01, root.stops[0].val));
+            root.stop-count = n;
+            root.active-stop-index = n - 1;
+
+            if n > 1 {
+                let diff = Math.mod(root.initial[1].to-hsv().hue - h0.hue + 540, 360) - 180;
+                let d = Math.abs(diff);
+                root.harmony-angle = d * 1deg;
+                root.stops[1] = {
+                    color: root.stops[1].color,
+                    position: root.stops[1].position,
+                    hue-offset: -d,
+                    val: root.stops[1].val
+                };
+                root.stops[2] = {
+                    color: root.stops[2].color,
+                    position: root.stops[2].position,
+                    hue-offset: d,
+                    val: root.stops[2].val
+                };
+            }
+        }
+    }
+
+    pure function calc-hue(stop: GradientStop) -> float {
+        Math.mod(root.center-hue + stop.hue-offset + 360, 360)
+    }
+
+    pure function calc-sat() -> float {
+        let normalized-distance = 1.0 - Math.min(root.center-dist-ratio, 1.0);
+        let current-lightness = Math.round((1.0 - normalized-distance) * 100.0);
+        let lightness = current-lightness / 100.0;
+        (90.0 + lightness * 10.0) / 100.0
+    }
+
+    pure function calc-lightness() -> float {
+        Math.max(0.0, Math.min(1.0, root.center-dist-ratio))
+    }
+
+    pure function hsl-to-hsv-v(s-hsl: float, l-hsl: float) -> float {
+        l-hsl + s-hsl * Math.min(l-hsl, 1.0 - l-hsl)
+    }
+
+    pure function hsl-to-hsv-s(s-hsl: float, l-hsl: float) -> float {
+        let v = root.hsl-to-hsv-v(s-hsl, l-hsl);
+        v == 0 ? 0 : 2.0 * (1.0 - (l-hsl / v))
+    }
+
+    pure function calc-color(stop: GradientStop) -> color {
+        let h = root.calc-hue(stop);
+        let s-hsl = root.calc-sat();
+        let l-norm = Math.min(1.0, root.calc-lightness() * stop.val);
+
+        let hsv-s = root.hsl-to-hsv-s(s-hsl, l-norm);
+        let hsv-v = root.hsl-to-hsv-v(s-hsl, l-norm);
+
+        Colors.hsv(h, hsv-s, hsv-v, 1.0)
+    }
+
+    pure function get-active-stop() -> GradientStop {
+        root.stops[root.active-stop-index]
+    }
+
+    function update-harmony-angle(knob-angle: angle) {
+        let mapped-deg = (knob-angle / 1deg) * (180.0 / 270.0);
+        root.harmony-angle = mapped-deg * 1deg;
+
+        root.stops[1] = {
+            color: root.stops[1].color,
+            position: root.stops[1].position,
+            hue-offset: -mapped-deg,
+            val: root.stops[1].val
+        };
+
+        root.stops[2] = {
+            color: root.stops[2].color,
+            position: root.stops[2].position,
+            hue-offset: mapped-deg,
+            val: root.stops[2].val
+        };
+
+        root.emit-preview();
+    }
+
+    function update-stop-lightness(knob-angle: angle) {
+        let norm-val = Math.max(0.0, Math.min(1.0, (knob-angle / 1deg) / 270.0));
+
+        root.stops[0] = {
+            color: root.stops[0].color,
+            position: root.stops[0].position,
+            hue-offset: root.stops[0].hue-offset,
+            val: norm-val
+        };
+        root.stops[1] = {
+            color: root.stops[1].color,
+            position: root.stops[1].position,
+            hue-offset: root.stops[1].hue-offset,
+            val: norm-val
+        };
+        root.stops[2] = {
+            color: root.stops[2].color,
+            position: root.stops[2].position,
+            hue-offset: root.stops[2].hue-offset,
+            val: norm-val
+        };
+
+        root.emit-preview();
+    }
+
+    function emit-preview() {
+        if (root.stop-count == 1) {
+            root.preview([root.calc-color(root.stops[0])]);
+        } else if (root.stop-count == 2) {
+            root.preview([root.calc-color(root.stops[0]), root.calc-color(root.stops[1])]);
+        } else {
+            root.preview([
+                root.calc-color(root.stops[0]),
+                root.calc-color(root.stops[1]),
+                root.calc-color(root.stops[2])
+            ]);
+        }
+    }
+
+    function emit-committed() {
+        if (root.stop-count == 1) {
+            root.committed([root.calc-color(root.stops[0])]);
+        } else if (root.stop-count == 2) {
+            root.committed([root.calc-color(root.stops[0]), root.calc-color(root.stops[1])]);
+        } else {
+            root.committed([
+                root.calc-color(root.stops[0]),
+                root.calc-color(root.stops[1]),
+                root.calc-color(root.stops[2])
+            ]);
+        }
+    }
+
+    function move-center(px: length, py: length) {
+        let dx = (px - color-pad.width / 2) / 1px;
+        let dy = (py - color-pad.height / 2) / 1px;
+        let r = root.reach / 1px;
+
+        let dist = Math.sqrt(dx * dx + dy * dy);
+
+        root.center-hue = Math.mod(Math.atan2(dy, dx) / 1deg + 360, 360);
+        root.center-dist-ratio = Math.min(1.0, dist / r);
+
+        root.emit-preview();
+    }
+
+    function handle-pad-click(px: length, py: length) {
+        root.active-stop-index = 0;
+        root.move-center(px, py);
+    }
+
+    HorizontalLayout {
+        padding: 20px;
+        height: 100%;
+
+        color-pad := Rectangle {
+            width: self.height;
+            border-radius: 48px;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
+            clip: true;
+            background: Theme.colors.third-col;
+
+            grid := Rectangle {
+
+                property <int> columns: Math.max(1, Math.floor(self.width / 1px / (root.step / 1px)));
+                property <int> rows: Math.max(1, Math.floor(self.height / 1px / (root.step / 1px)));
+
+                for i in self.columns * self.rows: Rectangle {
+                    x: Math.mod(i, grid.columns) * root.step + 3.5px;
+                    y: Math.floor(i / grid.columns) * root.step + 3.5px;
+                    width: 1px;
+                    height: 1px;
+                    border-radius: 1px;
+                    background: Theme.colors.primary-font.with-alpha(0.14);
+                }
+            }
+
+            TouchArea {
+                mouse-cursor: MouseCursor.crosshair;
+
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down {
+                        root.is-dragging = false;
+                        root.handle-pad-click(self.mouse-x, self.mouse-y);
+                    } else if e.kind == PointerEventKind.up {
+                        root.is-dragging = false;
+                        root.emit-committed();
+                    }
+                }
+
+                moved => {
+                    if self.pressed {
+                        root.is-dragging = true;
+                        root.move-center(self.mouse-x, self.mouse-y);
+                    }
+                }
+            }
+
+            for stop[idx] in root.stops: Rectangle {
+                visible: idx < root.stop-count;
+
+                x: color-pad.width / 2
+                    + root.center-dist-ratio * root.reach * Math.cos(root.calc-hue(stop) * 1deg)
+                    - self.width / 2;
+
+                y: color-pad.height / 2
+                    + root.center-dist-ratio * root.reach * Math.sin(root.calc-hue(stop) * 1deg)
+                    - self.height / 2;
+
+                animate x, y {
+                    duration: h.dragging || root.is-dragging ? 0ms : 300ms;
+                    easing: Theme.easing;
+                }
+
+                width: root.active-stop-index == idx ? root.handle-size + 6px : root.handle-size;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: root.calc-color(stop);
+                border-width: root.active-stop-index == idx ? 3px : 2px;
+                border-color: root.active-stop-index == idx ? Theme.colors.primary-font : #ffffff;
+
+                drop-shadow-blur: 8px;
+                drop-shadow-color: #00000066;
+
+                TouchArea {
+                    mouse-cursor: MouseCursor.pointer;
+
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down {
+                            root.is-dragging = false;
+                            root.active-stop-index = idx;
+                        } else if e.kind == PointerEventKind.up {
+                            root.is-dragging = false;
+                            root.emit-committed();
+                        }
+                    }
+
+                    moved => {
+                        if self.pressed {
+                            root.is-dragging = true;
+                            root.active-stop-index = idx;
+                            let abs-x = parent.x + self.mouse-x;
+                            let abs-y = parent.y + self.mouse-y;
+                            root.move-center(abs-x, abs-y);
+                        }
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+
+            HorizontalLayout {
+                padding-left: 40px;
+                alignment: space-around;
+                cross-axis-alignment: center;
+
+                if !single-color-mode:RotaryEncoder {
+                    current-step <=> root.active-stop-index;
+                    size: 48px;
+                    steps: 3;
+
+                    changed(step, rotation) => {
+                        root.stop-count = step + 1;
+                        root.active-stop-index = Math.min(root.active-stop-index, root.stop-count - 1);
+                        root.emit-preview();
+                    }
+                }
+
+                h := Knob {
+                    size: 48px;
+                    rotation: ((root.harmony-angle / 1deg) * (270.0 / 180.0) * 1deg);
+                    changed(angle) => {
+                        if root.stop-count == 1 {
+                            root.stop-count = 2;
+                            root.active-stop-index = Math.min(root.active-stop-index, root.stop-count - 1);
+                            root.emit-preview();
+                        }
+                        root.update-harmony-angle(angle);
+                    }
+                    released => { root.emit-committed(); }
+                }
+
+                Knob {
+                    size: 48px;
+                    rotation: (root.get-active-stop().val * 360.0) * 1deg;
+                    changed(angle) => {
+                        root.update-stop-lightness(angle);
+                    }
+                    released => { root.emit-committed(); }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: start;
+                Text {
+                    text: @tr("Colorize icon");
+                }
+
+                Switch { }
+            }
+        }
+    }
+}
