@@ -1,0 +1,606 @@
+import { Theme } from "theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import {
+    GeneralModal,
+    PrimaryButton,
+    LinkButton,
+} from "elements.slint";
+import { Icons } from "icons.slint";
+
+export enum MediaKind {
+    other,
+    photo,
+    video,
+    audio,
+}
+
+export struct ImageProperties {
+    dimensions: string,
+    megapixels: string,
+    aspect-ratio: string,
+    color-space: string,
+    bit-depth: string,
+    camera: string,
+    taken: string,
+    exposure: string,
+    aperture: string,
+    iso: string,
+    focal-length: string,
+    gps: string,
+    gps-lat: float,
+    gps-lon: float,
+}
+
+export struct VideoProperties {
+    dimensions: string,
+    aspect-ratio: string,
+    duration: string,
+    frame-rate: string,
+    video-codec: string,
+    video-bitrate: string,
+    audio-codec: string,
+    audio-info: string,
+}
+
+export struct AudioProperties {
+    title: string,
+    artist: string,
+    album: string,
+    duration: string,
+    codec: string,
+    bitrate: string,
+    sample-rate: string,
+    channels: string,
+}
+
+export struct DirEntryProperties {
+    name: string,
+    path: string,
+    location: string,
+    kind: string,
+    is-dir: bool,
+    is-symlink: bool,
+    link-target: string,
+    size: string,
+    size-on-disk: string,
+    item-count: string,
+    modified: string,
+    created: string,
+    accessed: string,
+    permissions: string,
+    owner: string,
+    group: string,
+    hidden: bool,
+    read-only: bool,
+    icon: image,
+
+    // type-specific
+    media: MediaKind,
+    img: ImageProperties,
+    vid: VideoProperties,
+    aud: AudioProperties,
+}
+
+export global PropertiesBridge {
+    in-out property <bool> open: true;
+
+    in-out property <DirEntryProperties> entry: {
+        name: "IMG_4821.jpg",
+        path: "/home/user/Pictures/2026/IMG_4821.jpg",
+        location: "/home/user/Pictures/2026",
+        kind: "JPEG image",
+        is-dir: false,
+        is-symlink: false,
+        link-target: "",
+        size: "4.8 MiB",
+        size-on-disk: "4.8 MiB",
+        item-count: "",
+        modified: "2026-10-30 17:12",
+        created: "2026-10-30 17:12",
+        accessed: "2026-11-11 08:47",
+        permissions: "rw-r--r-- (0644)",
+        owner: "user",
+        group: "users",
+        hidden: false,
+        read-only: false,
+        icon: @image-url("icons/chevron-down.svg"),
+        media: MediaKind.photo,
+        img: {
+            dimensions: "4032 × 3024",
+            megapixels: "12.2 MP",
+            aspect-ratio: "4:3",
+            color-space: "sRGB",
+            bit-depth: "8-bit",
+            camera: "Apple iPhone 14",
+            taken: "2026-10-30 17:12:08",
+            exposure: "1/120 s",
+            aperture: "f/1.5",
+            iso: "ISO 64",
+            focal-length: "5.7 mm",
+            gps: "51.2465° N, 22.5684° E",
+            gps-lat: 51.2465,
+            gps-lon: 22.5684,
+        },
+        vid: {
+            dimensions: "1920 × 1080",
+            aspect-ratio: "16:9",
+            duration: "00:02:34",
+            frame-rate: "29.97 fps",
+            video-codec: "H.264 (High)",
+            video-bitrate: "8.2 Mbps",
+            audio-codec: "AAC LC",
+            audio-info: "Stereo, 48 kHz, 192 kbps",
+        },
+        aud: {
+            title: "Example Track",
+            artist: "Example Artist",
+            album: "Example Album",
+            duration: "00:03:41",
+            codec: "FLAC",
+            bitrate: "921 kbps",
+            sample-rate: "44.1 kHz",
+            channels: "Stereo",
+        },
+    };
+
+    callback copy-path(string);
+    callback open-location(string);
+    callback open-in-maps(float, float);
+}
+
+component PropGroup inherits VerticalLayout {
+    in property <string> title;
+
+    spacing: 2px;
+
+    Text {
+        text: root.title;
+        color: Theme.colors.third-font;
+        font-size: 0.8rem;
+        font-weight: 600;
+        x: 4px;
+    }
+
+    Rectangle {
+        background: Theme.colors.secondary-col;
+        border-radius: 12px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        border-width: 1px;
+        border-color: Theme.colors.fourth-col;
+        vertical-stretch: 0;
+        preferred-height: card-content.preferred-height;
+
+        card-content := VerticalLayout {
+            padding: 12px;
+            spacing: 8px;
+
+            @children
+        }
+    }
+}
+
+component PropRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> wrap-value: false;
+    in property <string> action-text;
+
+    callback action();
+
+    spacing: 12px;
+
+    Text {
+        width: 110px;
+        text: root.label;
+        color: Theme.colors.third-font;
+        font-size: 0.9rem;
+        vertical-alignment: top;
+    }
+
+    Rectangle {
+        horizontal-stretch: 1;
+        clip: true;
+        preferred-height: value-input.preferred-height;
+
+        value-input := TextInput {
+            width: parent.width;
+            text: root.value;
+            read-only: true;
+            single-line: !root.wrap-value;
+            wrap: root.wrap-value ? TextWrap.char-wrap : TextWrap.no-wrap;
+            vertical-alignment: top;
+            horizontal-alignment: end;
+            selection-background-color: Theme.colors.third-font;
+            selection-foreground-color: Theme.colors.primary-font;
+            color: Theme.colors.primary-font;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+    }
+
+    if root.action-text != "": LinkButton {
+        text: root.action-text;
+        font-size: 0.85rem;
+        vertical-alignment: top;
+        clicked => {
+            root.action();
+        }
+    }
+}
+
+export component Properties inherits GeneralModal {
+    on-close => {
+        PropertiesBridge.open = false;
+    }
+
+    init => {}
+
+    function close() {
+        root.restore-focus();
+        root.on-close();
+    }
+
+    Rectangle {
+        width: min(520px, parent.width - 160px);
+        height: min(520px, parent.height - 160px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+
+        background: Theme.colors.primary-col;
+        border-radius: Theme.config.round-edges ? 24px : 4px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        border-width: 1px;
+        border-color: Theme.colors.fourth-col;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000050;
+        drop-shadow-offset-y: 8px;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        scope := FocusScope {
+
+            key-pressed(event) => { EventResult.reject }
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 16px;
+
+                HorizontalLayout {
+                    spacing: 14px;
+                    height: 48px;
+
+                    Image {
+                        source: PropertiesBridge.entry.icon;
+                        width: 48px;
+                        height: 48px;
+                    }
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        spacing: 2px;
+
+                        Text {
+                            text: PropertiesBridge.entry.name;
+                            color: Theme.colors.primary-font;
+                            font-size: 20px;
+                            font-weight: 600;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: PropertiesBridge.entry.is-dir
+                                ? PropertiesBridge.entry.kind
+                                : PropertiesBridge.entry.kind + "  " + PropertiesBridge.entry.size;
+                            color: Theme.colors.third-font;
+                            font-size: 0.9rem;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                ScrollView {
+                    vertical-stretch: 1;
+                    horizontal-stretch: 1;
+
+                    VerticalLayout {
+                        width: 100%;
+                        padding-right: 10px;
+                        spacing: 14px;
+
+                        PropGroup {
+                            title: @tr("General");
+
+                            PropRow {
+                                label: @tr("Name");
+                                value: PropertiesBridge.entry.name;
+                                wrap-value: true;
+                            }
+
+                            PropRow {
+                                label: @tr("Type");
+                                value: PropertiesBridge.entry.kind;
+                            }
+
+                            PropRow {
+                                label: @tr("Location");
+                                value: PropertiesBridge.entry.location;
+                                wrap-value: true;
+                            }
+
+                            if PropertiesBridge.entry.is-symlink: PropRow {
+                                label: @tr("Links to");
+                                value: PropertiesBridge.entry.link-target;
+                                wrap-value: true;
+                            }
+
+                            PropRow {
+                                label: @tr("Size");
+                                value: PropertiesBridge.entry.size;
+                            }
+
+                            if !PropertiesBridge.entry.is-dir && PropertiesBridge.entry.size-on-disk != "": PropRow {
+                                label: @tr("Size on disk");
+                                value: PropertiesBridge.entry.size-on-disk;
+                            }
+
+                            if PropertiesBridge.entry.is-dir && PropertiesBridge.entry.item-count != "": PropRow {
+                                label: @tr("Contents");
+                                value: PropertiesBridge.entry.item-count;
+                            }
+
+                            PropRow {
+                                label: @tr("Hidden");
+                                value: PropertiesBridge.entry.hidden ? @tr("Yes") : @tr("No");
+                            }
+                        }
+
+                        if PropertiesBridge.entry.media == MediaKind.photo: PropGroup {
+                            title: @tr("Image");
+
+                            if PropertiesBridge.entry.img.dimensions != "": PropRow {
+                                label: @tr("Dimensions");
+                                value: PropertiesBridge.entry.img.dimensions;
+                            }
+
+                            if PropertiesBridge.entry.img.megapixels != "": PropRow {
+                                label: @tr("Megapixels");
+                                value: PropertiesBridge.entry.img.megapixels;
+                            }
+
+                            if PropertiesBridge.entry.img.aspect-ratio != "": PropRow {
+                                label: @tr("Aspect ratio");
+                                value: PropertiesBridge.entry.img.aspect-ratio;
+                            }
+
+                            if PropertiesBridge.entry.img.color-space != "": PropRow {
+                                label: @tr("Color space");
+                                value: PropertiesBridge.entry.img.color-space;
+                            }
+
+                            if PropertiesBridge.entry.img.bit-depth != "": PropRow {
+                                label: @tr("Bit depth");
+                                value: PropertiesBridge.entry.img.bit-depth;
+                            }
+                        }
+
+                        if PropertiesBridge.entry.media == MediaKind.photo
+                            && (PropertiesBridge.entry.img.camera != ""
+                            || PropertiesBridge.entry.img.taken != ""
+                            || PropertiesBridge.entry.img.gps != ""): PropGroup {
+                            title: @tr("Camera");
+
+                            if PropertiesBridge.entry.img.camera != "": PropRow {
+                                label: @tr("Camera");
+                                value: PropertiesBridge.entry.img.camera;
+                            }
+
+                            if PropertiesBridge.entry.img.taken != "": PropRow {
+                                label: @tr("Taken");
+                                value: PropertiesBridge.entry.img.taken;
+                            }
+
+                            if PropertiesBridge.entry.img.exposure != "": PropRow {
+                                label: @tr("Exposure");
+                                value: PropertiesBridge.entry.img.exposure;
+                            }
+
+                            if PropertiesBridge.entry.img.aperture != "": PropRow {
+                                label: @tr("Aperture");
+                                value: PropertiesBridge.entry.img.aperture;
+                            }
+
+                            if PropertiesBridge.entry.img.iso != "": PropRow {
+                                label: @tr("ISO");
+                                value: PropertiesBridge.entry.img.iso;
+                            }
+
+                            if PropertiesBridge.entry.img.focal-length != "": PropRow {
+                                label: @tr("Focal length");
+                                value: PropertiesBridge.entry.img.focal-length;
+                            }
+
+                            if PropertiesBridge.entry.img.gps != "": PropRow {
+                                label: @tr("Location");
+                                value: PropertiesBridge.entry.img.gps;
+                                action-text: @tr("Open in browser");
+                                action => {
+                                    PropertiesBridge.open-in-maps(
+                                        PropertiesBridge.entry.img.gps-lat,
+                                        PropertiesBridge.entry.img.gps-lon);
+                                }
+                            }
+                        }
+
+                        if PropertiesBridge.entry.media == MediaKind.video: PropGroup {
+                            title: @tr("Video");
+
+                            if PropertiesBridge.entry.vid.dimensions != "": PropRow {
+                                label: @tr("Dimensions");
+                                value: PropertiesBridge.entry.vid.dimensions;
+                            }
+
+                            if PropertiesBridge.entry.vid.aspect-ratio != "": PropRow {
+                                label: @tr("Aspect ratio");
+                                value: PropertiesBridge.entry.vid.aspect-ratio;
+                            }
+
+                            if PropertiesBridge.entry.vid.duration != "": PropRow {
+                                label: @tr("Duration");
+                                value: PropertiesBridge.entry.vid.duration;
+                            }
+
+                            if PropertiesBridge.entry.vid.frame-rate != "": PropRow {
+                                label: @tr("Frame rate");
+                                value: PropertiesBridge.entry.vid.frame-rate;
+                            }
+
+                            if PropertiesBridge.entry.vid.video-codec != "": PropRow {
+                                label: @tr("Codec");
+                                value: PropertiesBridge.entry.vid.video-codec;
+                            }
+
+                            if PropertiesBridge.entry.vid.video-bitrate != "": PropRow {
+                                label: @tr("Bitrate");
+                                value: PropertiesBridge.entry.vid.video-bitrate;
+                            }
+                        }
+
+                        if PropertiesBridge.entry.media == MediaKind.video
+                            && PropertiesBridge.entry.vid.audio-codec != "": PropGroup {
+                            title: @tr("Audio track");
+
+                            PropRow {
+                                label: @tr("Codec");
+                                value: PropertiesBridge.entry.vid.audio-codec;
+                            }
+
+                            if PropertiesBridge.entry.vid.audio-info != "": PropRow {
+                                label: @tr("Details");
+                                value: PropertiesBridge.entry.vid.audio-info;
+                            }
+                        }
+
+                        if PropertiesBridge.entry.media == MediaKind.audio: PropGroup {
+                            title: @tr("Audio");
+
+                            if PropertiesBridge.entry.aud.title != "": PropRow {
+                                label: @tr("Title");
+                                value: PropertiesBridge.entry.aud.title;
+                            }
+
+                            if PropertiesBridge.entry.aud.artist != "": PropRow {
+                                label: @tr("Artist");
+                                value: PropertiesBridge.entry.aud.artist;
+                            }
+
+                            if PropertiesBridge.entry.aud.album != "": PropRow {
+                                label: @tr("Album");
+                                value: PropertiesBridge.entry.aud.album;
+                            }
+
+                            if PropertiesBridge.entry.aud.duration != "": PropRow {
+                                label: @tr("Duration");
+                                value: PropertiesBridge.entry.aud.duration;
+                            }
+
+                            if PropertiesBridge.entry.aud.codec != "": PropRow {
+                                label: @tr("Codec");
+                                value: PropertiesBridge.entry.aud.codec;
+                            }
+
+                            if PropertiesBridge.entry.aud.bitrate != "": PropRow {
+                                label: @tr("Bitrate");
+                                value: PropertiesBridge.entry.aud.bitrate;
+                            }
+
+                            if PropertiesBridge.entry.aud.sample-rate != "": PropRow {
+                                label: @tr("Sample rate");
+                                value: PropertiesBridge.entry.aud.sample-rate;
+                            }
+
+                            if PropertiesBridge.entry.aud.channels != "": PropRow {
+                                label: @tr("Channels");
+                                value: PropertiesBridge.entry.aud.channels;
+                            }
+                        }
+
+                        PropGroup {
+                            title: @tr("Dates");
+
+                            PropRow {
+                                label: @tr("Modified");
+                                value: PropertiesBridge.entry.modified;
+                            }
+
+                            PropRow {
+                                label: @tr("Created");
+                                value: PropertiesBridge.entry.created;
+                            }
+
+                            PropRow {
+                                label: @tr("Accessed");
+                                value: PropertiesBridge.entry.accessed;
+                            }
+                        }
+
+                        PropGroup {
+                            title: @tr("Permissions");
+
+                            PropRow {
+                                label: @tr("Access");
+                                value: PropertiesBridge.entry.read-only ? @tr("Read-only") : @tr("Read & write");
+                            }
+
+                            if PropertiesBridge.entry.permissions != "": PropRow {
+                                label: @tr("Mode");
+                                value: PropertiesBridge.entry.permissions;
+                            }
+
+                            if PropertiesBridge.entry.owner != "": PropRow {
+                                label: @tr("Owner");
+                                value: PropertiesBridge.entry.owner;
+                            }
+
+                            if PropertiesBridge.entry.group != "": PropRow {
+                                label: @tr("Group");
+                                value: PropertiesBridge.entry.group;
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    PrimaryButton {
+                        alt: true;
+                        text: @tr("Copy path");
+                        image: Icons.clipboard;
+                        clicked => {
+                            PropertiesBridge.copy-path(PropertiesBridge.entry.path);
+                        }
+                    }
+
+                    PrimaryButton {
+                        alt: true;
+                        text: @tr("Open with");
+                        clicked => {
+                            PropertiesBridge.open-location(PropertiesBridge.entry.location);
+                        }
+                    }
+
+                    PrimaryButton {
+                        text: @tr("Close");
+                        clicked => {
+                            root.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
