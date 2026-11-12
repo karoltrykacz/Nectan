@@ -4,8 +4,10 @@ import {
     GeneralModal,
     PrimaryButton,
     LinkButton,
+    Spinner,
 } from "elements.slint";
 import { Icons } from "icons.slint";
+import { WindowBridge } from "window.slint";
 
 export enum MediaKind {
     other,
@@ -32,6 +34,7 @@ export struct ImageProperties {
 }
 
 export struct VideoProperties {
+    no-ffprobe: bool,
     dimensions: string,
     aspect-ratio: string,
     duration: string,
@@ -82,69 +85,13 @@ export struct DirEntryProperties {
 }
 
 export global PropertiesBridge {
-    in-out property <bool> open: true;
+    in-out property <bool> open;
+    in-out property <bool> loading;
+    in-out property <string> error;
 
-    in-out property <DirEntryProperties> entry: {
-        name: "IMG_4821.jpg",
-        path: "/home/user/Pictures/2026/IMG_4821.jpg",
-        location: "/home/user/Pictures/2026",
-        kind: "JPEG image",
-        is-dir: false,
-        is-symlink: false,
-        link-target: "",
-        size: "4.8 MiB",
-        size-on-disk: "4.8 MiB",
-        item-count: "",
-        modified: "2026-10-30 17:12",
-        created: "2026-10-30 17:12",
-        accessed: "2026-11-11 08:47",
-        permissions: "rw-r--r-- (0644)",
-        owner: "user",
-        group: "users",
-        hidden: false,
-        read-only: false,
-        icon: @image-url("icons/chevron-down.svg"),
-        media: MediaKind.photo,
-        img: {
-            dimensions: "4032 × 3024",
-            megapixels: "12.2 MP",
-            aspect-ratio: "4:3",
-            color-space: "sRGB",
-            bit-depth: "8-bit",
-            camera: "Apple iPhone 14",
-            taken: "2026-10-30 17:12:08",
-            exposure: "1/120 s",
-            aperture: "f/1.5",
-            iso: "ISO 64",
-            focal-length: "5.7 mm",
-            gps: "51.2465° N, 22.5684° E",
-            gps-lat: 51.2465,
-            gps-lon: 22.5684,
-        },
-        vid: {
-            dimensions: "1920 × 1080",
-            aspect-ratio: "16:9",
-            duration: "00:02:34",
-            frame-rate: "29.97 fps",
-            video-codec: "H.264 (High)",
-            video-bitrate: "8.2 Mbps",
-            audio-codec: "AAC LC",
-            audio-info: "Stereo, 48 kHz, 192 kbps",
-        },
-        aud: {
-            title: "Example Track",
-            artist: "Example Artist",
-            album: "Example Album",
-            duration: "00:03:41",
-            codec: "FLAC",
-            bitrate: "921 kbps",
-            sample-rate: "44.1 kHz",
-            channels: "Stereo",
-        },
-    };
+    in-out property <DirEntryProperties> entry;
 
-    callback copy-path(string);
-    callback open-location(string);
+    callback copy-path();
     callback open-in-maps(float, float);
 }
 
@@ -156,7 +103,7 @@ component PropGroup inherits VerticalLayout {
     Text {
         text: root.title;
         color: Theme.colors.third-font;
-        font-size: 0.8rem;
+        font-size: 0.9rem;
         font-weight: 600;
         x: 4px;
     }
@@ -168,9 +115,8 @@ component PropGroup inherits VerticalLayout {
         border-width: 1px;
         border-color: Theme.colors.fourth-col;
         vertical-stretch: 0;
-        preferred-height: card-content.preferred-height;
 
-        card-content := VerticalLayout {
+        VerticalLayout {
             padding: 12px;
             spacing: 8px;
 
@@ -190,38 +136,34 @@ component PropRow inherits HorizontalLayout {
     spacing: 12px;
 
     Text {
-        width: 110px;
         text: root.label;
         color: Theme.colors.third-font;
-        font-size: 0.9rem;
-        vertical-alignment: top;
+        font-size: 1rem;
     }
 
     Rectangle {
         horizontal-stretch: 1;
         clip: true;
-        preferred-height: value-input.preferred-height;
 
-        value-input := TextInput {
+        TextInput {
             width: parent.width;
             text: root.value;
             read-only: true;
             single-line: !root.wrap-value;
             wrap: root.wrap-value ? TextWrap.char-wrap : TextWrap.no-wrap;
-            vertical-alignment: top;
             horizontal-alignment: end;
             selection-background-color: Theme.colors.third-font;
             selection-foreground-color: Theme.colors.primary-font;
             color: Theme.colors.primary-font;
-            font-size: 0.9rem;
+            font-size: 1rem;
             font-weight: 500;
         }
     }
 
     if root.action-text != "": LinkButton {
         text: root.action-text;
-        font-size: 0.85rem;
-        vertical-alignment: top;
+        font-size: 0.9rem;
+
         clicked => {
             root.action();
         }
@@ -263,19 +205,36 @@ export component Properties inherits GeneralModal {
 
             key-pressed(event) => { EventResult.reject }
 
-            VerticalLayout {
+            if PropertiesBridge.loading: VerticalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                spacing: 16px;
+
+                Text {
+                    text: @tr("Loading");
+                    color: Theme.colors.primary-font;
+                    font-size: 15px;
+                    font-weight: 500;
+                    overflow: elide;
+                }
+
+                Spinner { }
+            }
+
+            if !PropertiesBridge.loading: VerticalLayout {
                 padding: 20px;
+                padding-top: 16px;
                 spacing: 16px;
 
                 HorizontalLayout {
                     spacing: 14px;
                     height: 48px;
 
-                    Image {
-                        source: PropertiesBridge.entry.icon;
-                        width: 48px;
-                        height: 48px;
-                    }
+                    // Image {
+                    //     source: PropertiesBridge.entry.icon;
+                    //     width: 48px;
+                    //     height: 48px;
+                    // }
 
                     VerticalLayout {
                         horizontal-stretch: 1;
@@ -425,7 +384,7 @@ export component Properties inherits GeneralModal {
                             if PropertiesBridge.entry.img.gps != "": PropRow {
                                 label: @tr("Location");
                                 value: PropertiesBridge.entry.img.gps;
-                                action-text: @tr("Open in browser");
+                                action-text: @tr("See on maps");
                                 action => {
                                     PropertiesBridge.open-in-maps(
                                         PropertiesBridge.entry.img.gps-lat,
@@ -437,6 +396,11 @@ export component Properties inherits GeneralModal {
                         if PropertiesBridge.entry.media == MediaKind.video: PropGroup {
                             title: @tr("Video");
 
+                            if PropertiesBridge.entry.vid.no-ffprobe: Text {
+                                text: "ffprobe not found";
+                                color: Theme.colors.third-font;
+                                font-size: 1rem;
+                            }
                             if PropertiesBridge.entry.vid.dimensions != "": PropRow {
                                 label: @tr("Dimensions");
                                 value: PropertiesBridge.entry.vid.dimensions;
@@ -581,22 +545,7 @@ export component Properties inherits GeneralModal {
                         text: @tr("Copy path");
                         image: Icons.clipboard;
                         clicked => {
-                            PropertiesBridge.copy-path(PropertiesBridge.entry.path);
-                        }
-                    }
-
-                    PrimaryButton {
-                        alt: true;
-                        text: @tr("Open with");
-                        clicked => {
-                            PropertiesBridge.open-location(PropertiesBridge.entry.location);
-                        }
-                    }
-
-                    PrimaryButton {
-                        text: @tr("Close");
-                        clicked => {
-                            root.close();
+                            PropertiesBridge.copy-path();
                         }
                     }
                 }
