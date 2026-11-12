@@ -14,46 +14,101 @@ export enum MediaKind {
     photo,
     video,
     audio,
+    text,
 }
 
 export struct ImageProperties {
+    has-image: bool,
+    has-camera: bool,
+    has-location: bool,
+    has-details: bool,
     dimensions: string,
     megapixels: string,
     aspect-ratio: string,
     color-space: string,
     bit-depth: string,
+    orientation: string,
+    resolution: string,
     camera: string,
+    lens: string,
     taken: string,
     exposure: string,
     aperture: string,
     iso: string,
     focal-length: string,
+    focal-length-35: string,
+    exposure-bias: string,
+    exposure-program: string,
+    metering: string,
+    white-balance: string,
+    flash: string,
     gps: string,
     gps-lat: float,
     gps-lon: float,
+    altitude: string,
+    software: string,
+    artist: string,
+    copyright: string,
 }
 
 export struct VideoProperties {
     no-ffprobe: bool,
+    container: string,
+    bitrate: string,
+    title: string,
+    created: string,
     dimensions: string,
     aspect-ratio: string,
+    rotation: string,
     duration: string,
     frame-rate: string,
     video-codec: string,
     video-bitrate: string,
+    pixel-format: string,
+    bit-depth: string,
+    color: string,
+    hdr: string,
+    subtitles: string,
     audio-codec: string,
     audio-info: string,
+    audio-tracks: string,
 }
 
 export struct AudioProperties {
     title: string,
     artist: string,
     album: string,
+    album-artist: string,
+    composer: string,
+    genre: string,
+    year: string,
+    track: string,
+    disc: string,
     duration: string,
     codec: string,
+    quality: string,
     bitrate: string,
     sample-rate: string,
     channels: string,
+    bit-depth: string,
+    cover: string,
+}
+
+export struct TextProperties {
+    encoding: string,
+    lines: string,
+    line-endings: string,
+}
+
+export struct DirProperties {
+    scanning: bool,
+    size: string,
+    size-on-disk: string,
+    items: string,
+    files: string,
+    folders: string,
+    hidden: string,
+    links: string,
 }
 
 export struct DirEntryProperties {
@@ -66,7 +121,6 @@ export struct DirEntryProperties {
     link-target: string,
     size: string,
     size-on-disk: string,
-    item-count: string,
     modified: string,
     created: string,
     accessed: string,
@@ -76,12 +130,11 @@ export struct DirEntryProperties {
     hidden: bool,
     read-only: bool,
     icon: image,
-
-    // type-specific
     media: MediaKind,
     img: ImageProperties,
     vid: VideoProperties,
     aud: AudioProperties,
+    txt: TextProperties,
 }
 
 export global PropertiesBridge {
@@ -90,9 +143,11 @@ export global PropertiesBridge {
     in-out property <string> error;
 
     in-out property <DirEntryProperties> entry;
+    in-out property <DirProperties> folder;
 
     callback copy-path();
     callback open-in-maps(float, float);
+    callback closed();
 }
 
 component PropGroup inherits VerticalLayout {
@@ -171,8 +226,16 @@ component PropRow inherits HorizontalLayout {
 }
 
 export component Properties inherits GeneralModal {
+    property <DirEntryProperties> ent: PropertiesBridge.entry;
+    property <DirProperties> fol: PropertiesBridge.folder;
+    property <ImageProperties> img: PropertiesBridge.entry.img;
+    property <VideoProperties> vid: PropertiesBridge.entry.vid;
+    property <AudioProperties> aud: PropertiesBridge.entry.aud;
+    property <TextProperties> txt: PropertiesBridge.entry.txt;
+
     on-close => {
         PropertiesBridge.open = false;
+        PropertiesBridge.closed();
     }
 
     init => {}
@@ -230,19 +293,13 @@ export component Properties inherits GeneralModal {
                     spacing: 14px;
                     height: 48px;
 
-                    // Image {
-                    //     source: PropertiesBridge.entry.icon;
-                    //     width: 48px;
-                    //     height: 48px;
-                    // }
-
                     VerticalLayout {
                         horizontal-stretch: 1;
                         alignment: center;
                         spacing: 2px;
 
                         Text {
-                            text: PropertiesBridge.entry.name;
+                            text: root.ent.name;
                             color: Theme.colors.primary-font;
                             font-size: 20px;
                             font-weight: 600;
@@ -250,9 +307,9 @@ export component Properties inherits GeneralModal {
                         }
 
                         Text {
-                            text: PropertiesBridge.entry.is-dir
-                                ? PropertiesBridge.entry.kind
-                                : PropertiesBridge.entry.kind + "  " + PropertiesBridge.entry.size;
+                            text: root.ent.is-dir
+                                ? root.ent.kind
+                                : root.ent.kind + "  " + root.ent.size;
                             color: Theme.colors.third-font;
                             font-size: 0.9rem;
                             overflow: elide;
@@ -274,220 +331,465 @@ export component Properties inherits GeneralModal {
 
                             PropRow {
                                 label: @tr("Name");
-                                value: PropertiesBridge.entry.name;
+                                value: root.ent.name;
                                 wrap-value: true;
                             }
 
                             PropRow {
                                 label: @tr("Type");
-                                value: PropertiesBridge.entry.kind;
+                                value: root.ent.kind;
                             }
 
                             PropRow {
                                 label: @tr("Location");
-                                value: PropertiesBridge.entry.location;
+                                value: root.ent.location;
                                 wrap-value: true;
                             }
 
-                            if PropertiesBridge.entry.is-symlink: PropRow {
+                            if root.ent.is-symlink: PropRow {
                                 label: @tr("Links to");
-                                value: PropertiesBridge.entry.link-target;
+                                value: root.ent.link-target;
                                 wrap-value: true;
                             }
 
-                            PropRow {
+                            if !root.ent.is-dir: PropRow {
                                 label: @tr("Size");
-                                value: PropertiesBridge.entry.size;
+                                value: root.ent.size;
                             }
 
-                            if !PropertiesBridge.entry.is-dir && PropertiesBridge.entry.size-on-disk != "": PropRow {
+                            if !root.ent.is-dir && root.ent.size-on-disk != "": PropRow {
                                 label: @tr("Size on disk");
-                                value: PropertiesBridge.entry.size-on-disk;
-                            }
-
-                            if PropertiesBridge.entry.is-dir && PropertiesBridge.entry.item-count != "": PropRow {
-                                label: @tr("Contents");
-                                value: PropertiesBridge.entry.item-count;
+                                value: root.ent.size-on-disk;
                             }
 
                             PropRow {
                                 label: @tr("Hidden");
-                                value: PropertiesBridge.entry.hidden ? @tr("Yes") : @tr("No");
+                                value: root.ent.hidden ? @tr("Yes") : @tr("No");
                             }
                         }
 
-                        if PropertiesBridge.entry.media == MediaKind.photo: PropGroup {
+                        if root.ent.is-dir: PropGroup {
+                            title: @tr("Contents");
+
+                            PropRow {
+                                label: @tr("Size");
+                                value: root.fol.size;
+                            }
+
+                            PropRow {
+                                label: @tr("Size on disk");
+                                value: root.fol.size-on-disk;
+                            }
+
+                            PropRow {
+                                label: @tr("Items");
+                                value: root.fol.items;
+                            }
+
+                            PropRow {
+                                label: @tr("Total files");
+                                value: root.fol.files;
+                            }
+
+                            PropRow {
+                                label: @tr("Total folders");
+                                value: root.fol.folders;
+                            }
+
+                            PropRow {
+                                label: @tr("Hidden items");
+                                value: root.fol.hidden;
+                            }
+
+                            if root.fol.links != "" && root.fol.links != "0": PropRow {
+                                label: @tr("Symlinks");
+                                value: root.fol.links;
+                            }
+
+                            PropRow {
+                                label: @tr("Status");
+                                value: root.fol.scanning ? @tr("Scanning…") : @tr("Complete");
+                            }
+                        }
+
+                        if root.ent.media == MediaKind.photo && root.img.has-image: PropGroup {
                             title: @tr("Image");
 
-                            if PropertiesBridge.entry.img.dimensions != "": PropRow {
+                            if root.img.dimensions != "": PropRow {
                                 label: @tr("Dimensions");
-                                value: PropertiesBridge.entry.img.dimensions;
+                                value: root.img.dimensions;
                             }
 
-                            if PropertiesBridge.entry.img.megapixels != "": PropRow {
+                            if root.img.megapixels != "": PropRow {
                                 label: @tr("Megapixels");
-                                value: PropertiesBridge.entry.img.megapixels;
+                                value: root.img.megapixels;
                             }
 
-                            if PropertiesBridge.entry.img.aspect-ratio != "": PropRow {
+                            if root.img.aspect-ratio != "": PropRow {
                                 label: @tr("Aspect ratio");
-                                value: PropertiesBridge.entry.img.aspect-ratio;
+                                value: root.img.aspect-ratio;
                             }
 
-                            if PropertiesBridge.entry.img.color-space != "": PropRow {
+                            if root.img.orientation != "": PropRow {
+                                label: @tr("Orientation");
+                                value: root.img.orientation;
+                            }
+
+                            if root.img.resolution != "": PropRow {
+                                label: @tr("Resolution");
+                                value: root.img.resolution;
+                            }
+
+                            if root.img.color-space != "": PropRow {
                                 label: @tr("Color space");
-                                value: PropertiesBridge.entry.img.color-space;
+                                value: root.img.color-space;
                             }
 
-                            if PropertiesBridge.entry.img.bit-depth != "": PropRow {
+                            if root.img.bit-depth != "": PropRow {
                                 label: @tr("Bit depth");
-                                value: PropertiesBridge.entry.img.bit-depth;
+                                value: root.img.bit-depth;
                             }
                         }
 
-                        if PropertiesBridge.entry.media == MediaKind.photo
-                            && (PropertiesBridge.entry.img.camera != ""
-                            || PropertiesBridge.entry.img.taken != ""
-                            || PropertiesBridge.entry.img.gps != ""): PropGroup {
+                        if root.ent.media == MediaKind.photo && root.img.has-camera: PropGroup {
                             title: @tr("Camera");
 
-                            if PropertiesBridge.entry.img.camera != "": PropRow {
+                            if root.img.camera != "": PropRow {
                                 label: @tr("Camera");
-                                value: PropertiesBridge.entry.img.camera;
+                                value: root.img.camera;
                             }
 
-                            if PropertiesBridge.entry.img.taken != "": PropRow {
+                            if root.img.lens != "": PropRow {
+                                label: @tr("Lens");
+                                value: root.img.lens;
+                                wrap-value: true;
+                            }
+
+                            if root.img.taken != "": PropRow {
                                 label: @tr("Taken");
-                                value: PropertiesBridge.entry.img.taken;
+                                value: root.img.taken;
                             }
 
-                            if PropertiesBridge.entry.img.exposure != "": PropRow {
+                            if root.img.exposure != "": PropRow {
                                 label: @tr("Exposure");
-                                value: PropertiesBridge.entry.img.exposure;
+                                value: root.img.exposure;
                             }
 
-                            if PropertiesBridge.entry.img.aperture != "": PropRow {
+                            if root.img.aperture != "": PropRow {
                                 label: @tr("Aperture");
-                                value: PropertiesBridge.entry.img.aperture;
+                                value: root.img.aperture;
                             }
 
-                            if PropertiesBridge.entry.img.iso != "": PropRow {
+                            if root.img.iso != "": PropRow {
                                 label: @tr("ISO");
-                                value: PropertiesBridge.entry.img.iso;
+                                value: root.img.iso;
                             }
 
-                            if PropertiesBridge.entry.img.focal-length != "": PropRow {
+                            if root.img.focal-length != "": PropRow {
                                 label: @tr("Focal length");
-                                value: PropertiesBridge.entry.img.focal-length;
+                                value: root.img.focal-length;
                             }
 
-                            if PropertiesBridge.entry.img.gps != "": PropRow {
-                                label: @tr("Location");
-                                value: PropertiesBridge.entry.img.gps;
+                            if root.img.focal-length-35 != "": PropRow {
+                                label: @tr("Focal length (35mm)");
+                                value: root.img.focal-length-35;
+                            }
+
+                            if root.img.exposure-bias != "": PropRow {
+                                label: @tr("Exposure bias");
+                                value: root.img.exposure-bias;
+                            }
+
+                            if root.img.exposure-program != "": PropRow {
+                                label: @tr("Exposure program");
+                                value: root.img.exposure-program;
+                            }
+
+                            if root.img.metering != "": PropRow {
+                                label: @tr("Metering");
+                                value: root.img.metering;
+                            }
+
+                            if root.img.white-balance != "": PropRow {
+                                label: @tr("White balance");
+                                value: root.img.white-balance;
+                            }
+
+                            if root.img.flash != "": PropRow {
+                                label: @tr("Flash");
+                                value: root.img.flash;
+                                wrap-value: true;
+                            }
+                        }
+
+                        if root.ent.media == MediaKind.photo && root.img.has-location: PropGroup {
+                            title: @tr("Location");
+
+                            if root.img.gps != "": PropRow {
+                                label: @tr("Coordinates");
+                                value: root.img.gps;
                                 action-text: @tr("See on maps");
                                 action => {
                                     PropertiesBridge.open-in-maps(
-                                        PropertiesBridge.entry.img.gps-lat,
-                                        PropertiesBridge.entry.img.gps-lon);
+                                        root.img.gps-lat,
+                                        root.img.gps-lon);
                                 }
+                            }
+
+                            if root.img.altitude != "": PropRow {
+                                label: @tr("Altitude");
+                                value: root.img.altitude;
                             }
                         }
 
-                        if PropertiesBridge.entry.media == MediaKind.video: PropGroup {
+                        if root.ent.media == MediaKind.photo && root.img.has-details: PropGroup {
+                            title: @tr("Details");
+
+                            if root.img.software != "": PropRow {
+                                label: @tr("Software");
+                                value: root.img.software;
+                                wrap-value: true;
+                            }
+
+                            if root.img.artist != "": PropRow {
+                                label: @tr("Artist");
+                                value: root.img.artist;
+                                wrap-value: true;
+                            }
+
+                            if root.img.copyright != "": PropRow {
+                                label: @tr("Copyright");
+                                value: root.img.copyright;
+                                wrap-value: true;
+                            }
+                        }
+
+                        if root.ent.media == MediaKind.video: PropGroup {
                             title: @tr("Video");
 
-                            if PropertiesBridge.entry.vid.no-ffprobe: Text {
+                            if root.vid.no-ffprobe: Text {
                                 text: "ffprobe not found";
                                 color: Theme.colors.third-font;
                                 font-size: 1rem;
                             }
-                            if PropertiesBridge.entry.vid.dimensions != "": PropRow {
+
+                            if root.vid.dimensions != "": PropRow {
                                 label: @tr("Dimensions");
-                                value: PropertiesBridge.entry.vid.dimensions;
+                                value: root.vid.dimensions;
                             }
 
-                            if PropertiesBridge.entry.vid.aspect-ratio != "": PropRow {
+                            if root.vid.aspect-ratio != "": PropRow {
                                 label: @tr("Aspect ratio");
-                                value: PropertiesBridge.entry.vid.aspect-ratio;
+                                value: root.vid.aspect-ratio;
                             }
 
-                            if PropertiesBridge.entry.vid.duration != "": PropRow {
+                            if root.vid.rotation != "": PropRow {
+                                label: @tr("Rotation");
+                                value: root.vid.rotation;
+                            }
+
+                            if root.vid.duration != "": PropRow {
                                 label: @tr("Duration");
-                                value: PropertiesBridge.entry.vid.duration;
+                                value: root.vid.duration;
                             }
 
-                            if PropertiesBridge.entry.vid.frame-rate != "": PropRow {
+                            if root.vid.frame-rate != "": PropRow {
                                 label: @tr("Frame rate");
-                                value: PropertiesBridge.entry.vid.frame-rate;
+                                value: root.vid.frame-rate;
                             }
 
-                            if PropertiesBridge.entry.vid.video-codec != "": PropRow {
+                            if root.vid.video-codec != "": PropRow {
                                 label: @tr("Codec");
-                                value: PropertiesBridge.entry.vid.video-codec;
+                                value: root.vid.video-codec;
                             }
 
-                            if PropertiesBridge.entry.vid.video-bitrate != "": PropRow {
+                            if root.vid.video-bitrate != "": PropRow {
                                 label: @tr("Bitrate");
-                                value: PropertiesBridge.entry.vid.video-bitrate;
+                                value: root.vid.video-bitrate;
+                            }
+
+                            if root.vid.pixel-format != "": PropRow {
+                                label: @tr("Pixel format");
+                                value: root.vid.pixel-format;
+                            }
+
+                            if root.vid.bit-depth != "": PropRow {
+                                label: @tr("Bit depth");
+                                value: root.vid.bit-depth;
+                            }
+
+                            if root.vid.color != "": PropRow {
+                                label: @tr("Color");
+                                value: root.vid.color;
+                            }
+
+                            if root.vid.hdr != "": PropRow {
+                                label: @tr("HDR");
+                                value: root.vid.hdr;
+                            }
+
+                            if root.vid.subtitles != "": PropRow {
+                                label: @tr("Subtitles");
+                                value: root.vid.subtitles;
                             }
                         }
 
-                        if PropertiesBridge.entry.media == MediaKind.video
-                            && PropertiesBridge.entry.vid.audio-codec != "": PropGroup {
+                        if root.ent.media == MediaKind.video
+                            && root.vid.audio-codec != "": PropGroup {
                             title: @tr("Audio track");
 
                             PropRow {
                                 label: @tr("Codec");
-                                value: PropertiesBridge.entry.vid.audio-codec;
+                                value: root.vid.audio-codec;
                             }
 
-                            if PropertiesBridge.entry.vid.audio-info != "": PropRow {
+                            if root.vid.audio-info != "": PropRow {
                                 label: @tr("Details");
-                                value: PropertiesBridge.entry.vid.audio-info;
+                                value: root.vid.audio-info;
+                            }
+
+                            if root.vid.audio-tracks != "": PropRow {
+                                label: @tr("Tracks");
+                                value: root.vid.audio-tracks;
                             }
                         }
 
-                        if PropertiesBridge.entry.media == MediaKind.audio: PropGroup {
+                        if root.ent.media == MediaKind.video
+                            && root.vid.container != "": PropGroup {
+                            title: @tr("Container");
+
+                            PropRow {
+                                label: @tr("Format");
+                                value: root.vid.container;
+                            }
+
+                            if root.vid.bitrate != "": PropRow {
+                                label: @tr("Overall bitrate");
+                                value: root.vid.bitrate;
+                            }
+
+                            if root.vid.title != "": PropRow {
+                                label: @tr("Title");
+                                value: root.vid.title;
+                                wrap-value: true;
+                            }
+
+                            if root.vid.created != "": PropRow {
+                                label: @tr("Created");
+                                value: root.vid.created;
+                            }
+                        }
+
+                        if root.ent.media == MediaKind.audio: PropGroup {
                             title: @tr("Audio");
 
-                            if PropertiesBridge.entry.aud.title != "": PropRow {
+                            if root.aud.title != "": PropRow {
                                 label: @tr("Title");
-                                value: PropertiesBridge.entry.aud.title;
+                                value: root.aud.title;
+                                wrap-value: true;
                             }
 
-                            if PropertiesBridge.entry.aud.artist != "": PropRow {
+                            if root.aud.artist != "": PropRow {
                                 label: @tr("Artist");
-                                value: PropertiesBridge.entry.aud.artist;
+                                value: root.aud.artist;
+                                wrap-value: true;
                             }
 
-                            if PropertiesBridge.entry.aud.album != "": PropRow {
+                            if root.aud.album != "": PropRow {
                                 label: @tr("Album");
-                                value: PropertiesBridge.entry.aud.album;
+                                value: root.aud.album;
+                                wrap-value: true;
                             }
 
-                            if PropertiesBridge.entry.aud.duration != "": PropRow {
+                            if root.aud.album-artist != "": PropRow {
+                                label: @tr("Album artist");
+                                value: root.aud.album-artist;
+                                wrap-value: true;
+                            }
+
+                            if root.aud.composer != "": PropRow {
+                                label: @tr("Composer");
+                                value: root.aud.composer;
+                                wrap-value: true;
+                            }
+
+                            if root.aud.genre != "": PropRow {
+                                label: @tr("Genre");
+                                value: root.aud.genre;
+                            }
+
+                            if root.aud.year != "": PropRow {
+                                label: @tr("Year");
+                                value: root.aud.year;
+                            }
+
+                            if root.aud.track != "": PropRow {
+                                label: @tr("Track");
+                                value: root.aud.track;
+                            }
+
+                            if root.aud.disc != "": PropRow {
+                                label: @tr("Disc");
+                                value: root.aud.disc;
+                            }
+
+                            if root.aud.cover != "": PropRow {
+                                label: @tr("Cover art");
+                                value: root.aud.cover;
+                            }
+
+                            if root.aud.duration != "": PropRow {
                                 label: @tr("Duration");
-                                value: PropertiesBridge.entry.aud.duration;
+                                value: root.aud.duration;
                             }
 
-                            if PropertiesBridge.entry.aud.codec != "": PropRow {
+                            if root.aud.codec != "": PropRow {
                                 label: @tr("Codec");
-                                value: PropertiesBridge.entry.aud.codec;
+                                value: root.aud.codec;
                             }
 
-                            if PropertiesBridge.entry.aud.bitrate != "": PropRow {
+                            if root.aud.quality != "": PropRow {
+                                label: @tr("Quality");
+                                value: root.aud.quality;
+                            }
+
+                            if root.aud.bitrate != "": PropRow {
                                 label: @tr("Bitrate");
-                                value: PropertiesBridge.entry.aud.bitrate;
+                                value: root.aud.bitrate;
                             }
 
-                            if PropertiesBridge.entry.aud.sample-rate != "": PropRow {
+                            if root.aud.sample-rate != "": PropRow {
                                 label: @tr("Sample rate");
-                                value: PropertiesBridge.entry.aud.sample-rate;
+                                value: root.aud.sample-rate;
                             }
 
-                            if PropertiesBridge.entry.aud.channels != "": PropRow {
+                            if root.aud.bit-depth != "": PropRow {
+                                label: @tr("Bit depth");
+                                value: root.aud.bit-depth;
+                            }
+
+                            if root.aud.channels != "": PropRow {
                                 label: @tr("Channels");
-                                value: PropertiesBridge.entry.aud.channels;
+                                value: root.aud.channels;
+                            }
+                        }
+
+                        if root.ent.media == MediaKind.text: PropGroup {
+                            title: @tr("Text");
+
+                            if root.txt.encoding != "": PropRow {
+                                label: @tr("Encoding");
+                                value: root.txt.encoding;
+                            }
+
+                            if root.txt.lines != "": PropRow {
+                                label: @tr("Lines");
+                                value: root.txt.lines;
+                            }
+
+                            if root.txt.line-endings != "": PropRow {
+                                label: @tr("Line endings");
+                                value: root.txt.line-endings;
                             }
                         }
 
@@ -496,17 +798,17 @@ export component Properties inherits GeneralModal {
 
                             PropRow {
                                 label: @tr("Modified");
-                                value: PropertiesBridge.entry.modified;
+                                value: root.ent.modified;
                             }
 
                             PropRow {
                                 label: @tr("Created");
-                                value: PropertiesBridge.entry.created;
+                                value: root.ent.created;
                             }
 
                             PropRow {
                                 label: @tr("Accessed");
-                                value: PropertiesBridge.entry.accessed;
+                                value: root.ent.accessed;
                             }
                         }
 
@@ -515,22 +817,22 @@ export component Properties inherits GeneralModal {
 
                             PropRow {
                                 label: @tr("Access");
-                                value: PropertiesBridge.entry.read-only ? @tr("Read-only") : @tr("Read & write");
+                                value: root.ent.read-only ? @tr("Read-only") : @tr("Read & write");
                             }
 
-                            if PropertiesBridge.entry.permissions != "": PropRow {
+                            if root.ent.permissions != "": PropRow {
                                 label: @tr("Mode");
-                                value: PropertiesBridge.entry.permissions;
+                                value: root.ent.permissions;
                             }
 
-                            if PropertiesBridge.entry.owner != "": PropRow {
+                            if root.ent.owner != "": PropRow {
                                 label: @tr("Owner");
-                                value: PropertiesBridge.entry.owner;
+                                value: root.ent.owner;
                             }
 
-                            if PropertiesBridge.entry.group != "": PropRow {
+                            if root.ent.group != "": PropRow {
                                 label: @tr("Group");
-                                value: PropertiesBridge.entry.group;
+                                value: root.ent.group;
                             }
                         }
                     }
