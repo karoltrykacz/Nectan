@@ -1,0 +1,211 @@
+import { Theme } from "../../shared/theme.slint";
+import { PrimaryButton, SvgIcon } from "../../shared/elements.slint";
+import { RecursiveSearch } from "explorer/explorer.slint";
+import { Icons } from "../../shared/icons.slint";
+
+export global NotificationsBridge {
+    in property <bool> open;
+    in property <int> count;
+    in property <image> icon;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <bool> show-icon;
+    in property <bool> switching;
+
+    callback show(image, string, string);
+    callback dismiss();
+}
+
+export component Notification inherits Rectangle {
+    property <duration> t: Theme.animation-speed;
+
+    property <float> multi: NotificationsBridge.count > 1 ? 1 : 0;
+    property <float> multi2: NotificationsBridge.count > 2 ? 1 : 0;
+
+    property <float> fade: NotificationsBridge.switching ? 0 : 1;
+
+    animate multi, multi2 {
+        duration: root.t * 2;
+        easing: Theme.easing;
+    }
+
+    animate fade {
+        duration: root.t * 2;
+        easing: Theme.easing;
+    }
+
+    Rectangle {
+        height: 64px;
+        width: 64px;
+        x: (parent.width - self.width) / 2;
+        y: parent.height;
+
+        Rectangle {
+            y: 8px;
+            width: parent.width - 12px;
+            height: parent.height;
+            opacity: bg.opacity * root.multi2;
+            background: Theme.colors.primary-col;
+            border-width: 1px;
+            border-color: Theme.colors.fourth-col;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
+            border-radius: 64px;
+        }
+
+        Rectangle {
+            y: 4px;
+            width: parent.width - 6px;
+            height: parent.height;
+            opacity: bg.opacity * root.multi;
+            background: Theme.colors.primary-col.darker(0.15);
+            border-width: 1px;
+            border-color: Theme.colors.fourth-col;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
+            border-radius: 64px;
+        }
+
+        bg := Rectangle {
+            width: parent.width;
+            height: parent.height;
+            opacity: Math.clamp((parent.width - 64px) / 24px, 0, 1);
+            clip: true;
+            background: Theme.colors.primary-col;
+            border-width: 1px;
+            border-color: Theme.colors.fourth-col;
+            border-corner-shape: superellipse(Theme.config.edges-shape);
+            border-radius: 64px;
+            drop-shadow-blur: 20px;
+            drop-shadow-offset-y: 5px;
+            drop-shadow-color: #0000;
+
+            VerticalLayout {
+                x: 64px;
+                alignment: center;
+                title := Text {
+                    width: 168px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    text: NotificationsBridge.title;
+                    color: Theme.colors.primary-font;
+                    font-weight: 500;
+                    opacity: 0;
+                }
+
+                Rectangle {
+                    height: 2px;
+                }
+
+                subtitle := Text {
+                    width: 168px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    text: NotificationsBridge.subtitle;
+                    color: Theme.colors.secondary-font;
+                    font-weight: 400;
+                    opacity: 0;
+                }
+            }
+            // Rectangle {
+            //     width: parent.width;
+            //     height: parent.height;
+            //     opacity: root.fade;
+            //
+            //     label := Text {
+            //         x: 72px;
+            //         width: 168px;
+            //         vertical-alignment: center;
+            //         overflow: elide;
+            //         text: NotificationsBridge.message;
+            //         color: Theme.colors.primary-font;
+            //         opacity: 0;
+            //     }
+            // }
+        }
+
+        logo := Image {
+            x: 16px;
+            y: 16px;
+            width: 32px;
+            height: 32px;
+            source: Icons.nectan;
+            // opacity: NotificationsBridge.show-icon ? 0 : 1;
+
+            // animate opacity {
+            //     duration: root.t * 3;
+            //     easing: Theme.easing;
+            // }
+        }
+
+        // icon-img := Image {
+        //     x: 8px;
+        //     y: 8px;
+        //     width: 48px;
+        //     height: 48px;
+        //     source: NotificationsBridge.icon;
+        //     opacity: NotificationsBridge.show-icon ? 1 : 0;
+        //
+        //     animate opacity {
+        //         duration: root.t * 3;
+        //         easing: Theme.easing;
+        //     }
+        // }
+
+        // close-btn := Rectangle {
+        //     x: parent.width - 20px;
+        //     y: -8px;
+        //     width: 24px;
+        //     height: 24px;
+        //     opacity: title.opacity * root.multi;
+        //     background: Theme.colors.primary-col;
+        //
+        //     SvgIcon {
+        //         source: Icons.close;
+        //         size: 16px;
+        //     }
+        //
+        //     TouchArea {
+        //         enabled: close-btn.opacity > 0.5;
+        //         clicked => {
+        //             NotificationsBridge.dismiss();
+        //         }
+        //     }
+        // }
+
+        states [
+            shown when NotificationsBridge.open: {
+                y: parent.height - 128px;
+                width: 256px;
+                title.opacity: 1;
+                subtitle.opacity: 1;
+                in {
+                    animate y {
+                        duration: root.t * 3;
+                        easing: Theme.easing;
+                    }
+                    animate width {
+                        delay: root.t * 3;
+                        duration: root.t * 4;
+                        easing: Theme.easing;
+                    }
+                    animate title.opacity, subtitle.opacity {
+                        delay: root.t * 5;
+                        duration: root.t * 2;
+                    }
+                }
+                out {
+                    animate title.opacity, subtitle.opacity { duration: root.t; }
+                    animate width {
+                        delay: root.t;
+                        duration: root.t * 4;
+                        easing: Theme.easing;
+                    }
+                    animate y {
+                        delay: root.t * 5;
+                        duration: root.t * 3;
+                        easing: Theme.easing;
+                    }
+                }
+            }
+        ]
+    }
+}
