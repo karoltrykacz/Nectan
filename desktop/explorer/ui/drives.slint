@@ -1,0 +1,511 @@
+import {
+    PrimaryButton,
+    IconButton,
+    SvgIcon,
+} from "../../shared/elements.slint";
+import { Theme } from "../../shared/theme.slint";
+import { Icons } from "../../shared/icons.slint";
+import { ListView, HorizontalBox } from "std-widgets.slint";
+import { RecursiveSearch } from "explorer/explorer.slint";
+import { PropGroup, PropRow } from "../../shared/properties.slint";
+
+export struct MountUsageData {
+    mount-point: string,
+    total: string,
+    used: string,
+    available: string,
+    ratio: float,
+    used-bytes: float,
+}
+
+export struct DriveData {
+    id: string,
+    kind: string,
+    name: string,
+    vendor: string,
+    model: string,
+    block-device: string,
+    capacity: string,
+    capacity-bytes: float,
+    mounts: [MountUsageData],
+    ejectable: bool,
+    can-power-off: bool,
+    internal: bool,
+}
+
+export global DrivesBridge {
+    in-out property <bool> open;
+    in-out property <int> selected: 0;
+
+    in-out property <[DriveData]> drives: [];
+    in-out property <int> internal-count: 0;
+    in-out property <int> external-count: 0;
+
+    callback refresh();
+    callback eject(string);
+    callback power-off(string);
+}
+
+component DriveListItem inherits Rectangle {
+    in property <DriveData> drive;
+    in property <bool> selected: false;
+    in property <bool> shown: true;
+
+    callback clicked();
+
+    height: root.shown ? 56px : 0px;
+    visible: root.shown;
+
+    card := Rectangle {
+        y: 0;
+        height: 52px;
+
+        border-radius: 20px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        background: root.selected ? Theme.colors.fourth-col
+            : area.has-hover ? Theme.colors.third-col
+            : transparent;
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+
+                Text {
+                    text: root.drive.name;
+                    color: Theme.colors.primary-font;
+                    font-size: 1rem;
+                    font-weight: 500;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.drive.block-device != ""
+                        ? root.drive.capacity + " · " + root.drive.block-device
+                        : root.drive.capacity;
+                    color: Theme.colors.third-font;
+                    font-size: 0.9rem;
+                    overflow: elide;
+                }
+            }
+        }
+
+        area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
+component MountRow inherits Rectangle {
+    in property <MountUsageData> mount;
+
+    border-radius: 12px;
+    border-corner-shape: superellipse(Theme.config.edges-shape);
+    background: Theme.colors.third-col;
+    border-width: 1px;
+    border-color: Theme.colors.fourth-col;
+    height: 64px;
+
+    VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+
+        HorizontalLayout {
+            alignment: space-between;
+            spacing: 12px;
+
+            Text {
+                text: root.mount.mount-point;
+                color: Theme.colors.primary-font;
+                font-size: 1rem;
+                font-weight: 600;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.mount.used + " / " + root.mount.total;
+                color: Theme.colors.secondary-font;
+                font-size: 0.9rem;
+                font-weight: 500;
+            }
+        }
+
+        Rectangle {
+            height: 8px;
+        }
+
+        Rectangle {
+            height: 4px;
+            border-radius: self.height / 2;
+            background: Theme.colors.fourth-col;
+
+            Rectangle {
+                x: 0;
+                width: parent.width * Math.clamp(root.mount.ratio, 0, 1);
+                border-radius: parent.border-radius;
+                background: Theme.colors.primary-font;
+            }
+        }
+    }
+}
+
+component DriveDetails inherits Rectangle {
+
+    in property <DriveData> drive;
+    in property <bool> has-drive: true;
+
+    function eject() {
+        DrivesBridge.eject(root.drive.id);
+    }
+
+    function power-off() {
+        DrivesBridge.power-off(root.drive.id);
+    }
+
+    border-radius: 12px;
+    border-corner-shape: superellipse(Theme.config.edges-shape);
+    background: Theme.colors.secondary-col;
+
+    if !root.has-drive: Text {
+        text: @tr("No drives found");
+        color: Theme.colors.third-font;
+        font-size: 14px;
+    }
+
+    if root.has-drive: VerticalLayout {
+        spacing: 16px;
+        cross-axis-alignment: center;
+        max-width: 520px;
+
+        HorizontalLayout {
+            width: 100%;
+
+            VerticalLayout {
+                spacing: 2px;
+
+                Text {
+                    text: root.drive.name;
+                    color: Theme.colors.primary-font;
+                    font-size: 20px;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.drive.kind + " · " + root.drive.capacity;
+                    color: Theme.colors.third-font;
+                    font-size: 13px;
+                    overflow: elide;
+                }
+            }
+
+            Rectangle { }
+
+            if root.drive.ejectable: IconButton {
+                width: 28px;
+                height: 28px;
+                SvgIcon {
+                    source: Icons.eject;
+                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.third-font;
+                    size: 14px;
+                }
+
+                clicked => {
+                    root.eject();
+                }
+            }
+
+            if root.drive.ejectable && root.drive.can-power-off: Rectangle {
+                width: 4px;
+            }
+
+            if root.drive.can-power-off: IconButton {
+                width: 28px;
+                height: 28px;
+                SvgIcon {
+                    source: Icons.power;
+                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.third-font;
+                    size: 16px;
+                }
+
+                clicked => {
+                    root.power-off();
+                }
+            }
+        }
+
+        VerticalLayout {
+            width: min(512px, parent.width);
+
+            PropGroup {
+                width: 100%;
+                bg: Theme.colors.third-col;
+
+                PropRow {
+                    label: @tr("Name");
+                    value: root.drive.name;
+                }
+
+                if root.drive.model != "": PropRow {
+                    label: @tr("Model");
+                    value: root.drive.model;
+                }
+
+                if root.drive.vendor != "": PropRow {
+                    label: @tr("Vendor");
+                    value: root.drive.vendor;
+                }
+
+                PropRow {
+                    label: @tr("Capacity");
+                    value: root.drive.capacity;
+                }
+
+                if root.drive.block-device != "": PropRow {
+                    label: @tr("Device");
+                    value: root.drive.block-device;
+                }
+
+                PropRow {
+                    label: @tr("Ejectable");
+                    value: root.drive.ejectable ? @tr("Yes") : @tr("No");
+                }
+            }
+
+            Rectangle {
+                height: 20px;
+            }
+
+            if root.drive.mounts.length > 0: bar := Rectangle {
+                height: 32px;
+                width: 100%;
+                background: Theme.colors.primary-col;
+                border-radius: 12px;
+                border-corner-shape: superellipse(Theme.config.edges-shape);
+                border-width: 1px;
+                border-color: Theme.colors.fourth-col;
+                clip: true;
+
+                in property <color> base: Theme.compl-col;
+
+                property <float> ratio: 0.9;
+                property <float> angle: 20.0;
+
+                pure function mount-color(i: int, n: int) -> color {
+                    let mid = (n - 1) / 2.0;
+                    let step = n <= 1 ? 0.0 : Math.min(self.angle, 360.0 / n);
+                    let off = (i - mid) * step;
+
+                    let t = mid == 0 ? 0.0 : Math.abs(i - mid) / mid;
+                    let val = 0.86 - 0.06 * t;
+
+                    let s = 0.9 + 0.1 * self.ratio;
+                    let l = Math.min(1.0, self.ratio * val);
+                    let v = l + s * Math.min(l, 1.0 - l);
+                    let hs = v == 0 ? 0.0 : 2.0 * (1.0 - l / v);
+
+                    return Colors.hsv(Math.mod(self.base.to-hsv().hue + off + 360, 360), hs, v, 1.0);
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 0;
+
+                    for m[i] in root.drive.mounts: Rectangle {
+                        width: root.drive.capacity-bytes > 0
+                            ? bar.width * Math.clamp(m.used-bytes / root.drive.capacity-bytes, 0, 1)
+                            : 0px;
+                        background: bar.mount-color(i, root.drive.mounts.length);
+
+                        Rectangle {
+                            width: 1px;
+                            height: 100%;
+                            x: parent.width - 1px;
+                            background: Theme.colors.primary-col;
+                        }
+                    }
+                }
+            }
+
+            if root.drive.mounts.length > 0: Rectangle {
+                height: 20px;
+            }
+
+            if root.drive.mounts.length == 0: Text {
+                text: @tr("Not mounted");
+                color: Theme.colors.third-font;
+                font-size: 13px;
+            }
+
+            ListView {
+                for m in root.drive.mounts: Rectangle {
+                    height: mt.height + 8px;
+                    mt := MountRow {
+                        mount: m;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component Drives inherits TouchArea {
+    width: 100%;
+
+    property <int> count: DrivesBridge.drives.length;
+
+    function select(idx: int) {
+        if (root.count == 0) {
+            return;
+        }
+        DrivesBridge.selected = Math.clamp(idx, 0, root.count - 1);
+    }
+
+    init => { DrivesBridge.refresh(); }
+
+    fs := FocusScope {
+        init => { self.focus(); }
+
+        KeyBinding {
+            keys: @keys(J);
+            activated => { root.select(DrivesBridge.selected + 1); }
+        }
+
+        KeyBinding {
+            keys: @keys(DownArrow);
+            activated => { root.select(DrivesBridge.selected + 1); }
+        }
+
+        KeyBinding {
+            keys: @keys(K);
+            activated => { root.select(DrivesBridge.selected - 1); }
+        }
+
+        KeyBinding {
+            keys: @keys(UpArrow);
+            activated => { root.select(DrivesBridge.selected - 1); }
+        }
+
+        KeyBinding {
+            keys: @keys(R);
+            activated => { DrivesBridge.refresh(); }
+        }
+    }
+
+    Rectangle {
+        background: Theme.colors.secondary-col;
+        border-radius: 12px;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 16px;
+            padding-bottom: 8px;
+            spacing: 16px;
+
+            FlexboxLayout {
+                flex-direction: row;
+                flex-wrap: no-wrap;
+                alignment: stretch;
+                cross-axis-alignment: stretch;
+                spacing: 16px;
+
+                VerticalLayout {
+                    preferred-width: 240px;
+                    min-width: 200px;
+                    max-width: 280px;
+                    spacing: 0;
+                    alignment: start;
+
+                    HorizontalLayout {
+                        Text {
+                            text: @tr("Drives");
+                            font-size: 20px;
+                            font-weight: 600;
+                            color: Theme.colors.primary-font;
+                            vertical-alignment: center;
+                        }
+
+                        // IconButton {
+                        //     width: 28px;
+                        //     height: 28px;
+                        //     SvgIcon {
+                        //         source: Icons.refresh;
+                        //         fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.fourth-font;
+                        //         size: 16px;
+                        //     }
+                        //
+                        //     clicked => { DrivesBridge.refresh(); }
+                        // }
+                    }
+
+                    if DrivesBridge.internal-count > 0: Rectangle {
+                        height: 36px;
+                        Text {
+                            x: 4px;
+                            y: parent.height - self.height;
+                            height: 24px;
+                            vertical-alignment: center;
+                            text: @tr("Internal");
+                            color: Theme.colors.third-font;
+                            font-size: 0.9rem;
+                            font-weight: 500;
+                        }
+                    }
+
+                    for d[i] in DrivesBridge.drives: DriveListItem {
+                        drive: d;
+                        shown: d.internal;
+                        selected: i == DrivesBridge.selected;
+                        clicked => {
+                            DrivesBridge.selected = i;
+                            fs.focus();
+                        }
+                    }
+
+                    if DrivesBridge.external-count > 0: Rectangle {
+                        height: DrivesBridge.internal-count > 0 ? 36px : 24px;
+                        Text {
+                            x: 4px;
+                            y: parent.height - self.height;
+                            height: 24px;
+                            vertical-alignment: center;
+                            text: @tr("External");
+                            color: Theme.colors.third-font;
+                            font-size: 0.9rem;
+                            font-weight: 500;
+                        }
+                    }
+
+                    for d[i] in DrivesBridge.drives: DriveListItem {
+                        drive: d;
+                        shown: !d.internal;
+                        selected: i == DrivesBridge.selected;
+                        clicked => {
+                            DrivesBridge.selected = i;
+                            fs.focus();
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 1px;
+                    height: 100%;
+                    background: Theme.colors.fourth-col;
+                }
+
+                DriveDetails {
+                    min-width: 280px;
+                    has-drive: root.count > 0;
+                    drive: DrivesBridge.drives[DrivesBridge.selected];
+                }
+            }
+        }
+    }
+}
