@@ -1,0 +1,1090 @@
+import { Theme, ThemeAnimator } from "../../shared/theme.slint";
+import {
+    NectanAppFrame,
+    Spinner,
+    Slider,
+    IconButton,
+} from "../../shared/elements.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { Icons } from "../../shared/icons.slint";
+
+export enum ViewMode {
+    contain,
+    fill,
+}
+
+component GlassPanel inherits Rectangle {
+    in property <bool> shown: true;
+    callback activity();
+
+    border-radius: 24px;
+    border-corner-shape: superellipse(Theme.config.edges-shape);
+    backdrop-blur: 3px;
+    background: #0007;
+    border-color: #fff4;
+    border-width: 1px;
+    opacity: root.shown ? 1.0 : 0.0;
+    visible: self.opacity > 0.01;
+    animate opacity { duration: 250ms; }
+
+    TouchArea {
+        pointer-event(e) => { root.activity(); }
+    }
+
+    @children
+}
+
+
+component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    preferred-height: 32px;
+    preferred-width: label.preferred-width + 24px;
+    border-radius: 12px;
+    background: root.active ? #fff4 : (ta.has-hover && root.enabled ? #fff2 : transparent);
+    opacity: root.enabled ? 1.0 : 0.35;
+    animate background { duration: Theme.animation-speed; }
+
+    label := Text {
+        text: root.text;
+        color: Colors.white;
+        font-size: Theme.font-size;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component Separator inherits Rectangle {
+    width: 1px;
+    height: 20px;
+    background: #fff4;
+}
+
+component EditSlider inherits VerticalLayout {
+    in property <string> label;
+    in property <float> minimum: -100;
+    in property <float> maximum: 100;
+    in property <float> reset-value: 0;
+    in-out property <float> value;
+    callback edited(float);
+
+    property <float> pct: (root.value - root.minimum) / (root.maximum - root.minimum);
+
+    spacing: 4px;
+
+    HorizontalLayout {
+        Text {
+            text: root.label;
+            color: Colors.white;
+            font-size: Theme.font-size;
+            horizontal-stretch: 1;
+        }
+
+        Text {
+            text: "\{Math.round(root.value)}";
+            color: #ffffffaa;
+            font-size: Theme.font-size;
+        }
+    }
+
+    track := Rectangle {
+        height: 18px;
+
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: 4px;
+            border-radius: 2px;
+            background: #fff3;
+        }
+
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: 4px;
+            width: root.pct * parent.width;
+            border-radius: 2px;
+            background: #fffc;
+        }
+
+        Rectangle {
+            width: 14px;
+            height: 14px;
+            border-radius: 7px;
+            background: Colors.white;
+            x: root.pct * (parent.width - self.width);
+            y: (parent.height - self.height) / 2;
+        }
+
+        TouchArea {
+            function set-from(mx: length) {
+                root.value = Math.clamp(
+                    root.minimum + mx / track.width * (root.maximum - root.minimum),
+                    root.minimum, root.maximum);
+                root.edited(root.value);
+            }
+
+            pointer-event(e) => {
+                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                    self.set-from(self.mouse-x);
+                }
+            }
+
+            moved => {
+                if (self.pressed) {
+                    self.set-from(self.mouse-x);
+                }
+            }
+
+            double-clicked => {
+                root.value = root.reset-value;
+                root.edited(root.value);
+            }
+        }
+    }
+}
+
+component CropHandle inherits Rectangle {
+    in property <MouseCursor> cursor: MouseCursor.crosshair;
+    callback dragged(length, length);
+
+    width: 28px;
+    height: 28px;
+
+    Rectangle {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        background: Colors.white;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+
+    TouchArea {
+        mouse-cursor: root.cursor;
+
+        moved => {
+            if (self.pressed) {
+                root.dragged(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+            }
+        }
+    }
+}
+
+export component ImageApp inherits Window {
+    title: "Nectan Image Viewer";
+    preferred-width: 1080px;
+    preferred-height: 720px;
+    min-width: 400px;
+    min-height: 300px;
+    resize-border-width: 6px;
+    no-frame: !Theme.config.native-topbar;
+    background: transparent;
+    maximized: WindowBridge.maximized;
+    always-on-top: true;
+
+    in-out property <image> image;
+    in-out property <bool> loading;
+    in-out property <ViewMode> view-mode: ViewMode.contain;
+    in-out property <float> zoom: 1.0;
+    in property <bool> has-prev: true;
+    in property <bool> has-next: true;
+
+    in-out property <int> turns: 0;
+
+    in-out property <bool> cropping: false;
+    in-out property <float> crop-x: 0;
+    in-out property <float> crop-y: 0;
+    in-out property <float> crop-w: 1;
+    in-out property <float> crop-h: 1;
+
+    in-out property <bool> editing: false;
+    in-out property <float> brightness: 0;
+    in-out property <float> contrast: 0;
+    in-out property <float> blur: 0;
+    in-out property <float> sharpen: 0;
+    in-out property <float> hue: 0;
+    in-out property <bool> grayscale: false;
+    in-out property <bool> invert: false;
+
+    in-out property <bool> idle: false;
+    property <bool> z-held: false;
+    property <float> drag-start-zoom: 1.0;
+    property <bool> ui-visible: !root.idle || root.editing || root.cropping;
+
+    callback previous-requested();
+    callback next-requested();
+    callback info-requested();
+    callback print-requested();
+    callback crop-apply();
+    callback edits-changed();
+    callback flip-horizontal();
+    callback flip-vertical();
+    callback save-requested();
+    callback window-drag(length, length);   // dx, dy -> move the window from Rust
+
+    property <angle> rot: root.turns * 90deg;
+    animate rot {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    property <float> max-zoom: 48.0;
+    property <length> pan-x: 0px;
+    property <length> pan-y: 0px;
+    property <length> start-pan-x: 0px;
+    property <length> start-pan-y: 0px;
+
+    property <length> iw: root.image.width * 1px;
+    property <length> ih: root.image.height * 1px;
+    property <float> cs: Math.abs(Math.cos(root.rot));
+    property <float> sn: Math.abs(Math.sin(root.rot));
+    property <length> bw: root.iw * root.cs + root.ih * root.sn;
+    property <length> bh: root.iw * root.sn + root.ih * root.cs;
+    property <float> fit-w: root.bw > 0px ? viewport.width / root.bw : 1;
+    property <float> fit-h: root.bh > 0px ? viewport.height / root.bh : 1;
+    property <float> base-scale: root.view-mode == ViewMode.contain
+        ? Math.min(root.fit-w, root.fit-h)
+        : Math.max(root.fit-w, root.fit-h);
+    property <length> disp-w: root.iw * root.base-scale * root.zoom;
+    property <length> disp-h: root.ih * root.base-scale * root.zoom;
+    property <length> box-w: root.bw * root.base-scale * root.zoom;
+    property <length> box-h: root.bh * root.base-scale * root.zoom;
+
+    property <length> max-pan-x: Math.max(0px, (root.box-w - viewport.width) / 2);
+    property <length> max-pan-y: Math.max(0px, (root.box-h - viewport.height) / 2);
+    property <length> eff-pan-x: Math.clamp(root.pan-x, -root.max-pan-x, root.max-pan-x);
+    property <length> eff-pan-y: Math.clamp(root.pan-y, -root.max-pan-y, root.max-pan-y);
+
+    public function reset-view() {
+        root.zoom = 1.0;
+        root.pan-x = 0px;
+        root.pan-y = 0px;
+    }
+
+    // any user activity: show the UI again and restart the idle countdown
+    public function poke() {
+        root.idle = false;
+        idle-timer.restart();
+    }
+
+    // zoom relative to a drag start (used by Z+drag and the % drag)
+    function zoom-from(z0: float, pan0-x: length, pan0-y: length, factor: float, px: length, py: length) {
+        if (root.cropping) {
+            return;
+        }
+        let nz = Math.clamp(z0 * factor, 1.0, root.max-zoom);
+        let r = nz / z0;
+        root.pan-x = px - (px - pan0-x) * r;
+        root.pan-y = py - (py - pan0-y) * r;
+        root.zoom = nz;
+    }
+
+    function zoom-at(factor: float, px: length, py: length) {
+        root.zoom-from(root.zoom, root.eff-pan-x, root.eff-pan-y, factor, px, py);
+    }
+
+    function close-tools() {
+        root.cropping = false;
+        root.editing = false;
+    }
+
+    function go-next() {
+        if (root.has-next && !root.cropping) {
+            root.close-tools();
+            root.next-requested();
+        }
+    }
+
+    function go-previous() {
+        if (root.has-prev && !root.cropping) {
+            root.close-tools();
+            root.previous-requested();
+        }
+    }
+
+    function toggle-crop() {
+        if (root.cropping) {
+            root.cropping = false;
+        } else {
+            root.editing = false;
+            root.view-mode = ViewMode.contain;
+            root.reset-view();
+            root.crop-x = 0;
+            root.crop-y = 0;
+            root.crop-w = 1;
+            root.crop-h = 1;
+            root.cropping = true;
+        }
+    }
+
+    // a = width / height in pixels, 0 = free (whole image)
+    function set-aspect(a: float) {
+        let ia = root.box-w / root.box-h;
+        let w = a == 0 ? 1.0 : (a > ia ? 1.0 : a / ia);
+        let h = a == 0 ? 1.0 : (a > ia ? ia / a : 1.0);
+        root.crop-w = w;
+        root.crop-h = h;
+        root.crop-x = (1 - w) / 2;
+        root.crop-y = (1 - h) / 2;
+    }
+
+    function move-crop(dx: length, dy: length) {
+        root.crop-x = Math.clamp(root.crop-x + dx / root.box-w, 0, 1 - root.crop-w);
+        root.crop-y = Math.clamp(root.crop-y + dy / root.box-h, 0, 1 - root.crop-h);
+    }
+
+    function resize-crop(left: bool, top: bool, dx: length, dy: length) {
+        let m = 0.05;
+        let ndx = dx / root.box-w;
+        let ndy = dy / root.box-h;
+        if (left) {
+            let right = root.crop-x + root.crop-w;
+            let nx = Math.clamp(root.crop-x + ndx, 0, right - m);
+            root.crop-x = nx;
+            root.crop-w = right - nx;
+        } else {
+            root.crop-w = Math.clamp(root.crop-w + ndx, m, 1 - root.crop-x);
+        }
+        if (top) {
+            let bottom = root.crop-y + root.crop-h;
+            let ny = Math.clamp(root.crop-y + ndy, 0, bottom - m);
+            root.crop-y = ny;
+            root.crop-h = bottom - ny;
+        } else {
+            root.crop-h = Math.clamp(root.crop-h + ndy, m, 1 - root.crop-y);
+        }
+    }
+
+    function reset-edit-values() {
+        root.brightness = 0;
+        root.contrast = 0;
+        root.blur = 0;
+        root.sharpen = 0;
+        root.hue = 0;
+        root.grayscale = false;
+        root.invert = false;
+    }
+
+    changed image => {
+        root.cropping = false;
+        if (!root.editing) {
+            root.turns = 0;
+            root.reset-view();
+            snap.running = true;
+        }
+    }
+    changed view-mode => {
+        root.reset-view();
+    }
+
+    snap := Timer {
+        interval: 60ms;
+        running: false;
+        triggered => {
+            self.running = false;
+        }
+    }
+
+    idle-timer := Timer {
+        interval: 2500ms;
+        running: true;
+        triggered => {
+            self.running = false;
+            root.idle = true;
+        }
+    }
+
+    ThemeAnimator { }
+
+    FocusScope {
+        init => {
+            self.focus();
+        }
+
+        key-pressed(event) => {
+            root.poke();
+            let t = event.text;
+            if (event.modifiers.control) {
+                // some platforms send the control char instead of "p"
+                if (t == "p" || t == "P" || t == "\u{10}") {
+                    root.print-requested();
+                    return accept;
+                }
+                return reject;
+            }
+            if (t == Key.LeftArrow) {
+                root.go-previous();
+                return accept;
+            } else if (t == Key.RightArrow) {
+                root.go-next();
+                return accept;
+            } else if (t == Key.Escape) {
+                root.close-tools();
+                return accept;
+            } else if t == "R" && event.modifiers.shift {
+                if (!root.cropping) {
+                    root.turns -= 1;
+                }
+                return accept;
+            } else if (t == "r") {
+                root.turns += 1;
+                return accept;
+            } else if (t == "z" || t == "Z") {
+                root.z-held = true;
+                return accept;
+            } else if (t == "c" || t == "C") {
+                root.toggle-crop();
+                return accept;
+            } else if (t == "e" || t == "E") {
+                if (!root.cropping) {
+                    root.editing = !root.editing;
+                }
+                return accept;
+            } else if (t == "i" || t == "I") {
+                root.info-requested();
+                return accept;
+            }
+            return reject;
+        }
+
+        key-released(event) => {
+            if (event.text == "z" || event.text == "Z") {
+                root.z-held = false;
+                return accept;
+            }
+            return reject;
+        }
+
+        NectanAppFrame {
+            maximized: root.maximized || root.full-screen;
+
+            viewport := Rectangle {
+                clip: true;
+
+                Image {
+                    source: root.image;
+                    image-fit: ImageFit.fill;
+                    width: root.disp-w;
+                    height: root.disp-h;
+                    x: (viewport.width - self.width) / 2 + root.eff-pan-x;
+                    y: (viewport.height - self.height) / 2 + root.eff-pan-y;
+                    transform-rotation: root.rot;
+                }
+
+                TouchArea {
+                    enabled: !root.cropping;
+                    mouse-cursor: root.z-held ? MouseCursor.ns-resize
+                        : (self.pressed ? MouseCursor.grabbing : MouseCursor.grab);
+
+                    pointer-event(e) => {
+                        root.poke();
+                        if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                            root.start-pan-x = root.eff-pan-x;
+                            root.start-pan-y = root.eff-pan-y;
+                            root.drag-start-zoom = root.zoom;
+                        }
+                    }
+
+                    moved => {
+                        if (self.pressed) {
+                            if (root.z-held) {
+                                // drag up = zoom in, drag down = zoom out, anchored at the press point
+                                root.zoom-from(
+                                    root.drag-start-zoom,
+                                    root.start-pan-x, root.start-pan-y,
+                                    Math.exp((self.pressed-y - self.mouse-y) / 200px),
+                                    self.pressed-x - viewport.width / 2,
+                                    self.pressed-y - viewport.height / 2);
+                            } else {
+                                root.pan-x = Math.clamp(
+                                    root.start-pan-x + self.mouse-x - self.pressed-x,
+                                    -root.max-pan-x, root.max-pan-x);
+                                root.pan-y = Math.clamp(
+                                    root.start-pan-y + self.mouse-y - self.pressed-y,
+                                    -root.max-pan-y, root.max-pan-y);
+                            }
+                        }
+                    }
+
+                    double-clicked => {
+                        root.reset-view();
+                    }
+
+                    scroll-event(e) => {
+                        root.poke();
+                        root.zoom-at(
+                            1.0 + e.delta-y / 1200px,
+                            self.mouse-x - viewport.width / 2,
+                            self.mouse-y - viewport.height / 2);
+                        accept
+                    }
+                }
+
+                // ---- crop overlay (zoom is locked to 1 while cropping) ----
+                if root.cropping: cropbox := Rectangle {
+                    x: (viewport.width - self.width) / 2 + root.eff-pan-x;
+                    y: (viewport.height - self.height) / 2 + root.eff-pan-y;
+                    width: root.box-w;
+                    height: root.box-h;
+
+                    // dimmed outside area
+                    Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: cropbox.width;
+                        height: root.crop-y * cropbox.height;
+                        background: #0009;
+                    }
+
+                    Rectangle {
+                        y: (root.crop-y + root.crop-h) * cropbox.height;
+                        width: cropbox.width;
+                        height: cropbox.height - self.y;
+                        background: #0009;
+                    }
+
+                    Rectangle {
+                        x: 0px;
+                        y: root.crop-y * cropbox.height;
+                        width: root.crop-x * cropbox.width;
+                        height: root.crop-h * cropbox.height;
+                        background: #0009;
+                    }
+
+                    Rectangle {
+                        x: (root.crop-x + root.crop-w) * cropbox.width;
+                        y: root.crop-y * cropbox.height;
+                        width: cropbox.width - self.x;
+                        height: root.crop-h * cropbox.height;
+                        background: #0009;
+                    }
+
+                    sel := Rectangle {
+                        x: root.crop-x * cropbox.width;
+                        y: root.crop-y * cropbox.height;
+                        width: root.crop-w * cropbox.width;
+                        height: root.crop-h * cropbox.height;
+                        border-width: 1.5px;
+                        border-color: Colors.white;
+
+                        Rectangle {
+                            x: sel.width / 3;
+                            width: 1px;
+                            background: #fff5;
+                        }
+
+                        Rectangle {
+                            x: sel.width * 2 / 3;
+                            width: 1px;
+                            background: #fff5;
+                        }
+
+                        Rectangle {
+                            y: sel.height / 3;
+                            height: 1px;
+                            background: #fff5;
+                        }
+
+                        Rectangle {
+                            y: sel.height * 2 / 3;
+                            height: 1px;
+                            background: #fff5;
+                        }
+
+                        TouchArea {
+                            mouse-cursor: MouseCursor.move;
+                            moved => {
+                                if (self.pressed) {
+                                    root.move-crop(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                                }
+                            }
+                        }
+                    }
+
+                    CropHandle {
+                        x: sel.x - self.width / 2;
+                        y: sel.y - self.height / 2;
+                        cursor: MouseCursor.nwse-resize;
+                        dragged(dx, dy) => { root.resize-crop(true, true, dx, dy); }
+                    }
+
+                    CropHandle {
+                        x: sel.x + sel.width - self.width / 2;
+                        y: sel.y - self.height / 2;
+                        cursor: MouseCursor.nesw-resize;
+                        dragged(dx, dy) => { root.resize-crop(false, true, dx, dy); }
+                    }
+
+                    CropHandle {
+                        x: sel.x - self.width / 2;
+                        y: sel.y + sel.height - self.height / 2;
+                        cursor: MouseCursor.nesw-resize;
+                        dragged(dx, dy) => { root.resize-crop(true, false, dx, dy); }
+                    }
+
+                    CropHandle {
+                        x: sel.x + sel.width - self.width / 2;
+                        y: sel.y + sel.height - self.height / 2;
+                        cursor: MouseCursor.nwse-resize;
+                        dragged(dx, dy) => { root.resize-crop(false, false, dx, dy); }
+                    }
+                }
+            }
+
+            if root.loading: Rectangle {
+                Spinner { }
+            }
+
+            // ---- window move area (top 48px) ----
+            TouchArea {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 48px;
+                enabled: !root.full-screen;
+
+                pointer-event(e) => { root.poke(); }
+
+                moved => {
+                    if (self.pressed && !root.maximized) {
+                        root.window-drag(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                    }
+                }
+
+                double-clicked => { root.maximized = !root.maximized; }
+            }
+
+            // previous arrow
+            GlassPanel {
+                shown: root.ui-visible && !root.cropping;
+                activity => { root.poke(); }
+                x: 16px;
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+
+                IconButton {
+                    icon: Icons.chevron-right;
+                    clicked => { root.go-previous(); }
+                }
+            }
+
+            // next arrow
+            GlassPanel {
+                shown: root.ui-visible && !root.cropping;
+                activity => { root.poke(); }
+                x: parent.width - self.width - 16px - (root.editing ? 264px : 0px);
+                y: (parent.height - self.height) / 2;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                animate x {
+                    duration: Theme.animation-speed;
+                    easing: Theme.easing;
+                }
+
+                IconButton {
+                    icon: Icons.chevron-right;
+                    clicked => { root.go-next(); }
+                }
+            }
+
+            // window controls
+            GlassPanel {
+                shown: root.ui-visible;
+                activity => { root.poke(); }
+                y: 20px;
+                x: parent.width - self.width - 20px;
+                width: view-bar.preferred-width + 16px;
+                height: 36px;
+
+                view-bar := HorizontalLayout {
+                    alignment: center;
+                    cross-axis-alignment: center;
+
+                    IconButton {
+                        icon: Icons.minimize;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.minimized = true; }
+                    }
+
+                    IconButton {
+                        icon: Icons.maximize;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => {
+                            root.maximized = !root.maximized;
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.close;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+
+            // fullscreen button
+            GlassPanel {
+                shown: root.ui-visible;
+                activity => { root.poke(); }
+                y: parent.height - self.height - 20px;
+                x: parent.width - self.width - 20px;
+                height: 36px;
+                width: 36px;
+
+                xd := HorizontalLayout {
+                    alignment: center;
+                    cross-axis-alignment: center;
+
+                    IconButton {
+                        icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
+                        icon-size: 16px;
+                        inner-bg: transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => {
+                            root.full-screen = !root.full-screen;
+                        }
+                    }
+                }
+            }
+
+            // BOTTOM TOOLS
+            if !root.cropping: GlassPanel {
+                shown: root.ui-visible;
+                activity => { root.poke(); }
+                y: parent.height - self.height - 20px;
+                x: (parent.width - self.width) / 2;
+                width: tools-bar.preferred-width + 20px;
+                height: 36px;
+
+                tools-bar := HorizontalLayout {
+                    spacing: 4px;
+                    cross-axis-alignment: center;
+                    alignment: center;
+
+                    IconButton {
+                        icon: Icons.rotate-left;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.turns -= 1; }
+                    }
+
+                    IconButton {
+                        icon: Icons.rotate-right;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.turns += 1; }
+                    }
+
+                    Separator { }
+
+                    IconButton {
+                        icon: Icons.crop;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.toggle-crop(); }
+                    }
+
+                    IconButton {
+                        icon: Icons.edit;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.editing = !root.editing; }
+                    }
+
+                    Separator { }
+
+                    IconButton {
+                        icon: Icons.info;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.info-requested(); }
+                    }
+
+                    // Chip {
+                    //     text: "Contain";
+                    //     enabled: !root.cropping;
+                    //     active: root.view-mode == ViewMode.contain;
+                    //     clicked => { root.view-mode = ViewMode.contain; }
+                    // }
+                    //
+                    // Chip {
+                    //     text: "Fill";
+                    //     enabled: !root.cropping;
+                    //     active: root.view-mode == ViewMode.fill;
+                    //     clicked => { root.view-mode = ViewMode.fill; }
+                    // }
+
+                    IconButton {
+                        icon: Icons.zoom-out;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.zoom-at(1 / 1.25, 0px, 0px); }
+                    }
+
+                    IconButton {
+                        icon: Icons.zoom-in;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.zoom-at(1.25, 0px, 0px); }
+                    }
+
+                    // draggable zoom percentage (Figma-style): drag up = zoom in, down = zoom out
+                    Rectangle {
+                        min-width: 48px;
+
+                        Text {
+                            text: "\{Math.round(root.zoom * 100)}%";
+                            color: Colors.white;
+                            font-size: Theme.font-size;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            mouse-cursor: MouseCursor.ns-resize;
+
+                            pointer-event(e) => {
+                                root.poke();
+                                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                                    root.drag-start-zoom = root.zoom;
+                                    root.start-pan-x = root.eff-pan-x;
+                                    root.start-pan-y = root.eff-pan-y;
+                                }
+                            }
+
+                            moved => {
+                                if (self.pressed) {
+                                    root.zoom-from(
+                                        root.drag-start-zoom,
+                                        root.start-pan-x, root.start-pan-y,
+                                        Math.exp((self.pressed-y - self.mouse-y) / 150px),
+                                        0px, 0px);
+                                }
+                            }
+
+                            double-clicked => { root.reset-view(); }
+                        }
+                    }
+
+                    // ToolButton {
+                    //     icon: Icons.zoom-in;
+                    //     enabled: !root.cropping;
+                    // }
+
+
+                    IconButton {
+                        icon: Icons.print;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => { root.print-requested(); }
+                    }
+                }
+            }
+
+            if root.cropping: GlassPanel {
+                shown: root.ui-visible;
+                activity => { root.poke(); }
+                y: parent.height - self.height - 20px;
+                x: (parent.width - self.width) / 2;
+                width: crop-bar.preferred-width + 16px;
+                height: 36px;
+
+                crop-bar := HorizontalLayout {
+                    padding: 8px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    Chip {
+                        text: "Free";
+                        clicked => { root.set-aspect(0); }
+                    }
+
+                    Chip {
+                        text: "1:1";
+                        clicked => { root.set-aspect(1); }
+                    }
+
+                    Chip {
+                        text: "4:3";
+                        clicked => { root.set-aspect(4.0 / 3.0); }
+                    }
+
+                    Chip {
+                        text: "16:9";
+                        clicked => { root.set-aspect(16.0 / 9.0); }
+                    }
+
+                    Separator { }
+
+                    Chip {
+                        text: "Cancel";
+                        clicked => { root.cropping = false; }
+                    }
+
+                    Chip {
+                        text: "Apply";
+                        active: true;
+                        clicked => {
+                            root.cropping = false;
+                            root.crop-apply();
+                        }
+                    }
+                }
+            }
+
+            // ---- edit panel (slides in from the right) ----
+            GlassPanel {
+                opacity: root.editing ? 1.0 : 0.0;
+                visible: self.opacity > 0.01;
+                activity => { root.poke(); }
+                x: root.editing ? parent.width - self.width - 16px : parent.width;
+                y: 84px;
+                width: 248px;
+                height: edit-col.preferred-height + 24px;
+                animate opacity { duration: 160ms; }
+                animate x {
+                    duration: Theme.animation-speed;
+                    easing: Theme.easing;
+                }
+
+                edit-col := VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Adjust";
+                        color: Colors.white;
+                        font-size: Theme.font-size * 1.15;
+                        font-weight: 600;
+                    }
+
+                    EditSlider {
+                        label: "Brightness";
+                        minimum: -100;
+                        maximum: 100;
+                        value <=> root.brightness;
+                        edited => { root.edits-changed(); }
+                    }
+
+                    Slider {
+                        value <=> root.brightness;
+                        minimum: -100;
+                        maximum: 100;
+                    }
+
+                    EditSlider {
+                        label: "Contrast";
+                        minimum: -100;
+                        maximum: 100;
+                        value <=> root.contrast;
+                        edited => { root.edits-changed(); }
+                    }
+
+                    EditSlider {
+                        label: "Hue";
+                        minimum: 0;
+                        maximum: 360;
+                        value <=> root.hue;
+                        edited => { root.edits-changed(); }
+                    }
+
+                    EditSlider {
+                        label: "Blur";
+                        minimum: 0;
+                        maximum: 10;
+                        value <=> root.blur;
+                        edited => { root.edits-changed(); }
+                    }
+
+                    EditSlider {
+                        label: "Sharpen";
+                        minimum: 0;
+                        maximum: 10;
+                        value <=> root.sharpen;
+                        edited => { root.edits-changed(); }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+
+                        Chip {
+                            text: "Grayscale";
+                            active: root.grayscale;
+                            clicked => {
+                                root.grayscale = !root.grayscale;
+                                root.edits-changed();
+                            }
+                        }
+
+                        Chip {
+                            text: "Invert";
+                            active: root.invert;
+                            clicked => {
+                                root.invert = !root.invert;
+                                root.edits-changed();
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+
+                        Chip {
+                            text: "Flip H";
+                            clicked => { root.flip-horizontal(); }
+                        }
+
+                        Chip {
+                            text: "Flip V";
+                            clicked => { root.flip-vertical(); }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+
+                        Chip {
+                            text: "Reset";
+                            clicked => {
+                                root.reset-edit-values();
+                                root.edits-changed();
+                            }
+                        }
+
+                        Chip {
+                            text: "Save";
+                            active: true;
+                            clicked => { root.save-requested(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
