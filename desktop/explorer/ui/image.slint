@@ -1,9 +1,13 @@
 import { Theme, ThemeAnimator } from "../../shared/theme.slint";
+import { Properties, PropertiesBridge } from "../../shared/properties.slint";
 import {
     NectanAppFrame,
     Spinner,
     Slider,
     IconButton,
+    PrimaryButton,
+    Switch,
+    GeneralModal,
 } from "../../shared/elements.slint";
 import { WindowBridge } from "../../shared/window.slint";
 import { Icons } from "../../shared/icons.slint";
@@ -35,120 +39,29 @@ component GlassPanel inherits Rectangle {
 }
 
 
-component Chip inherits Rectangle {
-    in property <string> text;
-    in property <bool> active;
-    in property <bool> enabled: true;
-    callback clicked;
-
-    preferred-height: 32px;
-    preferred-width: label.preferred-width + 24px;
-    border-radius: 12px;
-    background: root.active ? #fff4 : (ta.has-hover && root.enabled ? #fff2 : transparent);
-    opacity: root.enabled ? 1.0 : 0.35;
-    animate background { duration: Theme.animation-speed; }
-
-    label := Text {
-        text: root.text;
-        color: Colors.white;
-        font-size: Theme.font-size;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    ta := TouchArea {
-        enabled: root.enabled;
-        clicked => {
-            root.clicked();
-        }
-    }
-}
-
-component Separator inherits Rectangle {
-    width: 1px;
-    height: 20px;
-    background: #fff4;
-}
-
 component EditSlider inherits VerticalLayout {
     in property <string> label;
     in property <float> minimum: -100;
     in property <float> maximum: 100;
-    in property <float> reset-value: 0;
+
     in-out property <float> value;
-    callback edited(float);
 
-    property <float> pct: (root.value - root.minimum) / (root.maximum - root.minimum);
+    callback changed(float);
 
-    spacing: 4px;
+    alignment: start;
+    spacing: 2px;
 
-    HorizontalLayout {
-        Text {
-            text: root.label;
-            color: Colors.white;
-            font-size: Theme.font-size;
-            horizontal-stretch: 1;
-        }
-
-        Text {
-            text: "\{Math.round(root.value)}";
-            color: #ffffffaa;
-            font-size: Theme.font-size;
-        }
+    Text {
+        text: label;
+        font-size: 0.8rem;
+        color: #e8e8e8;
     }
 
-    track := Rectangle {
-        height: 18px;
-
-        Rectangle {
-            y: (parent.height - self.height) / 2;
-            height: 4px;
-            border-radius: 2px;
-            background: #fff3;
-        }
-
-        Rectangle {
-            y: (parent.height - self.height) / 2;
-            height: 4px;
-            width: root.pct * parent.width;
-            border-radius: 2px;
-            background: #fffc;
-        }
-
-        Rectangle {
-            width: 14px;
-            height: 14px;
-            border-radius: 7px;
-            background: Colors.white;
-            x: root.pct * (parent.width - self.width);
-            y: (parent.height - self.height) / 2;
-        }
-
-        TouchArea {
-            function set-from(mx: length) {
-                root.value = Math.clamp(
-                    root.minimum + mx / track.width * (root.maximum - root.minimum),
-                    root.minimum, root.maximum);
-                root.edited(root.value);
-            }
-
-            pointer-event(e) => {
-                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
-                    self.set-from(self.mouse-x);
-                }
-            }
-
-            moved => {
-                if (self.pressed) {
-                    self.set-from(self.mouse-x);
-                }
-            }
-
-            double-clicked => {
-                root.value = root.reset-value;
-                root.edited(root.value);
-            }
-        }
+    Slider {
+        value <=> root.value;
+        minimum: root.minimum;
+        maximum: root.maximum;
+        changed(v) => { root.changed(v); }
     }
 }
 
@@ -179,7 +92,39 @@ component CropHandle inherits Rectangle {
     }
 }
 
-export component ImageApp inherits Window {
+component ShortcutsModal inherits GeneralModal {
+
+    init => { self.focus(); }
+
+    Rectangle {
+        width: min(720px, parent.width - 40px);
+        height: min(480px,parent.height - 40px);
+        clip: true;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 24px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            Text {
+                font-size: 1.5rem;
+                font-weight: 600;
+                text: @tr("Shortcuts");
+                color: Theme.colors.primary-font;
+            }
+        }
+    }
+}
+
+export component ImageViewer inherits Window {
     title: "Nectan Image Viewer";
     preferred-width: 1080px;
     preferred-height: 720px;
@@ -189,10 +134,13 @@ export component ImageApp inherits Window {
     no-frame: !Theme.config.native-topbar;
     background: transparent;
     maximized: WindowBridge.maximized;
-    always-on-top: true;
+
+    default-font-family: Theme.config.font;
+    default-font-size: Theme.font-size;
 
     in-out property <image> image;
     in-out property <bool> loading;
+    in-out property <bool> shortcuts;
     in-out property <ViewMode> view-mode: ViewMode.contain;
     in-out property <float> zoom: 1.0;
     in property <bool> has-prev: true;
@@ -207,6 +155,12 @@ export component ImageApp inherits Window {
     in-out property <float> crop-h: 1;
 
     in-out property <bool> editing: false;
+    changed editing => {
+        if (root.editing) {
+            root.turns = 0;
+        }
+    }
+
     in-out property <float> brightness: 0;
     in-out property <float> contrast: 0;
     in-out property <float> blur: 0;
@@ -229,7 +183,7 @@ export component ImageApp inherits Window {
     callback flip-horizontal();
     callback flip-vertical();
     callback save-requested();
-    callback window-drag(length, length);   // dx, dy -> move the window from Rust
+    callback edit-cancelled();
 
     property <angle> rot: root.turns * 90deg;
     animate rot {
@@ -264,24 +218,26 @@ export component ImageApp inherits Window {
     property <length> eff-pan-x: Math.clamp(root.pan-x, -root.max-pan-x, root.max-pan-x);
     property <length> eff-pan-y: Math.clamp(root.pan-y, -root.max-pan-y, root.max-pan-y);
 
+    in property <bool> can-edit: true;
+    in property <string> file-name;
+    in property <string> file-size;
+
     public function reset-view() {
         root.zoom = 1.0;
         root.pan-x = 0px;
         root.pan-y = 0px;
     }
 
-    // any user activity: show the UI again and restart the idle countdown
     public function poke() {
         root.idle = false;
         idle-timer.restart();
     }
 
-    // zoom relative to a drag start (used by Z+drag and the % drag)
     function zoom-from(z0: float, pan0-x: length, pan0-y: length, factor: float, px: length, py: length) {
         if (root.cropping) {
             return;
         }
-        let nz = Math.clamp(z0 * factor, 1.0, root.max-zoom);
+        let nz = Math.clamp(z0 * factor, 0.01, root.max-zoom);
         let r = nz / z0;
         root.pan-x = px - (px - pan0-x) * r;
         root.pan-y = py - (py - pan0-y) * r;
@@ -312,17 +268,27 @@ export component ImageApp inherits Window {
     }
 
     function toggle-crop() {
+        if (!root.can-edit) {
+            return;
+        }
         if (root.cropping) {
             root.cropping = false;
         } else {
             root.editing = false;
             root.view-mode = ViewMode.contain;
             root.reset-view();
+            root.zoom = 0.75;
             root.crop-x = 0;
             root.crop-y = 0;
             root.crop-w = 1;
             root.crop-h = 1;
             root.cropping = true;
+        }
+    }
+
+    changed cropping => {
+        if (!root.cropping) {
+            root.reset-view();
         }
     }
 
@@ -405,59 +371,145 @@ export component ImageApp inherits Window {
 
     ThemeAnimator { }
 
-    FocusScope {
+    fs := FocusScope {
+        focus-on-click: true;
+
         init => {
             self.focus();
         }
 
-        key-pressed(event) => {
-            root.poke();
-            let t = event.text;
-            if (event.modifiers.control) {
-                // some platforms send the control char instead of "p"
-                if (t == "p" || t == "P" || t == "\u{10}") {
-                    root.print-requested();
-                    return accept;
-                }
-                return reject;
+        KeyBinding {
+            keys: @keys(F);
+            activated => {
+                root.full-screen = !root.full-screen;
             }
-            if (t == Key.LeftArrow) {
+        }
+
+        KeyBinding {
+            keys: @keys(J);
+            activated => {
+                root.zoom-at(1 / 1.25, 0px, 0px);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(K);
+            activated => {
+                root.zoom-at(1.25, 0px, 0px);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(HyphenMinus);
+            activated => {
+                root.zoom-at(1 / 1.25, 0px, 0px);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Equals);
+            activated => {
+                root.zoom-at(1.25, 0px, 0px);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Plus);
+            activated => {
+                root.zoom-at(1.25, 0px, 0px);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(LeftArrow);
+            activated => {
                 root.go-previous();
-                return accept;
-            } else if (t == Key.RightArrow) {
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(RightArrow);
+            activated => {
                 root.go-next();
-                return accept;
-            } else if (t == Key.Escape) {
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(H);
+            activated => {
+                root.go-previous();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(L);
+            activated => {
+                root.go-next();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Escape);
+            activated => {
                 root.close-tools();
-                return accept;
-            } else if t == "R" && event.modifiers.shift {
-                if (!root.cropping) {
-                    root.turns -= 1;
-                }
-                return accept;
-            } else if (t == "r") {
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + P);
+            activated => {
+                root.print-requested();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(R);
+            activated => {
                 root.turns += 1;
-                return accept;
-            } else if (t == "z" || t == "Z") {
-                root.z-held = true;
-                return accept;
-            } else if (t == "c" || t == "C") {
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Shift + R);
+            activated => {
+                root.turns -= 1;
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(C);
+            activated => {
                 root.toggle-crop();
-                return accept;
-            } else if (t == "e" || t == "E") {
-                if (!root.cropping) {
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(E);
+            activated => {
+                if (!root.cropping && root.can-edit) {
                     root.editing = !root.editing;
                 }
-                return accept;
-            } else if (t == "i" || t == "I") {
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(I);
+            activated => {
                 root.info-requested();
+            }
+        }
+
+        key-pressed(event) => {
+
+            if (event.text == Key.Z) {
+                root.z-held = true;
                 return accept;
             }
             return reject;
         }
 
         key-released(event) => {
-            if (event.text == "z" || event.text == "Z") {
+            if (event.text == Key.Z) {
                 root.z-held = false;
                 return accept;
             }
@@ -518,25 +570,22 @@ export component ImageApp inherits Window {
                     double-clicked => {
                         root.reset-view();
                     }
-
                     scroll-event(e) => {
+                        if (PropertiesBridge.open) {
+                            return reject;
+                        }
                         root.poke();
-                        root.zoom-at(
-                            1.0 + e.delta-y / 1200px,
-                            self.mouse-x - viewport.width / 2,
-                            self.mouse-y - viewport.height / 2);
-                        accept
+                        root.zoom-at(1.0 + e.delta-y / 1200px, self.mouse-x - viewport.width / 2, self.mouse-y - viewport.height / 2);
+                        return accept;
                     }
                 }
 
-                // ---- crop overlay (zoom is locked to 1 while cropping) ----
                 if root.cropping: cropbox := Rectangle {
                     x: (viewport.width - self.width) / 2 + root.eff-pan-x;
                     y: (viewport.height - self.height) / 2 + root.eff-pan-y;
                     width: root.box-w;
                     height: root.box-h;
 
-                    // dimmed outside area
                     Rectangle {
                         x: 0px;
                         y: 0px;
@@ -602,6 +651,7 @@ export component ImageApp inherits Window {
 
                         TouchArea {
                             mouse-cursor: MouseCursor.move;
+
                             moved => {
                                 if (self.pressed) {
                                     root.move-crop(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
@@ -644,79 +694,75 @@ export component ImageApp inherits Window {
                 Spinner { }
             }
 
-            // ---- window move area (top 48px) ----
-            TouchArea {
-                x: 0px;
-                y: 0px;
-                width: parent.width;
-                height: 48px;
-                enabled: !root.full-screen;
-
-                pointer-event(e) => { root.poke(); }
-
-                moved => {
-                    if (self.pressed && !root.maximized) {
-                        root.window-drag(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
-                    }
-                }
-
-                double-clicked => { root.maximized = !root.maximized; }
-            }
-
-            // previous arrow
-            GlassPanel {
+            // arrows
+            IconButton {
                 shown: root.ui-visible && !root.cropping;
-                activity => { root.poke(); }
+                inner-bg: self.hovered ? #0008 : #0003;
                 x: 16px;
                 y: (parent.height - self.height) / 2;
-                width: 44px;
-                height: 44px;
-                border-radius: 22px;
-
-                IconButton {
-                    icon: Icons.chevron-right;
-                    clicked => { root.go-previous(); }
-                }
+                icon: Icons.chevron-left;
+                colorize: #f1f1f1;
+                clicked => { root.go-previous(); }
             }
 
-            // next arrow
-            GlassPanel {
+            IconButton {
                 shown: root.ui-visible && !root.cropping;
-                activity => { root.poke(); }
+                inner-bg: self.hovered ? #0008 : #0003;
                 x: parent.width - self.width - 16px - (root.editing ? 264px : 0px);
                 y: (parent.height - self.height) / 2;
-                width: 44px;
-                height: 44px;
-                border-radius: 22px;
-                animate x {
-                    duration: Theme.animation-speed;
-                    easing: Theme.easing;
-                }
-
-                IconButton {
-                    icon: Icons.chevron-right;
-                    clicked => { root.go-next(); }
-                }
+                icon: Icons.chevron-right;
+                colorize: #f1f1f1;
+                clicked => { root.go-next(); }
             }
 
-            // window controls
-            GlassPanel {
-                shown: root.ui-visible;
-                activity => { root.poke(); }
-                y: 20px;
-                x: parent.width - self.width - 20px;
-                width: view-bar.preferred-width + 16px;
-                height: 36px;
+            Rectangle {
+                visible: root.ui-visible;
+                width: 100%;
+                x: 0;
+                y: 0;
+                background: @linear-gradient(180deg, #000c 0%, #0008 40%, #0000 100%);
+                height: 96px;
+
+                WindowMoveArea { }
 
                 view-bar := HorizontalLayout {
-                    alignment: center;
-                    cross-axis-alignment: center;
+                    cross-axis-alignment: start;
+                    padding-left: 20px;
+                    padding-top: 16px;
+                    padding-right: 20px;
+
+                    VerticalLayout {
+                        Text {
+                            text: root.file-name;
+                            font-size: 1.5rem;
+                            font-weight: 600;
+                            color: #f1f1f1;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: root.file-size;
+                            font-size: 0.8rem;
+                            font-weight: 500;
+                            color: #888;
+                        }
+                    }
+
+                    Rectangle { }
+
+                    IconButton {
+                        icon: Icons.key;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #c8c8c8;
+                        clicked => { root.shortcuts = true; }
+                    }
 
                     IconButton {
                         icon: Icons.minimize;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.minimized = true; }
                     }
 
@@ -724,7 +770,7 @@ export component ImageApp inherits Window {
                         icon: Icons.maximize;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => {
                             root.maximized = !root.maximized;
                         }
@@ -734,33 +780,8 @@ export component ImageApp inherits Window {
                         icon: Icons.close;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.close(); }
-                    }
-                }
-            }
-
-            // fullscreen button
-            GlassPanel {
-                shown: root.ui-visible;
-                activity => { root.poke(); }
-                y: parent.height - self.height - 20px;
-                x: parent.width - self.width - 20px;
-                height: 36px;
-                width: 36px;
-
-                xd := HorizontalLayout {
-                    alignment: center;
-                    cross-axis-alignment: center;
-
-                    IconButton {
-                        icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
-                        icon-size: 16px;
-                        inner-bg: transparent;
-                        colorize: Theme.colors.primary-font;
-                        clicked => {
-                            root.full-screen = !root.full-screen;
-                        }
                     }
                 }
             }
@@ -781,67 +802,49 @@ export component ImageApp inherits Window {
 
                     IconButton {
                         icon: Icons.rotate-left;
-                        icon-size: 16px;
+                        icon-size: 15px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.turns -= 1; }
                     }
 
                     IconButton {
                         icon: Icons.rotate-right;
-                        icon-size: 16px;
+                        icon-size: 15px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.turns += 1; }
                     }
 
-                    Separator { }
-
-                    IconButton {
+                    if root.can-edit: IconButton {
                         icon: Icons.crop;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.toggle-crop(); }
                     }
 
-                    IconButton {
+                    if root.can-edit: IconButton {
                         icon: Icons.edit;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.editing = !root.editing; }
                     }
-
-                    Separator { }
 
                     IconButton {
                         icon: Icons.info;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.info-requested(); }
                     }
-
-                    // Chip {
-                    //     text: "Contain";
-                    //     enabled: !root.cropping;
-                    //     active: root.view-mode == ViewMode.contain;
-                    //     clicked => { root.view-mode = ViewMode.contain; }
-                    // }
-                    //
-                    // Chip {
-                    //     text: "Fill";
-                    //     enabled: !root.cropping;
-                    //     active: root.view-mode == ViewMode.fill;
-                    //     clicked => { root.view-mode = ViewMode.fill; }
-                    // }
 
                     IconButton {
                         icon: Icons.zoom-out;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.zoom-at(1 / 1.25, 0px, 0px); }
                     }
 
@@ -849,11 +852,10 @@ export component ImageApp inherits Window {
                         icon: Icons.zoom-in;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.zoom-at(1.25, 0px, 0px); }
                     }
 
-                    // draggable zoom percentage (Figma-style): drag up = zoom in, down = zoom out
                     Rectangle {
                         min-width: 48px;
 
@@ -891,18 +893,22 @@ export component ImageApp inherits Window {
                         }
                     }
 
-                    // ToolButton {
-                    //     icon: Icons.zoom-in;
-                    //     enabled: !root.cropping;
-                    // }
-
-
                     IconButton {
                         icon: Icons.print;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
                         colorize: Theme.colors.primary-font;
                         clicked => { root.print-requested(); }
+                    }
+
+                    IconButton {
+                        icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: Theme.colors.primary-font;
+                        clicked => {
+                            root.full-screen = !root.full-screen;
+                        }
                     }
                 }
             }
@@ -920,171 +926,188 @@ export component ImageApp inherits Window {
                     spacing: 4px;
                     alignment: center;
 
-                    Chip {
-                        text: "Free";
-                        clicked => { root.set-aspect(0); }
-                    }
-
-                    Chip {
-                        text: "1:1";
-                        clicked => { root.set-aspect(1); }
-                    }
-
-                    Chip {
-                        text: "4:3";
-                        clicked => { root.set-aspect(4.0 / 3.0); }
-                    }
-
-                    Chip {
-                        text: "16:9";
-                        clicked => { root.set-aspect(16.0 / 9.0); }
-                    }
-
-                    Separator { }
-
-                    Chip {
-                        text: "Cancel";
-                        clicked => { root.cropping = false; }
-                    }
-
-                    Chip {
-                        text: "Apply";
-                        active: true;
-                        clicked => {
-                            root.cropping = false;
-                            root.crop-apply();
-                        }
-                    }
+                    // Chip {
+                    //     text: "Free";
+                    //     clicked => { root.set-aspect(0); }
+                    // }
+                    //
+                    // Chip {
+                    //     text: "1:1";
+                    //     clicked => { root.set-aspect(1); }
+                    // }
+                    //
+                    // Chip {
+                    //     text: "4:3";
+                    //     clicked => { root.set-aspect(4.0 / 3.0); }
+                    // }
+                    //
+                    // Chip {
+                    //     text: "16:9";
+                    //     clicked => { root.set-aspect(16.0 / 9.0); }
+                    // }
+                    //
+                    // Chip {
+                    //     text: "Cancel";
+                    //     clicked => { root.cropping = false; }
+                    // }
+                    //
+                    // Chip {
+                    //     text: "Apply";
+                    //     active: true;
+                    //     clicked => {
+                    //         root.cropping = false;
+                    //         root.crop-apply();
+                    //     }
+                    // }
                 }
             }
 
-            // ---- edit panel (slides in from the right) ----
+            // EDIT
             GlassPanel {
                 opacity: root.editing ? 1.0 : 0.0;
                 visible: self.opacity > 0.01;
                 activity => { root.poke(); }
                 x: root.editing ? parent.width - self.width - 16px : parent.width;
                 y: 84px;
-                width: 248px;
+                width: 220px;
                 height: edit-col.preferred-height + 24px;
                 animate opacity { duration: 160ms; }
-                animate x {
-                    duration: Theme.animation-speed;
-                    easing: Theme.easing;
-                }
 
                 edit-col := VerticalLayout {
-                    padding: 12px;
+                    padding-top: 12px;
+                    padding: 16px;
                     spacing: 8px;
 
-                    Text {
-                        text: "Adjust";
-                        color: Colors.white;
-                        font-size: Theme.font-size * 1.15;
-                        font-weight: 600;
-                    }
-
                     EditSlider {
-                        label: "Brightness";
-                        minimum: -100;
-                        maximum: 100;
-                        value <=> root.brightness;
-                        edited => { root.edits-changed(); }
-                    }
-
-                    Slider {
+                        label: @tr("Brightness");
                         value <=> root.brightness;
                         minimum: -100;
                         maximum: 100;
+                        changed => { root.edits-changed(); }
                     }
 
                     EditSlider {
-                        label: "Contrast";
-                        minimum: -100;
-                        maximum: 100;
+                        label: @tr("Contrast");
                         value <=> root.contrast;
-                        edited => { root.edits-changed(); }
+                        minimum: -100;
+                        maximum: 100;
+                        changed => { root.edits-changed(); }
                     }
 
                     EditSlider {
-                        label: "Hue";
+                        label: @tr("Hue");
+                        value <=> root.hue;
                         minimum: 0;
                         maximum: 360;
-                        value <=> root.hue;
-                        edited => { root.edits-changed(); }
+                        changed => { root.edits-changed(); }
                     }
 
                     EditSlider {
-                        label: "Blur";
+                        label: @tr("Blur");
                         minimum: 0;
                         maximum: 10;
                         value <=> root.blur;
-                        edited => { root.edits-changed(); }
+                        changed => { root.edits-changed(); }
                     }
 
                     EditSlider {
-                        label: "Sharpen";
+                        label: @tr("Sharpen");
                         minimum: 0;
                         maximum: 10;
                         value <=> root.sharpen;
-                        edited => { root.edits-changed(); }
+                        changed => { root.edits-changed(); }
                     }
 
                     HorizontalLayout {
                         spacing: 4px;
+                        alignment: space-between;
 
-                        Chip {
-                            text: "Grayscale";
-                            active: root.grayscale;
-                            clicked => {
-                                root.grayscale = !root.grayscale;
-                                root.edits-changed();
-                            }
+                        IconButton {
+                            icon: Icons.rotate-left;
+                            icon-size: 16px;
+                            inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                            colorize: #f1f1f1;
+                            clicked => { root.turns -= 1; }
                         }
 
-                        Chip {
-                            text: "Invert";
-                            active: root.invert;
-                            clicked => {
-                                root.invert = !root.invert;
-                                root.edits-changed();
-                            }
+                        IconButton {
+                            icon: Icons.rotate-right;
+                            icon-size: 16px;
+                            inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                            colorize: #f1f1f1;
+                            clicked => { root.turns += 1; }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 4px;
-
-                        Chip {
-                            text: "Flip H";
+                        IconButton {
+                            icon: Icons.flip-horizontal;
+                            icon-size: 16px;
+                            inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                            colorize: #f1f1f1;
                             clicked => { root.flip-horizontal(); }
                         }
 
-                        Chip {
-                            text: "Flip V";
+                        IconButton {
+                            icon: Icons.flip-horizontal;
+                            rotation: 90deg;
+                            icon-size: 16px;
+                            inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                            colorize: #f1f1f1;
                             clicked => { root.flip-vertical(); }
                         }
+
+                        IconButton {
+                            icon: Icons.invert;
+                            icon-size: 16px;
+                            inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                            colorize: #f1f1f1;
+                            clicked => { root.invert = !root.invert; root.edits-changed(); }
+                        }
+
+                        // IconButton {
+                        //     icon: Icons.grayscale;
+                        //     rotation: 90deg;
+                        //     icon-size: 16px;
+                        //     inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        //     colorize: #f1f1f1;
+                        //     clicked => { root.grayscale = !root.grayscale; root.edits-changed(); }
+                        // }
                     }
 
                     HorizontalLayout {
-                        spacing: 4px;
+                        alignment: end;
+                        spacing: 12px;
 
-                        Chip {
-                            text: "Reset";
+                        PrimaryButton {
+                            alt: true;
+                            text: @tr("Cancel");
+                            image: Icons.close;
+                            image-size: 14px;
+
                             clicked => {
                                 root.reset-edit-values();
-                                root.edits-changed();
+                                root.turns = 0;
+                                root.editing = false;
+                                root.edit-cancelled();
                             }
                         }
 
-                        Chip {
-                            text: "Save";
-                            active: true;
+                        PrimaryButton {
+                            text: @tr("Save as");
+                            image: Icons.save;
+
                             clicked => { root.save-requested(); }
                         }
                     }
                 }
             }
         }
+
+        if PropertiesBridge.open: Properties {
+            restore-focus => { fs.focus(); }
+        }
+    }
+
+    if root.shortcuts: ShortcutsModal {
+        on-close => { fs.focus(); root.shortcuts = false; }
     }
 }
