@@ -1,0 +1,450 @@
+import { Theme, ThemeAnimator } from "../../shared/theme.slint";
+import {
+    NectanAppFrame,
+    Slider,
+    IconButton,
+    GlassPanel,
+    GeneralModal,
+} from "../../shared/elements.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { Icons } from "../../shared/icons.slint";
+import { Properties, PropertiesBridge } from "../../shared/properties.slint";
+
+component ShortcutsModal inherits GeneralModal {
+
+    init => { self.focus(); }
+
+    Rectangle {
+        width: min(720px, parent.width - 40px);
+        height: min(480px,parent.height - 40px);
+        clip: true;
+        border-corner-shape: superellipse(Theme.config.edges-shape);
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: Theme.colors.primary-col;
+        border-radius: 24px;
+        border-width: 1px;
+        border-color: Theme.colors.border-col;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            Text {
+                font-size: 1.5rem;
+                font-weight: 600;
+                text: @tr("Shortcuts");
+                color: Theme.colors.primary-font;
+            }
+        }
+    }
+}
+
+export component MusicPlayer inherits Window {
+    title: "Nectan Music Player";
+    preferred-width: 1080px;
+    preferred-height: 720px;
+    min-width: 400px;
+    min-height: 300px;
+    resize-border-width: 6px;
+    no-frame: !Theme.config.native-topbar;
+    background: transparent;
+    maximized: WindowBridge.maximized;
+
+    in property <image> artwork: @image-url("../../../assets/Nectan512.png");
+    in property <string> track-name: "Slint";
+    in property <string> artist-name: "Unknown";
+    in property <float> duration: 355;
+    in-out property <float> progress: 0.5;
+    in-out property <bool> playing: true;
+    in-out property <bool> shuffle: false;
+    in-out property <bool> repeat: false;
+    in-out property <bool> shortcuts: false;
+    in-out property <bool> properties: false;
+    out property <bool> scrubbing: progress-slider.pressed;
+
+    callback previous();
+    callback next();
+    callback seek(float);
+
+    property <int> hide-after-ticks: 6;
+    property <int> idle-ticks: 0;
+    property <bool> controls-visible: true;
+    property <bool> show-controls: root.controls-visible || !root.playing;
+    property <length> controls-height: 56px;
+
+    function wake() {
+        root.idle-ticks = 0;
+        root.controls-visible = true;
+    }
+
+    changed playing => {
+        root.wake();
+    }
+
+    Timer {
+        interval: 500ms;
+        running: root.playing && root.controls-visible;
+        triggered => {
+            root.idle-ticks += 1;
+            if (root.idle-ticks >= root.hide-after-ticks) {
+                root.controls-visible = false;
+            }
+        }
+    }
+
+    pure function format-time(t: float) -> string {
+        let total = Math.floor(t);
+        let m = Math.floor(total / 60);
+        let s = Math.mod(total, 60);
+        return "\{m}:\{s < 10 ? "0" : ""}\{s}";
+    }
+
+    ThemeAnimator { }
+
+    NectanAppFrame {
+        maximized: root.maximized || root.full-screen;
+        width: 100%;
+
+        fs := FocusScope {
+            init => { self.focus(); }
+
+            KeyBinding {
+                keys: @keys(Space);
+                activated => { root.playing = !root.playing; }
+            }
+
+            KeyBinding {
+                keys: @keys(K);
+                activated => { /*todo vol up */ }
+            }
+
+            KeyBinding {
+                keys: @keys(J);
+                activated => { /*todo vol down*/ }
+            }
+
+            KeyBinding {
+                keys: @keys(UpArrow);
+                activated => { /*todo vol up */ }
+            }
+
+            KeyBinding {
+                keys: @keys(DownArrow);
+                activated => { /*todo vol down*/ }
+            }
+
+            KeyBinding {
+                keys: @keys(L);
+                activated => { root.next(); }
+            }
+
+            KeyBinding {
+                keys: @keys(H);
+                activated => { root.previous(); }
+            }
+
+            KeyBinding {
+                keys: @keys(M);
+                activated => { /*TODO MUTE*/ }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit0);
+                activated => { root.seek(0.0); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit1);
+                activated => { root.seek(0.1); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit2);
+                activated => { root.seek(0.2); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit3);
+                activated => { root.seek(0.3); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit4);
+                activated => { root.seek(0.4); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit5);
+                activated => { root.seek(0.5); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit6);
+                activated => { root.seek(0.6); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit7);
+                activated => { root.seek(0.7); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit8);
+                activated => { root.seek(0.8); }
+            }
+
+            KeyBinding {
+                keys: @keys(Digit9);
+                activated => { root.seek(0.9); }
+            }
+
+            KeyBinding {
+                keys: @keys(I);
+                activated => { root.properties = true; }
+            }
+
+            key-pressed(e) => {
+                root.wake();
+                reject
+            }
+
+            Rectangle {
+                background: #000;
+            }
+
+            WindowMoveArea { }
+
+            TouchArea {
+                mouse-cursor: root.show-controls ? MouseCursor.default : MouseCursor.none;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.move || e.kind == PointerEventKind.down) {
+                        root.wake();
+                    }
+                }
+            }
+
+            VerticalLayout {
+                width: 100%;
+                padding: 64px;
+                spacing: 8px;
+                alignment: end;
+
+                HorizontalLayout {
+
+                    Rectangle {
+                        background: #121212;
+                        border-radius: 20px;
+                        border-corner-shape: superellipse(Theme.config.edges-shape);
+                        width: 256px;
+                        height: 256px;
+                        clip: true;
+
+                        Image {
+                            width: 256px;
+                            height: 256px;
+                            image-fit: contain;
+                            source: root.artwork;
+                        }
+                    }
+
+                    Rectangle {
+                        width: 32px;
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        alignment: end;
+
+                        Text {
+                            text: root.track-name;
+                            color: #fff;
+                            font-size: 32px;
+                            font-weight: 700;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: root.artist-name;
+                            color: #ffffffb3;
+                            font-size: 14px;
+                            font-weight: 600;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 16px;
+                }
+
+                progress-slider := Slider {
+                    width: 100%;
+                    minimum: 0;
+                    maximum: 1;
+                    value <=> root.progress;
+
+                    released(v) => { root.seek(v); }
+                }
+
+                HorizontalLayout {
+                    Text {
+                        text: root.format-time(root.progress * root.duration);
+                        color: #ffffffb3;
+                        font-size: 12px;
+                    }
+
+                    Rectangle { }
+
+                    Text {
+                        text: root.format-time(root.duration);
+                        color: #ffffffb3;
+                        font-size: 12px;
+                    }
+                }
+
+                Rectangle {
+                    height: root.show-controls ? root.controls-height : 0px;
+                    opacity: root.show-controls ? 1.0 : 0.0;
+                    clip: true;
+                    visible: self.height > 0.5px;
+
+                    animate height {
+                        duration: 500ms;
+                        easing: Theme.easing;
+                    }
+
+                    animate opacity {
+                        duration: 500ms;
+                        easing: Theme.easing;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        padding-top: 8px;
+
+                        HorizontalLayout {
+                            padding-left: 20px;
+                            padding-right: 20px;
+                            padding-top: 10px;
+                            padding-bottom: 10px;
+                            spacing: 20px;
+                            alignment: center;
+
+                            IconButton {
+                                inner-bg: transparent;
+                                icon: Icons.shuffle;
+                                colorize: root.shuffle ? #f1f1f1 : #888;
+                                clicked => { root.shuffle = !root.shuffle; }
+                            }
+
+                            IconButton {
+                                inner-bg: transparent;
+                                icon: Icons.fast-forward;
+                                rotation: 180deg;
+                                colorize: #f1f1f1;
+                                clicked => { root.previous(); }
+                            }
+
+                            IconButton {
+                                inner-bg: transparent;
+                                icon: root.playing ? Icons.pause : Icons.play;
+                                colorize: #f1f1f1;
+                                clicked => { root.playing = !root.playing; }
+                            }
+
+                            IconButton {
+                                inner-bg: transparent;
+                                icon: Icons.fast-forward;
+                                colorize: #f1f1f1;
+                                clicked => { root.next(); }
+                            }
+
+                            IconButton {
+                                inner-bg: transparent;
+                                icon: Icons.repeat;
+                                colorize: root.repeat ? #f1f1f1 : #888;
+                                clicked => { root.repeat = !root.repeat; }
+                            }
+
+                            IconButton {
+                                inner-bg: transparent;
+                                icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
+                                colorize: #f1f1f1;
+                                clicked => { root.full-screen = !root.full-screen; }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !Theme.config.native-topbar: Rectangle {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 48px;
+                opacity: root.show-controls ? 1.0 : 0.0;
+                visible: self.opacity > 0.01;
+
+                animate opacity {
+                    duration: 500ms;
+                    easing: Theme.easing;
+                }
+
+                HorizontalLayout {
+                    x: 0px;
+                    y: 0px;
+                    width: 100%;
+                    height: 48px;
+                    padding: 8px;
+                    spacing: 4px;
+                    alignment: end;
+
+                    IconButton {
+                        icon: Icons.key;
+                        icon-size: 14px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #c8c8c8;
+                        clicked => { root.shortcuts = true; }
+                    }
+
+                    IconButton {
+                        icon: Icons.minimize;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { root.minimized = true; }
+                    }
+
+                    IconButton {
+                        icon: Icons.maximize;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #f1f1f1;
+                        clicked => {
+                            root.maximized = !root.maximized;
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.close;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.shortcuts: ShortcutsModal {
+        on-close => { fs.focus(); root.shortcuts = false; }
+    }
+
+    if PropertiesBridge.open: Properties {
+        restore-focus => { fs.focus(); }
+    }
+}
