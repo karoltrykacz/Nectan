@@ -1,0 +1,63 @@
+import { Theme } from "../../shared/theme.slint";
+
+export global ServerBridge {
+    in-out property <bool> open;
+}
+
+export component Server inherits Rectangle {
+    background: #121212;
+
+    HorizontalLayout {
+        cross-axis-alignment: center;
+        alignment: center;
+
+        Rectangle {
+            width: 256px;
+            height: 256px;
+            border-color: blue;
+            border-width: 1px;
+            border-radius: 20px;
+            corner-shape: CornerShape.squircle;
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 16px;
+
+                Text {
+                    text: @tr("Self hosted");
+                    color: Theme.colors.primary-font;
+                    font-size: 20px;
+                    font-weight: 600;
+                }
+            }
+        }
+
+        Text {
+            text: @tr("VS");
+            color: Theme.colors.primary-font;
+            font-size: 64px;
+            font-weight: 600;
+        }
+
+        Rectangle {
+            width: 256px;
+            height: 256px;
+            border-color: red;
+            border-width: 1px;
+            border-radius: 20px;
+            corner-shape: CornerShape.squircle;
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 16px;
+
+                Text {
+                    text: @tr("Cloud");
+                    color: Theme.colors.primary-font;
+                    font-size: 20px;
+                    font-weight: 600;
+                }
+            }
+        }
+    }
+}

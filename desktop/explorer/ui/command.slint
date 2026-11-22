@@ -11,22 +11,22 @@ import { Icons } from "../../shared/icons.slint";
 
 // TODO
 
-export enum SearchItemKind { device, action } 
+export enum CommandItemKind { device, action, zoxide } 
 
-export struct ResultItem {
-    kind: SearchItemKind,
+export struct CommandItem {
+    kind: CommandItemKind,
     id: string,
     title: string,
     subtitle: string,
     tag: string,
 }
 
-export global SearchBridge {
+export global CommandBridge {
     in-out property <bool> open;
-    in-out property <[ResultItem]> results;
+    in-out property <[CommandItem]> results;
 
     callback query-changed(string);
-    callback action(SearchItemKind, string);
+    callback action(CommandItemKind, string);
 }
 
 component ResultRow inherits Rectangle {
@@ -34,13 +34,13 @@ component ResultRow inherits Rectangle {
     in property <string> id;
     in property <string> subtitle;
     in property <string> tag;
-    in property <SearchItemKind> kind;
+    in property <CommandItemKind> kind;
     in property <bool> selected;
     callback clicked;
 
     height: 52px;
     border-radius: 8px;
-    // border-corner-shape: superellipse(Theme.config.edges-shape);
+    corner-shape: CornerShape.squircle;
     background: selected ? Theme.colors.third-col : t.has-hover ? Theme.colors.secondary-col : transparent;
 
     HorizontalLayout {
@@ -56,33 +56,29 @@ component ResultRow inherits Rectangle {
             height: 32px;
             border-radius: 8px;
 
-            if root.kind == SearchItemKind.device: SvgIcon {
-                source: @image-url("icons/cpu.svg");
+            if root.kind == CommandItemKind.device: SvgIcon {
+                source: Icons.cpu;
                 size: 16px;
             }
             if root.id == "settings":SvgIcon {
                 source: Icons.settings;
                 size: 16px;
             }
-            if root.id == "vaults":SvgIcon {
-                source: @image-url("icons/archive.svg");
-                size: 16px;
-            }
 
             if root.id == "transfers":SvgIcon {
-                source: @image-url("icons/tranfsers.svg");
+                source: Icons.transfers;
                 size: 16px;
             }
             if root.id == "send-files":SvgIcon {
-                source: @image-url("icons/file.svg");
+                source: Icons.file;
                 size: 16px;
             }
-            if root.id == "send-folder":SvgIcon {
-                source: @image-url("icons/folder.svg");
+            if root.id == "send-dir":SvgIcon {
+                source: Icons.directory;
                 size: 16px;
             }
             if root.id == "add-device":SvgIcon {
-                source: @image-url("icons/link.svg");
+                source: Icons.link;
                 size: 16px;
             }
         }
@@ -97,22 +93,23 @@ component ResultRow inherits Rectangle {
     }
 
     t := TouchArea {
+        mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
 }
 
-export component Search inherits GeneralModal {
+export component Command inherits GeneralModal {
     property <string> query;
-    property <int> total: SearchBridge.results.length;
+    property <int> total: CommandBridge.results.length;
     property <int> selected: 0;
 
     function pick-index(i: int) {
-        SearchBridge.action(SearchBridge.results[i].kind, SearchBridge.results[i].id);
-        SearchBridge.open = false;
+        CommandBridge.action(CommandBridge.results[i].kind, CommandBridge.results[i].id);
+        CommandBridge.open = false;
     }
 
     function move(delta: int) {
-        let n = SearchBridge.results.length;
+        let n = CommandBridge.results.length;
         if (n == 0) { return; }
         root.selected = Math.mod(root.selected + delta + n, n);
 
@@ -124,66 +121,82 @@ export component Search inherits GeneralModal {
         }
     }
 
-    init => { SearchBridge.query-changed(""); }
+    init => { CommandBridge.query-changed(""); }
 
-    on-close => { SearchBridge.open = false; }
+    on-close => { CommandBridge.open = false; }
 
     on-enter => {
-        if SearchBridge.results.length > 0 {
+        if CommandBridge.results.length > 0 {
             pick-index(root.selected);
         }
     }
-    Rectangle {
-        height: layout.preferred-height;
-        width: min(820px, parent.width * 0.8);
-        y: parent.height / 3;
-        x: (parent.width - self.width) / 2;
-        background: Theme.colors.primary-col;
-        border-radius: 24px;
-        // border-corner-shape: superellipse(Theme.config.edges-shape);
-        border-width: 1px;
-        border-color: Theme.colors.hover-col;
-        clip: true;
 
-        TouchArea { }
+    FocusScope {
 
-        FocusScope {
-            capture-key-pressed(e) => {
-                if e.text == Key.DownArrow { root.move(1); return accept; }
-                if e.text == Key.UpArrow { root.move(-1); return accept; }
-                if e.text == Key.Tab {
-                    if e.modifiers.shift {
-                        root.move(-1);
-                    } else {
-                        root.move(1);
-                    }
-                    return accept;
-                }
-                reject
+        focus-lost(reason) => {
+            root.on-close();
+        }
+
+        capture-key-pressed(e) => {
+            debug("Key", e);
+            if e.text == Key.DownArrow {
+                root.move(1);
+                return accept;
             }
+            if e.text == Key.UpArrow {
+                root.move(-1);
+                return accept;
+            }
+            if e.text == Key.Tab {
+                if e.modifiers.shift {
+                    root.move(-1);
+                } else {
+                    root.move(1);
+                }
+                return accept;
+            }
+            reject
+        }
+
+        Rectangle {
+            height: layout.preferred-height;
+            width: min(820px, parent.width * 0.8);
+            y: parent.height / 3;
+            x: (parent.width - self.width) / 2;
+            background: Theme.colors.primary-col;
+            border-radius: 24px;
+            corner-shape: CornerShape.squircle;
+            border-width: 1px;
+            border-color: Theme.colors.hover-col;
+            clip: true;
+
+            TouchArea { }
 
             layout := VerticalLayout {
                 HorizontalLayout {
                     height: 56px;
                     cross-axis-alignment: center;
+                    alignment: stretch;
                     padding-left: 20px;
                     spacing: 8px;
 
                     SvgIcon {
-                        source: @image-url("icons/search.svg");
+                        source: Icons.search;
                         fg: Theme.colors.fourth-font;
                         size: 16px;
                     }
 
                     PlainLineEdit {
+                        height: 100%;
                         input-text <=> root.query;
                         placeholder-text: @tr("Search...");
                         edited(t) => {
                             root.selected = 0;
                             list.content-y = 0;
-                            SearchBridge.query-changed(t);
+                            CommandBridge.query-changed(t);
                         }
                         accepted => { root.on-enter(); }
+                        rejected => { root.on-close(); }
                     }
                 }
 
@@ -192,12 +205,12 @@ export component Search inherits GeneralModal {
                     padding: 8px;
 
                     list := ListView {
-                        animate content-y {
-                            duration: 200ms;
-                            easing: ease;
-                        }
+                        // animate content-y {
+                        //     duration: Theme.animation-speed * 4;
+                        //     easing: Theme.easing;
+                        // }
                         height: min(320px, root.total * 52px);
-                        for r[i] in SearchBridge.results: ResultRow {
+                        for r[i] in CommandBridge.results: ResultRow {
                             title: r.title;
                             subtitle: r.subtitle;
                             tag: r.tag;
@@ -208,7 +221,7 @@ export component Search inherits GeneralModal {
                         }
                     }
 
-                    if SearchBridge.results.length == 0 && root.query != "": Text {
+                    if CommandBridge.results.length == 0 && root.query != "": Text {
                         height: 52px;
                         horizontal-alignment: center;
                         vertical-alignment: center;

@@ -18,6 +18,7 @@ export component SetTerminalCommand inherits GeneralModal {
     function save() {
         SetTerminalCommandBridge.save-cmd(in.input-text);
         debug("Saved ", in.input-text);
+        root.on-close();
     }
 
     Rectangle {
@@ -52,7 +53,7 @@ export component SetTerminalCommand inherits GeneralModal {
             Rectangle {
                 height: 42px;
                 border-radius: 24px;
-                border-corner-shape: superellipse(Theme.config.edges-shape);
+                corner-shape: CornerShape.squircle;
                 // background: input.has-focus ? Theme.colors.fourth-col : Theme.colors.third-col;
                 border-width: 1px;
                 border-color: Theme.colors.fourth-col;
@@ -60,7 +61,8 @@ export component SetTerminalCommand inherits GeneralModal {
                 in := PlainLineEdit {
                     edited(terminal_cmd) => {}
                     accepted => {
-                        save()
+                        debug("Accepted");
+                        root.save();
                     }
                 }
             }

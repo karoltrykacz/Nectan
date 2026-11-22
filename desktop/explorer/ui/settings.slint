@@ -1,4 +1,9 @@
 import { ScrollView, TextEdit, VerticalBox, LineEdit } from "std-widgets.slint";
+import {
+    IconsEditor,
+    ChangeShortcut,
+    FontModal,
+} from "../../shared/settings.slint";
 import { Theme } from "../../shared/theme.slint";
 import {
     PrimaryButton,
@@ -10,65 +15,46 @@ import {
     GeneralModal,
     IconButton,
     SvgIcon,
+    SettingsRow,
 } from "../../shared/elements.slint";
-import { WindowBridge, MainWindowTouchArea } from "../../shared/window.slint";
+import { WindowBridge } from "../../shared/window.slint";
 import {
     Keys,
     ShortcutGroup,
     KeyMap,
     KeysBadge,
     ShortcutItem,
+    ShortcutGroupView,
 } from "../../shared/keys_shared.slint";
 import { Icons } from "../../shared/icons.slint";
 import { ExplorerBridge } from "explorer/bridge.slint";
+import { SetTerminalCommandBridge } from "terminal.slint";
 
-export struct Config {
-    upload-limit: float,
-    download-limit: float,
-    device-notify: bool,
-    transfers-notify: bool,
-}
 
 export global SettingsBridge {
 
-    in-out property <bool> username-modal;
     in-out property <bool> font-modal;
     in-out property <bool> icons-config;
-    in-out property <bool> speed-limits-config;
-
-    in-out property <float> upload-limit;
-    in-out property <float> download-limit;
-
-    pure callback format-speed(float) -> string;
 
     in-out property <bool> open;
     in-out property <int> active-tab: 0;
     in-out property <int> selected-row: -1;
 
-    in-out property <bool> autostart;
-    in-out property <string> default-download-dir;
-
-    callback join_discord();
-    callback open_github();
-    callback open_privacy();
-    callback toggle_autostart();
-    callback change-default-dir();
-
-    callback confirm-limits(bool, float, float);
-
-    in-out property <bool> self-accept-nearby;
-    in-out property <bool> self-accept-favourites;
-    in-out property <bool> speed-limits-on;
-
-    in-out property <bool> connection-notifications;
-    in-out property <bool> transfers-notifications;
-    in-out property <bool> devices-notifications;
-
-    callback toggle_accept_nearby();
-    callback toggle_accept_favourites();
-    callback save_hotkeys();
+    in-out property <float> thumbnails-cache;
 
     property <int> tab-count: 6;
+
+    pure callback map-thumbnails-cache-size(float) -> string;
+    pure callback set-thumbnails-cache-size(float);
+
+    callback change-default-dir();
+    callback bind-global-shortcut();
+
+    callback open-zoxide-github();
+    in-out property <bool> update-zoxide;
+    callback toggle-update-zoxide();
+
+    pure callback format-speed(float) -> string;
 
     public function next-tab() {
         active-tab = Math.mod(active-tab + 1, tab-count);
@@ -79,139 +65,6 @@ export global SettingsBridge {
     }
 }
 
-component ChangeShortcut inherits GeneralModal {
-    property <keys> new-keys;
-    property <string> shortcut-id: Keys.change-shortcut-id;
-    property <bool> is-primary: !Keys.change-shortcut-alt;
-    property <bool> pushed-down;
-
-    function save() {
-        if new-keys.to-string() != "" {
-            Keys.save-shortcut(shortcut-id, new-keys, is-primary);
-        }
-        root.on-close();
-    }
-
-    on-close => {
-        root.restore-focus();
-        Keys.close-change();
-    }
-
-    init => { fs.focus(); }
-
-    forward-focus: fs;
-
-    fs := FocusScope {
-
-        capture-key-pressed(event) => {
-            pushed-down = true;
-            EventResult.reject
-        }
-
-        capture-key-released(event) => {
-            pushed-down = false;
-            EventResult.reject
-        }
-
-        KeyBinding {
-            keys: @keys(Return);
-            activated => { save(); }
-        }
-
-        KeyBinding {
-            keys: @keys(Escape);
-            activated => {
-                root.restore-focus();
-                Keys.close-change();
-            }
-        }
-
-        key-released(event) => {
-            EventResult.accept
-        }
-
-        key-pressed(event) => {
-            root.new-keys = Keys.make-keys(event);
-            EventResult.accept
-        }
-
-        Rectangle {
-
-            width: min(520px, parent.width - 80px);
-            height: min(256px, parent.height - 80px);
-            drop-shadow-color: #00000099;
-            drop-shadow-blur: 28px;
-            background: Theme.colors.primary-col;
-            border-radius: 12px;
-            border-width: 1px;
-            border-color: Theme.colors.border-col;
-            clip: true;
-
-            TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => {}
-            }
-
-            VerticalLayout {
-                padding: 20px;
-                padding-top: 14px;
-
-                VerticalLayout {
-                    spacing: 4px;
-                    alignment: start;
-                    Text {
-                        text: @tr("Change shortcut");
-                        font-size: 20px;
-                        color: Theme.colors.primary-font;
-                        font-weight: 600;
-                    }
-
-                    VerticalLayout {
-                        alignment: start;
-                        Text {
-                            text: @tr("Click enter to confirm.");
-                            font-size: 13px;
-                            color: Theme.colors.secondary-font;
-                        }
-                    }
-                }
-
-                Rectangle { }
-
-                KeysBadge {
-                    interactive: false;
-                    cross-axis-self-alignment: center;
-                    pressed: root.pushed-down;
-                    keys: root.new-keys;
-                }
-
-                Rectangle { }
-
-                HorizontalLayout {
-                    alignment: end;
-                    PrimaryButton {
-                        text: @tr("Cancel");
-                        alt: true;
-                        clicked => {
-                            root.on-close();
-                        }
-                    }
-
-                    Rectangle {
-                        width: 12px;
-                    }
-
-                    PrimaryButton {
-                        text: @tr("Save");
-                        image: Icons.save;
-                        clicked => { save(); }
-                    }
-                }
-            }
-        }
-    }
-}
 
 component SettingsPage inherits FocusScope {
 
@@ -221,6 +74,7 @@ component SettingsPage inherits FocusScope {
     }
 
     in property <string> title;
+    in property <string> subtitle;
     in property <int> row-count: 0;
 
     KeyBinding {
@@ -256,7 +110,7 @@ component SettingsPage inherits FocusScope {
 
             padding: 20px;
             padding-top: 16px;
-            spacing: 8px;
+            spacing: 6px;
             alignment: start;
 
             Text {
@@ -264,6 +118,13 @@ component SettingsPage inherits FocusScope {
                 color: Theme.colors.primary-font;
                 font-size: 1.5rem;
                 font-weight: 600;
+            }
+
+            if subtitle != "":Text {
+                text: subtitle;
+                color: Theme.colors.third-font;
+                font-size: 0.9rem;
+                font-weight: 400;
             }
 
             Rectangle {
@@ -275,74 +136,6 @@ component SettingsPage inherits FocusScope {
     }
 }
 
-
-
-export component SettingsRow {
-
-    in property <string> title;
-    in property <string> subtitle;
-    in property <int> idx;
-    property <bool> selected: false;
-
-    callback activate();
-
-    changed selected => {
-        if selected {
-            fs.focus();
-        }
-    }
-
-    fs := FocusScope {
-        KeyBinding {
-            keys: @keys(Return);
-            activated => {
-                activate();
-            }
-        }
-
-        Rectangle {
-            x: 0;
-            height: 52px;
-            border-radius: 8px;
-            background: selected ? Theme.colors.third-col : transparent;
-        }
-
-        HorizontalLayout {
-            padding-left: 12px;
-            padding-right: 12px;
-            padding: 4px;
-            alignment: space-between;
-
-            VerticalLayout {
-                spacing: 2px;
-                alignment: center;
-
-                Text {
-                    text: root.title;
-                    color: Theme.colors.primary-font;
-                    font-size: 1rem;
-                    font-weight: 600;
-                }
-
-                Text {
-                    text: root.subtitle;
-                    color: Theme.colors.third-font;
-                    font-size: 0.9rem;
-                }
-            }
-
-            VerticalLayout {
-                alignment: center;
-                cross-axis-alignment: center;
-                @children
-            }
-        }
-    }
-}
-
-
-
-
 component SettingsTab inherits Rectangle {
     in property <string> tab-name;
     in property <int> tab-idx;
@@ -351,7 +144,7 @@ component SettingsTab inherits Rectangle {
 
     height: 28px;
     border-radius: 12px;
-    // border-corner-shape: superellipse(Theme.config.edges-shape);
+    corner-shape: CornerShape.squircle;
     background: SettingsBridge.active-tab == tab-idx ? Theme.colors.secondary-col
         : (ta.has-hover ? Theme.colors.secondary-col : transparent);
     border-width: 1px;
@@ -393,7 +186,6 @@ component SettingsTab inherits Rectangle {
     }
 }
 
-
 component General inherits SettingsPage {
 
     title: @tr("General");
@@ -421,7 +213,7 @@ component General inherits SettingsPage {
             text: @tr("Join");
 
             clicked => {
-                SettingsBridge.join_discord();
+                WindowBridge.join_discord();
             }
         }
     }
@@ -433,588 +225,14 @@ component General inherits SettingsPage {
 
     SettingsRow {
         idx: 3;
-        title: @tr("GitHub");
-        subtitle: @tr("Nectan is open source. ");
+        title: @tr("Source code");
+        subtitle: @tr("Open GitHub.");
 
         PrimaryButton {
             text: @tr("Open");
 
             clicked => {
-                SettingsBridge.open_github();
-            }
-        }
-    }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 4;
-        title: @tr("Privacy Policy");
-        subtitle: @tr("See our privacy policy.");
-
-        PrimaryButton {
-            text: @tr("Open");
-
-            clicked => {
-                SettingsBridge.open_privacy();
-            }
-        }
-    }
-}
-
-component Transfers inherits SettingsPage {
-    title: @tr("Transfers");
-    row-count: 3;
-
-    SettingsRow {
-        idx: 0;
-        title: @tr("Username");
-        subtitle: WindowBridge.username;
-
-        PrimaryButton {
-            text: @tr("Change");
-
-            clicked => {
-                SettingsBridge.username-modal = true;
-            }
-        }
-    }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 5;
-        title: @tr("Default download destination");
-        subtitle: SettingsBridge.default-download-dir;
-        PrimaryButton {
-            text: @tr("Change");
-            clicked => { SettingsBridge.change-default-dir(); }
-        }
-    }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 0;
-        title: @tr("Auto-accept nearby");
-        subtitle: @tr("Automatically accept transfers from nearby devices.");
-        Switch {
-            checked <=> SettingsBridge.self-accept-nearby;
-            toggled => {
-                SettingsBridge.toggle_accept_nearby();
-            }
-        }
-    }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 1;
-        title: @tr("Auto-accept from favourites");
-        subtitle: @tr("Automatically accept transfers from favourites.");
-        Switch {
-            checked <=> SettingsBridge.self-accept-favourites;
-            toggled => {
-                SettingsBridge.toggle_accept_favourites();
-            }
-        }
-    }
-
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 2;
-        title: @tr("Speed limits");
-        subtitle: @tr("Configure speed limits");
-
-        HorizontalLayout {
-
-            spacing: 12px;
-            cross-axis-alignment: center;
-
-            if SettingsBridge.speed-limits-on: IconButton {
-                width: 28px;
-                height: 28px;
-                SvgIcon {
-                    source: Icons.tool;
-                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                    size: 16px;
-                }
-
-                clicked => { SettingsBridge.speed-limits-config = true; }
-            }
-
-            Switch {
-                checked <=> SettingsBridge.speed-limits-on;
-                toggled(are-enabled) => {
-                    SettingsBridge.confirm-limits(
-                        are-enabled,
-                        SettingsBridge.upload-limit,
-                        SettingsBridge.download-limit);
-                }
-            }
-        }
-    }
-}
-
-component SpeedLimitsConfig inherits GeneralModal {
-
-    on-close => {
-        root.restore-focus();
-        SettingsBridge.speed-limits-config = false;
-    }
-
-    on-enter => {
-        root.restore-focus();
-        SettingsBridge.speed-limits-config = false;
-        SettingsBridge.confirm-limits(true, SettingsBridge.upload-limit, SettingsBridge.download-limit);
-    }
-
-    init => { self.focus(); }
-
-    Rectangle {
-
-        width: min(520px, parent.width - 80px);
-        height: min(256px, parent.height - 80px);
-        drop-shadow-color: #00000099;
-        drop-shadow-blur: 28px;
-        background: Theme.colors.primary-col;
-        // border-corner-shape: superellipse(Theme.config.edges-shape);
-        border-radius: 12px;
-        border-width: 1px;
-        border-color: Theme.colors.border-col;
-        clip: true;
-
-        TouchArea {
-            clicked => {}
-        }
-
-        VerticalLayout {
-            padding: 20px;
-            padding-top: 16px;
-
-            Text {
-                text: @tr("Change limits");
-                font-size: 20px;
-                color: Theme.colors.primary-font;
-                font-weight: 600;
-            }
-
-            Rectangle {
-                height: 32px;
-            }
-
-            VerticalLayout {
-                alignment: start;
-                spacing: 8px;
-
-                HorizontalLayout {
-
-                    SvgIcon {
-                        source: Icons.uploads;
-                        size: 14px;
-                    }
-
-                    Rectangle {
-                        width: 8px;
-                    }
-
-                    Text {
-                        text: @tr("Upload");
-                        color: Theme.colors.primary-font;
-                        font-size: 13px;
-                        font-weight: 600;
-                    }
-
-                    Text {
-                        text: SettingsBridge.format-speed(SettingsBridge.upload-limit);
-                        color: Theme.colors.primary-font;
-                        horizontal-alignment: end;
-                        font-size: 13px;
-                        font-weight: 500;
-                    }
-                }
-
-                Slider {
-                    value <=> SettingsBridge.upload-limit;
-                }
-            }
-
-            Rectangle {
-                height: 20px;
-            }
-
-            VerticalLayout {
-                alignment: start;
-                spacing: 8px;
-
-                HorizontalLayout {
-                    SvgIcon {
-                        source: Icons.downloads;
-                        size: 14px;
-                    }
-
-                    Rectangle {
-                        width: 8px;
-                    }
-
-                    Text {
-                        text: @tr("Download");
-                        color: Theme.colors.primary-font;
-                        font-size: 13px;
-                        font-weight: 600;
-                    }
-
-                    Text {
-                        text: SettingsBridge.format-speed(SettingsBridge.download-limit);
-                        color: Theme.colors.primary-font;
-                        horizontal-alignment: end;
-                        font-size: 13px;
-                        font-weight: 500;
-                    }
-                }
-
-                Slider {
-                    value <=> SettingsBridge.download-limit;
-                }
-            }
-
-            Rectangle {
-                height: 20px;
-            }
-
-            PrimaryButton {
-                cross-axis-self-alignment: end;
-                text: @tr("Save");
-                image: Icons.save;
-
-                clicked => {
-                    root.restore-focus();
-                    SettingsBridge.speed-limits-config = false;
-                    SettingsBridge.confirm-limits(true, SettingsBridge.upload-limit, SettingsBridge.download-limit);
-                }
-            }
-        }
-    }
-}
-
-component IconsEditor inherits GeneralModal {
-
-    on-close => {
-        root.restore-focus();
-        SettingsBridge.icons-config = false;
-    }
-
-    on-enter => {
-        root.on-close();
-    }
-
-    init => { self.focus(); }
-
-    TouchArea {
-        clicked => { root.on-close(); }
-    }
-
-    Rectangle {
-
-        width: min(512px, parent.width - 40px);
-        height: min(320px, parent.height - 40px);
-        drop-shadow-color: #00000099;
-        drop-shadow-blur: 28px;
-        background: Theme.colors.primary-col;
-        // border-corner-shape: superellipse(Theme.config.edges-shape);
-        border-radius: 12px;
-        border-width: 1px;
-        border-color: Theme.colors.border-col;
-        clip: true;
-
-        VerticalLayout {
-            padding: 20px;
-            padding-top: 16px;
-
-            Text {
-                text: @tr("Edit icons");
-                font-size: 1.5rem;
-                color: Theme.colors.primary-font;
-                font-weight: 600;
-            }
-
-            Rectangle {
-                height: 2px;
-            }
-
-            Text {
-                wrap: word-wrap;
-                text: @tr("Supported formats: PNG, JPEG, SVG");
-                font-size: 0.9rem;
-                color: Theme.colors.secondary-font;
-            }
-
-            Rectangle { }
-
-            FlexboxLayout {
-                cross-axis-self-alignment: center;
-                spacing-horizontal: 12px;
-                spacing-vertical: 20px;
-                cross-axis-alignment: center;
-                width: 320px;
-                alignment: center;
-                for icon[i] in [
-                    Icons.downloads,
-                    Icons.documents,
-                    Icons.music,
-                    Icons.videos,
-                    Icons.pictures,
-                    Icons.trash,
-                    Icons.home,
-                    Icons.recent,
-                    Icons.drives,
-                    Icons.search,
-                    Icons.save,
-                    Icons.refresh,
-                    Icons.settings,
-                    Icons.chevron-left,
-                    Icons.chevron-right,
-                    Icons.filter,
-                    Icons.grid,
-                    Icons.list,
-                    Icons.file,
-                    Icons.directory,
-                    Icons.eye,
-                    Icons.eye-off,
-                    Icons.cpu,
-                    Icons.transfers,
-                ]: IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: icon;
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
-                    }
-                }
-            }
-
-            Rectangle { }
-
-            PrimaryButton {
-
-                cross-axis-self-alignment: end;
-                text: @tr("Save");
-                image: Icons.save;
-
-                clicked => {
-                    root.on-close();
-                }
-            }
-        }
-    }
-}
-
-
-component FontModal inherits GeneralModal {
-    property <string> new-font;
-
-    function save() {
-        Theme.config.font = new-font;
-        Theme.config-changed();
-        root.restore-focus();
-        root.on-close();
-    }
-
-    on-close => {
-        root.restore-focus();
-        SettingsBridge.font-modal = false;
-    }
-
-    on-enter => { save(); }
-
-    Rectangle {
-
-        width: min(520px, parent.width - 80px);
-        height: min(256px, parent.height - 80px);
-        drop-shadow-color: #00000099;
-        drop-shadow-blur: 28px;
-        background: Theme.colors.primary-col;
-        border-radius: 24px;
-        // border-corner-shape: superellipse(Theme.config.edges-shape);
-        border-width: 1px;
-        border-color: Theme.colors.border-col;
-        clip: true;
-
-        VerticalLayout {
-            padding: 20px;
-            padding-top: 14px;
-
-            VerticalLayout {
-                spacing: 4px;
-                alignment: start;
-                Text {
-                    text: @tr("Change font");
-                    font-size: 20px;
-                    color: Theme.colors.primary-font;
-                    font-weight: 600;
-                }
-
-                VerticalLayout {
-                    alignment: start;
-                    Text {
-                        wrap: word-wrap;
-                        text: @tr("Use fc-list : family to see the installed fonts.\nWarning! Font names are case-sensitive.");
-                        font-size: 13px;
-                        color: Theme.colors.secondary-font;
-                    }
-                }
-            }
-
-            Rectangle { }
-
-            Rectangle {
-                border-radius: 8px;
-                background: Theme.colors.third-col;
-                height: 32px;
-                VerticalLayout {
-                    PlainLineEdit {
-                        input-text <=> new-font;
-                        placeholder-text: @tr("Enter font family name");
-                        rejected => { root.on-close(); }
-                        accepted => { save(); }
-                    }
-                }
-            }
-
-            Rectangle { }
-
-            HorizontalLayout {
-                alignment: end;
-                PrimaryButton {
-                    text: @tr("Cancel");
-                    alt: true;
-                    clicked => {
-                        root.on-close();
-                    }
-                }
-
-                Rectangle {
-                    width: 12px;
-                }
-
-                PrimaryButton {
-                    text: @tr("Save");
-                    image: Icons.save;
-                    clicked => { save(); }
-                }
-            }
-        }
-    }
-}
-
-component ChangeUsernameModal inherits GeneralModal {
-    property <string> new-username: WindowBridge.username;
-
-    function save() {
-        WindowBridge.change-username(new-username);
-        WindowBridge.username = new-username;
-        root.on-close();
-    }
-
-    on-close => {
-        root.restore-focus();
-        SettingsBridge.username-modal = false;
-    }
-
-    on-enter => { save(); }
-
-    Rectangle {
-
-        width: min(520px, parent.width - 80px);
-        height: min(256px, parent.height - 80px);
-        drop-shadow-color: #00000099;
-        drop-shadow-blur: 28px;
-        background: Theme.colors.primary-col;
-        border-radius: 24px;
-        // border-corner-shape: superellipse(Theme.config.edges-shape);
-        border-width: 1px;
-        border-color: Theme.colors.border-col;
-        clip: true;
-
-        TouchArea {
-            clicked => {}
-        }
-
-        VerticalLayout {
-            padding: 20px;
-            padding-top: 14px;
-
-            VerticalLayout {
-                spacing: 4px;
-                alignment: start;
-                Text {
-                    text: @tr("Change username");
-                    font-size: 20px;
-                    color: Theme.colors.primary-font;
-                    font-weight: 600;
-                }
-
-                Text {
-                    wrap: word-wrap;
-                    text: @tr("New username will be visible to other devices after app restart.");
-                    font-size: 13px;
-                    color: Theme.colors.secondary-font;
-                }
-            }
-
-            Rectangle { }
-
-            Rectangle {
-                border-radius: 8px;
-                background: Theme.colors.third-col;
-                VerticalLayout {
-                    PlainLineEdit {
-                        input-text <=> root.new-username;
-                        placeholder-text: @tr("Enter username");
-                        accepted => { root.restore-focus(); save(); }
-                        rejected => { root.on-close(); }
-                    }
-                }
-            }
-
-            Rectangle { }
-
-            HorizontalLayout {
-                alignment: end;
-                PrimaryButton {
-                    text: @tr("Cancel");
-                    alt: true;
-                    clicked => {
-                        SettingsBridge.username-modal = false;
-                    }
-                }
-
-                Rectangle {
-                    width: 12px;
-                }
-
-                PrimaryButton {
-                    text: @tr("Save");
-                    image: Icons.save;
-                    clicked => { save(); }
-                }
+                WindowBridge.open_github();
             }
         }
     }
@@ -1026,43 +244,30 @@ component Explorer inherits SettingsPage {
 
     SettingsRow {
         idx: 2;
-        title: @tr("Relative numbers");
-        subtitle: @tr("Display relative numbers");
+        title: @tr("Thumbnails cache");
+        subtitle: @tr("Set maximum cache size for thumbnails");
 
-        Switch {
-            checked <=> ExplorerBridge.relative;
-        }
-    }
-    // Rectangle {
-    //     height: 1px;
-    //     background: Theme.colors.fourth-col.with-alpha(0.5);
-    // }
-}
+        HorizontalLayout {
+            spacing: 20px;
+            cross-axis-alignment: center;
 
-component Notifications inherits SettingsPage {
-    title: @tr("Notifications");
-    row-count: 3;
+            Text {
+                text: SettingsBridge.map-thumbnails-cache-size(SettingsBridge.thumbnails-cache);
+                color: Theme.colors.third-font;
+                font-size: 0.9rem;
+                font-weight: 500;
+            }
 
-    SettingsRow {
-        idx: 0;
-        title: @tr("Connection notification");
-        subtitle: @tr("Send notification upon new connection request.");
-        Switch {
-            checked <=> SettingsBridge.connection-notifications;
-        }
-    }
+            Slider {
+                width: 100px;
+                minimum: 0.0;
+                maximum: 1.0;
+                value <=> SettingsBridge.thumbnails-cache;
 
-    Rectangle {
-        height: 1px;
-        background: Theme.colors.fourth-col.with-alpha(0.5);
-    }
-
-    SettingsRow {
-        idx: 1;
-        title: @tr("Transfer notification");
-        subtitle: @tr("Send notifications about transfer offers and updates.");
-        Switch {
-            checked <=> SettingsBridge.transfers-notifications;
+                released(value) => {
+                    SettingsBridge.set-thumbnails-cache-size(value);
+                }
+            }
         }
     }
 
@@ -1072,11 +277,23 @@ component Notifications inherits SettingsPage {
     }
 
     SettingsRow {
-        idx: 2;
-        title: @tr("Device notification");
-        subtitle: @tr("Send notification when device comes up online.");
+        title: @tr("Extensions badges");
+        subtitle: @tr("Display colored extensions badges on top of file icon");
         Switch {
-            checked <=> SettingsBridge.devices-notifications;
+            toggled => {}
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        title: @tr("File extensions");
+        subtitle: @tr("Display file extensions");
+        Switch {
+            toggled => {}
         }
     }
 }
@@ -1086,7 +303,6 @@ component Appearance inherits SettingsPage {
     row-count: 5;
 
     SettingsRow {
-        idx: 0;
         title: @tr("Theme");
         subtitle: Theme.themes[Theme.mode].name;
         PrimaryButton {
@@ -1105,7 +321,6 @@ component Appearance inherits SettingsPage {
 
     SettingsRow {
 
-        idx: 0;
         title: @tr("Font");
         subtitle: Theme.config.font;
 
@@ -1150,13 +365,8 @@ component Appearance inherits SettingsPage {
             cross-axis-alignment: center;
 
             if Theme.config.font-scale != 1.0: IconButton {
-                width: 28px;
-                height: 28px;
-                SvgIcon {
-                    source: Icons.refresh;
-                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                    size: 16px;
-                }
+                icon: Icons.refresh;
+                icon-size: 16px;
 
                 clicked => { Theme.config.font-scale = 1.0; font-factor.value = 1.0; Theme.config-changed(); }
             }
@@ -1241,77 +451,120 @@ component Appearance inherits SettingsPage {
             toggled => { Theme.config-changed(); }
         }
     }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Transparency");
+        subtitle: @tr("Change transparency of in app objects");
+        Slider {
+            width: 100px;
+            value <=> Theme.config.transparency;
+            released => { Theme.config-changed(); }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Bluriness");
+        subtitle: @tr("Change blur strength ");
+        Slider {
+            width: 100px;
+            value <=> Theme.config.bluriness;
+            released => { Theme.config-changed(); }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        idx: 2;
+        title: @tr("Window transparency");
+        subtitle: @tr("Transparency of window backplane. \n(Window bluriness is set by compositor)");
+        Slider {
+            width: 100px;
+            value <=> Theme.config.window-backpane-transparency;
+            released => { Theme.config-changed(); }
+        }
+    }
 }
 
-component ShortcutGroupView inherits Rectangle {
-    in property <string> category;
-    in property <[ShortcutItem]> items;
 
-    background: Theme.colors.secondary-col;
-    border-radius: 12px;
-    // border-corner-shape: superellipse(Theme.config.edges-shape);
+component Zoxide inherits SettingsPage {
+    title: @tr("Zoxide integration");
+    row-count: 5;
 
-    VerticalLayout {
-        padding: 20px;
-        padding-bottom: 0;
-        padding-top: 16px;
-
-        Text {
-            text: root.category;
-            color: Theme.colors.primary-font;
-            font-size: 16px;
-            font-weight: 500;
-        }
-
-        Rectangle {
-            height: 10px;
-        }
-
-        for item[i] in root.items: Rectangle {
-            height: 48px;
-
-            HorizontalLayout {
-                alignment: space-between;
-
-                Text {
-                    text: item.title;
-                    color: Theme.colors.primary-font;
-                    font-size: 13px;
-                    font-weight: 400;
-                    vertical-alignment: center;
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: end;
-                    cross-axis-alignment: center;
-
-                    KeysBadge {
-                        shortcut-id: item.id;
-                        alt: false;
-                        keys: item.keys;
-                    }
-
-                    if item.alt-keys.to-string() != "": Text {
-                        text: @tr(" | ");
-                        color: Theme.colors.third-font;
-                        font-size: 11px;
-                        font-weight: 500;
-                        vertical-alignment: center;
-                    }
-
-                    if item.alt-keys.to-string() != "": KeysBadge {
-                        shortcut-id: item.id;
-                        alt: true;
-                        keys: item.alt-keys;
-                    }
-                }
+    SettingsRow {
+        title: @tr("Learn more");
+        subtitle: @tr("Read more about zoxide");
+        PrimaryButton {
+            image: Icons.github;
+            text: @tr("Open");
+            clicked => {
+                SettingsBridge.open-zoxide-github();
             }
+        }
+    }
 
-            if i != root.items.length - 1: Rectangle {
-                y: parent.height - self.height;
-                height: 1px;
-                background: Theme.colors.fourth-col.with-alpha(0.5);
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        title: @tr("Update zoxide database");
+        subtitle: @tr("Browsing will update zoxide database. \nIf disabled Nectan will maintain its own (separate) database.\nZoxide doesn't need to be installed.");
+
+        Switch {
+            checked <=> SettingsBridge.update-zoxide;
+            toggled => {
+                SettingsBridge.toggle-update-zoxide();
+            }
+        }
+    }
+}
+
+component Gallery inherits SettingsPage {
+    title: @tr("Gallery");
+    row-count: 5;
+
+    SettingsRow {
+        title: @tr("Add directories to include");
+        subtitle: @tr("");
+        PrimaryButton {
+            image: Icons.plus;
+            text: @tr("Add");
+            clicked => {
+                SettingsBridge.open-zoxide-github();
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+
+    SettingsRow {
+        title: @tr("Connect Nectan embedding server");
+        subtitle: @tr("");
+        PrimaryButton {
+            image: Icons.server;
+            text: @tr("Connect");
+            clicked => {
+                SettingsBridge.open-zoxide-github();
             }
         }
     }
@@ -1372,6 +625,12 @@ component Shortcuts inherits SettingsPage {
                     alt_keys: m.transfers.alt-keys
                 },
                 {
+                    id: "command",
+                    title: @tr("Command"),
+                    keys: m.command.keys,
+                    alt_keys: m.command.alt-keys
+                },
+                {
                     id: "settings",
                     title: @tr("Settings"),
                     keys: m.settings.keys,
@@ -1419,12 +678,6 @@ component Shortcuts inherits SettingsPage {
                     alt_keys: m.half-page-up.alt-keys
                 },
                 {
-                    id: "search-in-current",
-                    title: @tr("Search in directory"),
-                    keys: m.search-in-current.keys,
-                    alt_keys: m.search-in-current.alt-keys
-                },
-                {
                     id: "next",
                     title: @tr("Next (Search result)"),
                     keys: m.next.keys,
@@ -1435,6 +688,12 @@ component Shortcuts inherits SettingsPage {
                     title: @tr("Previous (Search result)"),
                     keys: m.previous.keys,
                     alt_keys: m.previous.alt-keys
+                },
+                {
+                    id: "search-in-current",
+                    title: @tr("Search"),
+                    keys: m.search-in-current.keys,
+                    alt_keys: m.search-in-current.alt-keys
                 },
                 {
                     id: "search-recursively",
@@ -1524,12 +783,25 @@ component Shortcuts inherits SettingsPage {
         },
     ];
 
+    // SettingsRow {
+    //     title: @tr("Bind global shortcut");
+    //     subtitle: @tr("Bind global shortcut");
+    //
+    //     PrimaryButton {
+    //         image: Icons.key;
+    //         text: @tr("Bind");
+    //
+    //         clicked => {
+    //             SettingsBridge.bind-global-shortcut();
+    //         }
+    //     }
+    // }
+
     for group in shortcut-groups: ShortcutGroupView {
         category: group.category;
         items: group.items;
     }
 }
-
 
 export component Settings inherits GeneralModal {
 
@@ -1570,13 +842,14 @@ export component Settings inherits GeneralModal {
         }
 
         Rectangle {
-            width: min(920px, parent.width - 40px);
-            height: min(620px, parent.height - 40px);
+            width: min(920px, parent.width - 160px);
+            height: min(620px, parent.height - 160px);
             clip: true;
 
-            background: Theme.colors.primary-col;
-            border-radius: 12px;
-            // border-corner-shape: superellipse(Theme.config.edges-shape);
+            background: Theme.colors.primary-col.with-alpha(Theme.config.transparency);
+            backdrop-blur: Theme.blur;
+            border-radius: 20px;
+            corner-shape: CornerShape.squircle;
             border-width: 1px;
             border-color: Theme.colors.fourth-col.with-alpha(0.5);
 
@@ -1601,37 +874,37 @@ export component Settings inherits GeneralModal {
 
                     SettingsTab {
                         tab-idx: 1;
-                        tab-name: @tr("Transfers");
-                        icon-size: 14px;
-                        icon: Icons.transfers;
-                    }
-
-                    SettingsTab {
-                        tab-idx: 2;
-                        tab-name: @tr("Notifications");
-                        icon-size: 14px;
-                        icon: Icons.bell;
-                    }
-
-                    SettingsTab {
-                        tab-idx: 3;
                         tab-name: @tr("Appearance");
                         icon-size: 14px;
                         icon: Icons.palette;
                     }
 
                     SettingsTab {
-                        tab-idx: 4;
+                        tab-idx: 2;
                         tab-name: @tr("Shortcuts");
                         icon-size: 14px;
                         icon: Icons.key;
                     }
 
                     SettingsTab {
-                        tab-idx: 5;
+                        tab-idx: 3;
                         tab-name: @tr("Explorer");
                         icon-size: 14px;
                         icon: Icons.directory;
+                    }
+
+                    SettingsTab {
+                        tab-idx: 4;
+                        tab-name: @tr("Zoxide");
+                        icon-size: 14px;
+                        icon: Icons.terminal;
+                    }
+
+                    SettingsTab {
+                        tab-idx: 5;
+                        tab-name: @tr("Gallery");
+                        icon-size: 14px;
+                        icon: Icons.pictures;
                     }
                 }
 
@@ -1642,36 +915,38 @@ export component Settings inherits GeneralModal {
 
                 if SettingsBridge.active-tab == 0: General { }
 
-                if SettingsBridge.active-tab == 1: Transfers { }
+                if SettingsBridge.active-tab == 1: Appearance { }
 
-                if SettingsBridge.active-tab == 2: Notifications { }
+                if SettingsBridge.active-tab == 2: Shortcuts { }
 
-                if SettingsBridge.active-tab == 3: Appearance { }
+                if SettingsBridge.active-tab == 3: Explorer { }
 
-                if SettingsBridge.active-tab == 4: Shortcuts { }
+                if SettingsBridge.active-tab == 4: Zoxide { }
 
-                if SettingsBridge.active-tab == 5: Explorer { }
+                if SettingsBridge.active-tab == 5: Gallery { }
             }
         }
 
-        if SettingsBridge.username-modal: ChangeUsernameModal {
-            restore-focus => { fs.focus(); }
-        }
-
         if SettingsBridge.font-modal: FontModal {
-            restore-focus => { fs.focus(); }
+            on-close => {
+                fs.focus();
+                SettingsBridge.font-modal = false;
+            }
         }
 
         if Keys.change-shortcut: ChangeShortcut {
             restore-focus => { fs.focus(); }
-        }
-
-        if SettingsBridge.speed-limits-config: SpeedLimitsConfig {
-            restore-focus => { fs.focus(); }
+            on-close => {
+                fs.focus();
+                Keys.close-change();
+            }
         }
 
         if SettingsBridge.icons-config: IconsEditor {
-            restore-focus => { fs.focus(); }
+            on-close => {
+                fs.focus();
+                SettingsBridge.icons-config = false;
+            }
         }
     }
 }

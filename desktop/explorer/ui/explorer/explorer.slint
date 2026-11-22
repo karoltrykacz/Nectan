@@ -1,4 +1,8 @@
 import { Theme } from "../../../shared/theme.slint";
+import { HasherBridge } from "../../../shared/hasher.slint";
+import {
+    OpenWithBridge,
+} from "../../../shared/open_with.slint";
 import {
     GeneralModal,
     PlainLineEdit,
@@ -8,57 +12,29 @@ import {
     IconButton,
     SvgIcon,
     Switch,
+    MenuRow,
+    MenuSeparator,
+    ToggleableIconButton,
 } from "../../../shared/elements.slint";
-import { ListView, ScrollView } from "std-widgets.slint";
+import {
+    ListView,
+    ScrollView,
+    VerticalBox,
+    HorizontalBox,
+} from "std-widgets.slint";
 import {
     WindowBridge,
-    MainWindowTouchArea,
 } from "../../../shared/window.slint";
 import { Keys } from "../../../shared/keys_shared.slint";
-import { SettingsRow } from "../settings.slint";
-import { ExplorerBridge, EntryType, DirEntry } from "bridge.slint";
+import { ExplorerBridge, View, EntryType, DirEntry } from "bridge.slint";
 import { CompressModal } from "compress.slint";
 import { Icons } from "../../../shared/icons.slint";
-
-component MenuRow inherits Rectangle {
-    in property <string> text;
-    callback clicked;
-
-    height: 28px;
-    border-radius: 6px;
-    background: row-ta.has-hover
-        ? Theme.colors.third-col
-        : transparent;
-
-    row-ta := TouchArea {
-        clicked => { root.clicked(); }
-    }
-
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 8px;
-
-        Text {
-            text: root.text;
-            font-size: 0.8rem;
-            color: Theme.colors.primary-font;
-            vertical-alignment: center;
-        }
-    }
-}
-
-component MenuSeparator inherits Rectangle {
-    height: 9px;
-
-    Rectangle {
-        y: 4px;
-        height: 1px;
-        background: Theme.colors.border-col;
-    }
-}
+import { FilterPanel } from "../filter.slint";
 
 component ContextMenu inherits Rectangle {
+    in property <DirEntry> entry;
+    in property <int> entry-idx;
+
     callback action(string);
 
     property <length> menu-width: 256px;
@@ -66,11 +42,6 @@ component ContextMenu inherits Rectangle {
 
     property <length> pop-x: 0px;
     property <length> pop-y: 0px;
-
-    x: 0px;
-    y: 0px;
-    width: 0px;
-    height: 0px;
 
     public function open(mx: length, my: length, bound-w: length, bound-h: length) {
         root.pop-x = max(0px, min(mx, bound-w - root.menu-width));
@@ -86,8 +57,10 @@ component ContextMenu inherits Rectangle {
         close-policy: close-on-click-outside;
 
         Rectangle {
-            background: Theme.colors.primary-col;
-            border-radius: 10px;
+            background: Theme.colors.primary-col.with-alpha(0.5);
+            backdrop-blur: 10px;
+            border-radius: 20px;
+            corner-shape: CornerShape.squircle;
             border-width: 1px;
             border-color: Theme.colors.border-col;
             drop-shadow-color: #00000099;
@@ -96,48 +69,63 @@ component ContextMenu inherits Rectangle {
 
             VerticalLayout {
                 padding: 6px;
-                spacing: 0px;
 
                 MenuRow {
+                    icon: Icons.link;
                     text: @tr("Open");
                     clicked => { root.action("open"); popup.close(); }
                 }
 
                 MenuRow {
-                    text: @tr("Scripts");
-                    clicked => { root.action("scripts"); }
+                    text: @tr("Open with");
+                    clicked => {
+                        OpenWithBridge.open = true;
+                        popup.close();
+                    }
+                }
+
+                if entry.type == EntryType.symlink: MenuRow {
+                    text: @tr("Open location");
+                    icon: Icons.link;
+                    clicked => { root.action("open"); popup.close(); }
                 }
 
                 MenuSeparator { }
 
                 MenuRow {
                     text: @tr("Cut");
+                    icon: Icons.cut;
                     clicked => { root.action("cut"); popup.close(); }
                 }
 
                 MenuRow {
                     text: @tr("Copy");
+                    icon: Icons.copy;
                     clicked => { root.action("copy"); popup.close(); }
                 }
 
                 MenuRow {
                     text: @tr("Rename");
+                    icon: Icons.edit;
                     clicked => { root.action("rename"); popup.close(); }
                 }
 
                 MenuRow {
                     text: @tr("Compress");
+                    icon: Icons.cpu;
                     clicked => { root.action("compress"); popup.close(); }
                 }
 
                 MenuSeparator { }
 
                 MenuRow {
-                    text: @tr("Send ");
+                    icon: Icons.send;
+                    text: @tr("Send with Nectan");
                 }
 
                 MenuRow {
                     text: @tr("Email");
+                    icon: Icons.email;
                     clicked => { root.action("email"); popup.close(); }
                 }
 
@@ -145,11 +133,13 @@ component ContextMenu inherits Rectangle {
 
                 MenuRow {
                     text: @tr("Move to trash");
+                    icon: Icons.trash;
                     clicked => { root.action("trash"); popup.close(); }
                 }
 
                 MenuRow {
                     text: @tr("Delete permanently");
+                    icon: Icons.close;
                     clicked => { root.action("delete-permanently"); popup.close(); }
                 }
 
@@ -157,39 +147,112 @@ component ContextMenu inherits Rectangle {
 
                 MenuRow {
                     text: @tr("Properties");
-                    clicked => { root.action("properties"); popup.close(); }
+                    icon: Icons.info;
+                    clicked => { ExplorerBridge.properties(entry-idx); popup.close(); }
                 }
 
                 MenuRow {
-                    text: @tr("Copy as path");
+                    text: @tr("Copy path");
+                    icon: Icons.paperclip;
                     clicked => { root.action("copy-path"); popup.close(); }
                 }
 
-                MenuRow {
+                if entry.type == EntryType.file: MenuRow {
                     text: @tr("Hash");
-                    clicked => { root.action("hash"); }
+                    icon: Icons.hash;
+                    clicked => {
+                        HasherBridge.open-hasher();
+                        popup.close();
+                    }
                 }
             }
         }
     }
 }
 
+
+component SearchHover inherits Rectangle {
+    in property <bool> btn-hov;
+    callback search();
+    callback deep-search();
+    callback ripgrep();
+
+    property <length> pad: 4px;
+    property <length> item-h: 28px;
+    property <length> btn-size: 28px;
+
+    property <int> hovered-idx: catcher.has-hover
+        ? clamp(floor((catcher.mouse-y - root.pad) / root.item-h), -1, 2)
+        : -1;
+
+    visible: btn-hov || catcher.has-hover || bridge.has-hover;
+    z: 2;
+    y: 28px;
+    x: -self.width + 28px;
+    width: 128px;
+    height: item-h * 3 + pad * 2;
+    border-radius: 16px;
+    corner-shape: CornerShape.squircle;
+    background: Theme.colors.primary-col;
+    backdrop-blur: 5px;
+    border-width: 1px;
+    border-color: Theme.colors.third-col;
+
+    VerticalLayout {
+        padding: root.pad;
+        alignment: start;
+
+        for label[i] in [@tr("Search"), @tr("Deep search"), @tr("Ripgrep")]: Rectangle {
+            height: root.item-h;
+            border-radius: 12px;
+            corner-shape: CornerShape.squircle;
+            background: root.hovered-idx == i ? Theme.colors.third-col : transparent;
+            Text {
+                text: label;
+                font-size: 0.85rem;
+            }
+        }
+    }
+
+    bridge := TouchArea {
+        x: root.width - root.btn-size * 4;
+        y: -root.btn-size;
+        width: root.btn-size * 3;
+        height: root.btn-size;
+
+        // Rectangle {
+        //     background: red;
+        //     opacity: 0.4;
+        // }
+    }
+
+    catcher := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            if root.hovered-idx == 0 {
+                ExplorerBridge.searching = !ExplorerBridge.searching;
+            }
+            else if root.hovered-idx == 1 {
+                ExplorerBridge.scan-recursive();
+                ExplorerBridge.searching-recursive = true;
+            }
+            else if root.hovered-idx == 2 {
+                ExplorerBridge.ripgrepping = true;
+            }
+        }
+    }
+}
+
+
 component TopBar inherits HorizontalLayout {
     padding: 12px;
     padding-left: 4px;
     padding-right: 12px;
     cross-axis-alignment: center;
+    z: 0;
 
     IconButton {
-        width: 28px;
-        height: 28px;
-        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
-
-        SvgIcon {
-            source: Icons.chevron-left;
-            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-            size: 18px;
-        }
+        icon: Icons.chevron-left;
 
         clicked => {
             ExplorerBridge.back();
@@ -202,15 +265,7 @@ component TopBar inherits HorizontalLayout {
     }
 
     IconButton {
-        width: 28px;
-        height: 28px;
-        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
-
-        SvgIcon {
-            source: Icons.chevron-right;
-            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-            size: 18px;
-        }
+        icon: Icons.chevron-right;
 
         clicked => {
             ExplorerBridge.forward();
@@ -222,9 +277,6 @@ component TopBar inherits HorizontalLayout {
     }
 
     IconButton {
-        width: 28px;
-        height: 28px;
-        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
 
         SvgIcon {
             source: Icons.chevron-right;
@@ -249,18 +301,31 @@ component TopBar inherits HorizontalLayout {
 
     Rectangle { }
 
-    IconButton {
-        width: 28px;
-        height: 28px;
-        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+    s-btn := IconButton {
+        z: 1;
+        icon: Icons.search;
+        icon-size: 16px;
 
-        SvgIcon {
-            source: Icons.search;
-            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-            size: 16px;
+        SearchHover {
+            z: 4;
+            btn-hov: s-btn.hovered;
         }
 
-        clicked => { ExplorerBridge.searching = true; }
+        clicked => { ExplorerBridge.searching = !ExplorerBridge.searching; }
+    }
+
+    Rectangle {
+        width: 8px;
+    }
+
+    f-btn := ToggleableIconButton {
+        icon: Icons.filter;
+        icon-size: 16px;
+        toggled: ExplorerBridge.filtering;
+
+        clicked => {
+            ExplorerBridge.filtering = !ExplorerBridge.filtering;
+        }
     }
 
     Rectangle {
@@ -268,60 +333,29 @@ component TopBar inherits HorizontalLayout {
     }
 
     IconButton {
-        width: 28px;
-        height: 28px;
-        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
-
-        SvgIcon {
-            source: Icons.filter;
-            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-            size: 16px;
-        }
-
-        clicked => {}
-    }
-
-    Rectangle {
-        width: 8px;
-    }
-
-    IconButton {
-        width: 28px;
-        height: 28px;
-        inner-bg: self.hovered ? Theme.colors.third-col : transparent;
-
-        SvgIcon {
-            source: Icons.terminal;
-            fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-            size: 16px;
-        }
+        icon: Icons.terminal;
+        icon-size: 16px;
 
         clicked => { ExplorerBridge.terminal(); }
     }
 
-    // Rectangle {
-    //     width: 8px;
-    // }
-    //
-    // IconButton {
-    //     width: 28px;
-    //     height: 28px;
-    //     inner-bg: self.hovered ? Theme.colors.third-col : transparent;
-    //
-    //     SvgIcon {
-    //         source: ExplorerBridge.view == View.grid ? Icons.grid : Icons.list;
-    //         fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-    //         size: 16px;
-    //     }
-    //
-    //     clicked => {
-    //         if ExplorerBridge.view == View.grid {
-    //             ExplorerBridge.view = list;
-    //         } else {
-    //             ExplorerBridge.view = grid;
-    //         }
-    //     }
-    // }
+    Rectangle {
+        width: 8px;
+    }
+
+    IconButton {
+        icon: ExplorerBridge.view == View.list ? Icons.list : ExplorerBridge.view == View.grid ? Icons.grid : Icons.pictures;
+        icon-size: 16px;
+
+        SearchHover {
+            z: 4;
+            btn-hov: s-btn.hovered;
+        }
+
+        clicked => {
+            ExplorerBridge.toggle-view-mode();
+        }
+    }
 
     Rectangle {
         width: 8px;
@@ -333,12 +367,12 @@ component TopBar inherits HorizontalLayout {
         inner-bg: self.hovered ? Theme.colors.third-col : transparent;
 
         SvgIcon {
-            source: Icons.columns;
+            source: ExplorerBridge.split ? Icons.close : Icons.columns;
             fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
             size: 16px;
         }
 
-        clicked => {}
+        clicked => { ExplorerBridge.split = !ExplorerBridge.split; }
     }
 }
 
@@ -347,52 +381,38 @@ component TopBar inherits HorizontalLayout {
 export component RecursiveSearch inherits GeneralModal {
 
     property <string> query;
-    property <bool> scanning: true;
 
     in-out property <float> split-ratio: 0.575;
 
     property <length> min-pane-width: 200px;
-    property <length> max-content-width: 1070px;
     property <length> handle-width: 20px;
 
-    property <length> available: max(0px, row.width - 80px - handle-width);
-    property <length> content-w: min(max-content-width, available);
+    property <length> available: max(0px, row.width - 160px - handle-width);
+    property <length> content-w: available;
     property <length> left-w: content-w * split-ratio;
     property <length> right-w: content-w * (1 - split-ratio);
-    property <length> panel-h: min(512px, row.height - 80px);
+    property <length> panel-h: row.height - 80px;
 
     property <float> min-ratio: min(0.5, min-pane-width / max(content-w, 1px));
     property <float> max-ratio: 1 - min-ratio;
 
-    init => { self.focus(); }
+    // init => { self.focus(); }
 
     on-close => {
         close();
     }
+
     on-enter => {
         close();
     }
 
     function close() {
         ExplorerBridge.searching-recursive = false;
+        ExplorerBridge.abort-recursive();
         ExplorerBridge.focus();
     }
 
-    // function current-dir() -> string {
-    //     ExplorerBridge.current-dir.
-    //
-    // }
-
-    Timer {
-        running: scanning;
-        interval: 600ms;
-        triggered => {
-            scanning = false;
-        }
-    }
-
     row := HorizontalLayout {
-        spacing: 0px;
         alignment: center;
         cross-axis-alignment: center;
 
@@ -402,47 +422,76 @@ export component RecursiveSearch inherits GeneralModal {
             drop-shadow-color: #00000099;
             drop-shadow-blur: 28px;
             background: Theme.colors.primary-col;
-            border-radius: 12px;
+            border-radius: 20px;
+            corner-shape: CornerShape.squircle;
             border-width: 1px;
             border-color: Theme.colors.border-col;
             clip: true;
 
             TouchArea {
-                width: 100%;
-                height: 100%;
                 clicked => {}
             }
 
             VerticalLayout {
-                padding: 20px;
-                padding-top: 14px;
 
                 HorizontalLayout {
+                    padding: 20px;
+                    padding-top: 16px;
+                    padding-bottom: 12px;
+
                     Text {
-                        text: @tr("Searching in {}", "lujec");
+                        text: @tr("Searching in {}", ExplorerBridge.searching-recursive-in-n);
                         font-size: 16px;
                         color: Theme.colors.primary-font;
                         font-weight: 500;
                         overflow: elide;
                     }
 
-                    if root.scanning: Spinner { }
+                    if ExplorerBridge.recursive-scanning: Spinner { }
                 }
 
-                Text {
-                    cross-axis-self-alignment: end;
-                    width: 60px;
-                    text: "0 / 123 ";
+                VerticalLayout {
+                    padding-left: 20px;
+
+                    ListView {
+                        for entry[i] in ExplorerBridge.search-entries: Rectangle {
+                            height: 20px;
+                            background: ta.has-hover ? Theme.colors.third-col : transparent;
+                            border-radius: 12px;
+                            corner-shape: CornerShape.squircle;
+                            ta := TouchArea { }
+
+                            HorizontalLayout {
+                                alignment: start;
+                                padding-left: 8px;
+
+                                Text {
+                                    text: entry.name;
+                                    vertical-alignment: center;
+                                    font-size: 0.9rem;
+                                }
+                            }
+                        }
+                    }
                 }
 
-                Rectangle {
-                    border-radius: 8px;
-                    background: Theme.colors.third-col;
-                    height: 32px;
+                VerticalLayout {
+                    padding: 12px;
 
-                    le := PlainLineEdit {
-                        input-text <=> query;
-                        accepted => { close(); }
+                    Rectangle {
+                        border-radius: 20px;
+                        corner-shape: CornerShape.squircle;
+                        background: Theme.colors.third-col;
+                        height: 32px;
+
+                        le := PlainLineEdit {
+                            input-text <=> query;
+                            edited(needel) => {
+                                ExplorerBridge.search-recursive(needel);
+                            }
+                            accepted => { close(); }
+                            rejected => { close(); }
+                        }
                     }
                 }
             }
@@ -492,7 +541,8 @@ export component RecursiveSearch inherits GeneralModal {
             drop-shadow-color: #00000099;
             drop-shadow-blur: 28px;
             background: Theme.colors.primary-col;
-            border-radius: 12px;
+            border-radius: 20px;
+            corner-shape: CornerShape.squircle;
             border-width: 1px;
             border-color: Theme.colors.border-col;
             clip: true;
@@ -541,7 +591,7 @@ component RenameModal inherits GeneralModal {
 
                 border-radius: 8px;
                 background: Theme.colors.third-col;
-                // border-corner-shape: superellipse(Theme.config.edges-shape);
+                corner-shape: CornerShape.squircle;
 
                 le := PlainLineEdit {
                     input-text <=> new-name;
@@ -585,12 +635,13 @@ component RenameModal inherits GeneralModal {
 
 
 export component Explorer inherits Rectangle {
-    background: Theme.colors.secondary-col;
+    width: ExplorerBridge.split ? 50% : 100%;
+    background: Theme.colors.secondary-col.with-alpha(Theme.config.transparency);
+    backdrop-blur: Theme.blur;
     border-radius: 12px;
-    // border-corner-shape: superellipse(Theme.config.edges-shape);
+    corner-shape: CornerShape.squircle;
 
     property <bool> renaming;
-    property <bool> searching;
     property <string> new-name;
 
     property <int> focus-tick <=> ExplorerBridge.focus-tick;
@@ -605,49 +656,154 @@ export component Explorer inherits Rectangle {
     }
 
     property <int> cursor;
-    property <int> cursor-hover;
+    // -2 = nothing hovered (not -1: list rows compare against i - 1)
+    property <int> cursor-hover: -2;
 
     property <Point> drag;
 
+    property <bool> cursor-pressed;
     property <bool> selecting;
     property <bool> did-select;
+
+    // Sel rectangle
     property <length> sel-x0;
     property <length> sel-y0;
     property <length> sel-x1;
     property <length> sel-y1;
 
+    // Visual-mode and rubber-band anchor 
     property <int> anchor: -1;
+    // Anchor for shift+click ranges
+    property <int> click-anchor: -1;
 
     property <length> target-y: 0px;
     property <bool> pending-g;
 
-    function update-selection() {
-        let h = ExplorerBridge.list-height;
-        let n = ExplorerBridge.entries.length;
-        if n > 0 {
-            root.anchor = Math.min(Math.max(Math.floor(root.sel-y0 / h), 0), n - 1);
-            root.cursor = Math.min(Math.max(Math.floor(root.sel-y1 / h), 0), n - 1);
+    property <bool> control-pressed;
+    property <bool> drag-additive;
+
+    property <length> scrollbar-w: 12px;
+    property <length> view-w: max(0px, main-fs.width - root.scrollbar-w);
+
+    property <length> photos-gap: 8px;
+    property <int> photos-columns: max(1, floor((root.view-w - root.photos-gap) / (ExplorerBridge.grid-size + root.photos-gap)));
+    property <length> photos-cell: (root.view-w - root.photos-gap * (root.photos-columns + 1)) / root.photos-columns;
+
+    property <int> grid-columns: max(1, floor(root.view-w / ExplorerBridge.grid-size));
+    property <length> grid-cell: root.view-w / root.grid-columns - 0.01px;
+
+    property <int> view-columns: ExplorerBridge.view == View.photos ? root.photos-columns
+        : ExplorerBridge.view == View.grid ? root.grid-columns : 1;
+
+    property <length> alt-scroll-y;
+    property <length> scroll-y: ExplorerBridge.view == View.list ? list.content-y : root.alt-scroll-y;
+    property <View> cur-view: ExplorerBridge.view;
+    changed cur-view => { root.alt-scroll-y = 0px; }
+
+    pure function col-at(x: length) -> int {
+        if ExplorerBridge.view == View.photos {
+            return clamp(floor((x - root.photos-gap / 2) / (root.photos-cell + root.photos-gap)), 0, root.photos-columns - 1);
         }
+        if ExplorerBridge.view == View.grid {
+            return clamp(floor(x / root.grid-cell), 0, root.grid-columns - 1);
+        }
+        return 0;
+    }
+
+    pure function row-at(y: length) -> int {
+        if ExplorerBridge.view == View.photos {
+            return max(0, floor((y - root.photos-gap / 2) / (root.photos-cell + root.photos-gap)));
+        }
+        if ExplorerBridge.view == View.grid {
+            return max(0, floor(y / root.grid-cell));
+        }
+        return max(0, floor(y / ExplorerBridge.list-height));
+    }
+
+    // Item index under a point (content coordinates), -1 if none.
+    pure function hit(x: length, y: length) -> int {
+        let r = root.row-at(y);
+        let c = root.col-at(x);
+        let idx = r * root.view-columns + c;
+        if idx >= ExplorerBridge.entries.length {
+            return -1;
+        }
+        if ExplorerBridge.view == View.photos {
+            let lx = x - (root.photos-gap + c * (root.photos-cell + root.photos-gap));
+            let ly = y - (root.photos-gap + r * (root.photos-cell + root.photos-gap));
+            if lx < 0px || lx > root.photos-cell || ly < 0px || ly > root.photos-cell {
+                return -1;
+            }
+        }
+        return idx;
+    }
+
+    pure function is-selected(idx: int) -> bool {
+        ExplorerBridge.entries[idx].selected
+    }
+
+    function select-cursor() {
+        ExplorerBridge.select(root.anchor, root.cursor);
+    }
+
+    function press(idx: int, ctrl: bool, shift: bool) {
+        if idx < 0 || idx >= ExplorerBridge.entries.length {
+            if !ctrl {
+                ExplorerBridge.clear-selection();
+                root.anchor = -1;
+            }
+        } else {
+            if ctrl {
+                ExplorerBridge.toggle-select(idx);
+                root.click-anchor = idx;
+            } else if shift {
+                ExplorerBridge.select(root.click-anchor, idx);
+            } else {
+                ExplorerBridge.select(-1, idx);
+                root.click-anchor = idx;
+            }
+            root.cursor = idx;
+            root.anchor = -1;
+        }
+    }
+
+    function drag-update() {
+        let x0 = Math.min(root.sel-x0, root.sel-x1);
+        let x1 = Math.max(root.sel-x0, root.sel-x1);
+        let y0 = Math.min(root.sel-y0, root.sel-y1);
+        let y1 = Math.max(root.sel-y0, root.sel-y1);
+
+        ExplorerBridge.drag-select(
+            root.row-at(y0), root.row-at(y1),
+            root.col-at(x0), root.col-at(x1),
+            root.view-columns);
+
+        root.cursor = Math.min(
+            root.row-at(root.sel-y1) * root.view-columns + root.col-at(root.sel-x1),
+            ExplorerBridge.entries.length - 1);
     }
 
     function move-cursor(delta: int) {
         let max-index = ExplorerBridge.entries.length - 1;
         root.cursor = Math.min(Math.max(root.cursor + delta, 0), max-index);
-        ensure-visible();
+        select-cursor();
+        ensure-item-visible();
     }
 
     function move-end() {
         let max-index = ExplorerBridge.entries.length - 1;
         root.cursor = max-index;
-        ensure-visible();
+        select-cursor();
+        ensure-item-visible();
     }
 
     function move-start() {
         root.cursor = 0;
-        ensure-visible();
+        select-cursor();
+        ensure-item-visible();
     }
 
-    function ensure-visible() {
+    function ensure-item-visible() {
         let h = ExplorerBridge.list-height;
         let top = root.cursor * h;
         let bottom = top + h;
@@ -669,43 +825,57 @@ export component Explorer inherits Rectangle {
             ExplorerBridge.open(ExplorerBridge.entries[i], i);
             root.cursor = 0;
         }
-        clear-selection();
+        clear();
     }
 
-    function is-selected(idx: int) -> bool {
-        if root.anchor != -1 {
-            idx >= min(root.anchor, root.cursor) && idx <= max(root.anchor, root.cursor)
-        } else {
-            root.cursor == idx
+    function wheel(dy: length) -> EventResult {
+        if root.control-pressed {
+            if dy > 0 { ExplorerBridge.zoom-in(); }
+            else if dy < 0 { ExplorerBridge.zoom-out(); }
+            return EventResult.accept; // don't scroll while zooming
         }
+        return EventResult.reject;
     }
+
     function rename() {
         root.new-name = ExplorerBridge.entries[root.cursor].name;
         root.renaming = true;
     }
 
-    function clear-selection() {
+    function clear() {
         root.anchor = -1;
+        reset-cursor();
+        ExplorerBridge.clear-selection();
+        ExplorerBridge.clear-search();
+        ExplorerBridge.searching = false;
     }
 
     function delete-permanently() {
-        ExplorerBridge.delete-items(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
-        clear-selection();
+        ExplorerBridge.delete-items();
+        clear();
     }
 
     function trash() {
-        ExplorerBridge.trash-items(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
-        clear-selection();
+        ExplorerBridge.trash-items();
+        clear();
     }
 
     function copy() {
-        ExplorerBridge.copy(min(root.anchor, root.cursor), max(root.cursor, root.anchor));
-        clear-selection();
+        ExplorerBridge.copy();
+        clear();
     }
 
     function paste() {
         ExplorerBridge.paste();
-        clear-selection();
+        clear();
+    }
+
+    function reset-cursor() {
+        root.selecting = false;
+        root.anchor = -1;
+        if (root.cursor != -1) {
+            root.cursor = 0;
+        }
     }
 
     z: 0;
@@ -721,37 +891,49 @@ export component Explorer inherits Rectangle {
             z: 1;
         }
 
-        if root.searching: Rectangle {
+        if ExplorerBridge.filtering: HorizontalLayout {
+            padding-left: 0px;
+            padding-right: 12px;
+            padding-bottom: 8px;
+            height: ExplorerBridge.filtering ? 256px : 0;
+            animate height { duration: 500ms; }
+
+            FilterPanel { }
+        }
+
+        if ExplorerBridge.searching: Rectangle {
             height: 32px;
             background: Theme.colors.primary-col;
             border-radius: 12px;
-            // border-corner-shape: superellipse(Theme.config.edges-shape);
+            corner-shape: CornerShape.squircle;
 
             SvgIcon {
                 x: 8px;
                 source: Icons.search;
-                fg: Theme.colors.primary-font;
-                size: 18px;
+                fg: Theme.colors.secondary-font;
+                size: 16px;
             }
 
             PlainLineEdit {
-                x: 32px;
+                x: 20px;
                 rejected => {
                     main-fs.focus();
-                    root.searching = false;
+                    ExplorerBridge.searching = false;
+                    reset-cursor();
                     ExplorerBridge.clear-search();
                 }
                 edited(query) => {
+                    reset-cursor();
                     ExplorerBridge.search-current(query);
                 }
                 accepted => {
+                    reset-cursor();
                     main-fs.focus();
-                    root.searching = false;
                 }
             }
         }
-        if root.searching: Rectangle {
-            height: 8px;
+        Rectangle {
+            height: ExplorerBridge.searching ? 8px : 0px;
         }
 
         main-fs := FocusScope {
@@ -761,6 +943,17 @@ export component Explorer inherits Rectangle {
             KeyBinding {
                 keys: Keys.map.delete-permanently.keys;
                 activated => { delete-permanently(); }
+            }
+
+            KeyBinding {
+                keys: @keys(Space);
+                activated => {
+                }
+            }
+
+            KeyBinding {
+                keys: @keys(Control + A);
+                activated => { ExplorerBridge.select-all(); }
             }
 
             KeyBinding {
@@ -791,20 +984,21 @@ export component Explorer inherits Rectangle {
             KeyBinding {
                 keys: Keys.map.close.keys;
                 activated => {
-                    root.anchor = -1;
+                    clear();
                 }
             }
 
             KeyBinding {
                 keys: Keys.map.close.alt-keys;
                 activated => {
-                    root.anchor = -1;
+                    clear();
                 }
             }
 
             KeyBinding {
                 keys: Keys.map.history-back.keys;
                 activated => {
+                    clear();
                     ExplorerBridge.back();
                 }
             }
@@ -812,6 +1006,7 @@ export component Explorer inherits Rectangle {
             KeyBinding {
                 keys: Keys.map.history-back.alt-keys;
                 activated => {
+                    clear();
                     ExplorerBridge.back();
                 }
             }
@@ -819,6 +1014,7 @@ export component Explorer inherits Rectangle {
             KeyBinding {
                 keys: Keys.map.history-forward.keys;
                 activated => {
+                    clear();
                     ExplorerBridge.forward();
                 }
             }
@@ -826,6 +1022,7 @@ export component Explorer inherits Rectangle {
             KeyBinding {
                 keys: Keys.map.history-forward.alt-keys;
                 activated => {
+                    clear();
                     ExplorerBridge.forward();
                 }
             }
@@ -861,6 +1058,7 @@ export component Explorer inherits Rectangle {
             KeyBinding {
                 keys: Keys.map.refresh.keys;
                 activated => {
+                    clear();
                     ExplorerBridge.refresh();
                 }
             }
@@ -868,6 +1066,7 @@ export component Explorer inherits Rectangle {
             KeyBinding {
                 keys: Keys.map.refresh.alt-keys;
                 activated => {
+                    clear();
                     ExplorerBridge.refresh();
                 }
             }
@@ -914,7 +1113,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.go-inside.keys;
                 activated => {
                     root.open-at(root.cursor);
-                    clear-selection();
+                    clear();
                 }
             }
 
@@ -922,7 +1121,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.go-inside.alt-keys;
                 activated => {
                     root.open-at(root.cursor);
-                    clear-selection();
+                    clear();
                 }
             }
 
@@ -930,7 +1129,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.go-parent.keys;
                 activated => {
                     ExplorerBridge.up();
-                    clear-selection();
+                    clear();
                 }
             }
 
@@ -938,21 +1137,21 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.go-parent.alt-keys;
                 activated => {
                     ExplorerBridge.up();
-                    clear-selection();
+                    clear();
                 }
             }
 
             KeyBinding {
                 keys: Keys.map.search-in-current.keys;
                 activated => {
-                    root.searching = !root.searching;
+                    ExplorerBridge.searching = !ExplorerBridge.searching;
                 }
             }
 
             KeyBinding {
                 keys: Keys.map.search-in-current.alt-keys;
                 activated => {
-                    root.searching = !root.searching;
+                    ExplorerBridge.searching = !ExplorerBridge.searching;
                 }
             }
 
@@ -960,6 +1159,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.search-recursively.keys;
                 activated => {
                     ExplorerBridge.searching-recursive = true;
+                    ExplorerBridge.scan-recursive();
                 }
             }
 
@@ -967,6 +1167,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.search-recursively.alt-keys;
                 activated => {
                     ExplorerBridge.searching-recursive = true;
+                    ExplorerBridge.scan-recursive();
                 }
             }
 
@@ -988,6 +1189,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.confirm.keys;
                 activated => {
                     root.open-at(root.cursor);
+                    clear();
                 }
             }
 
@@ -995,6 +1197,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.confirm.alt-keys;
                 activated => {
                     root.open-at(root.cursor);
+                    clear();
                 }
             }
 
@@ -1010,6 +1213,16 @@ export component Explorer inherits Rectangle {
 
             KeyBinding {
                 keys: Keys.map.zoom-out.keys;
+                activated => { ExplorerBridge.zoom-out(); }
+            }
+
+            KeyBinding {
+                keys: @keys(Equals);
+                activated => { ExplorerBridge.zoom-in(); }
+            }
+
+            KeyBinding {
+                keys: @keys(HyphenMinus);
                 activated => { ExplorerBridge.zoom-out(); }
             }
 
@@ -1032,7 +1245,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.cut.keys;
                 activated => {
                     debug("Cut");
-                    clear-selection();
+                    clear();
                 }
             }
 
@@ -1040,14 +1253,22 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.cut.alt-keys;
                 activated => {
                     debug("Cut");
-                    clear-selection();
+                    clear();
+                }
+            }
+
+            KeyBinding {
+                keys: @keys(T);
+                activated => {
+                    ExplorerBridge.terminal();
                 }
             }
 
             KeyBinding {
                 keys: Keys.map.paste.keys;
                 activated => {
-                    clear-selection();
+                    debug("Pasted");
+                    clear();
                     ExplorerBridge.paste();
                 }
             }
@@ -1055,7 +1276,8 @@ export component Explorer inherits Rectangle {
             KeyBinding {
                 keys: Keys.map.paste.alt-keys;
                 activated => {
-                    clear-selection();
+                    debug("Pasted");
+                    clear();
                     ExplorerBridge.paste();
                 }
             }
@@ -1064,7 +1286,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.undo.keys;
                 activated => {
                     debug("Undo");
-                    clear-selection();
+                    clear();
                     // ExplorerBridge.undo(); // or fucking window brdige???
                 }
             }
@@ -1073,7 +1295,7 @@ export component Explorer inherits Rectangle {
                 keys: Keys.map.undo.alt-keys;
                 activated => {
                     debug("Undo");
-                    clear-selection();
+                    clear();
                     // ExplorerBridge.paste();
                 }
             }
@@ -1108,7 +1330,20 @@ export component Explorer inherits Rectangle {
                 }
             }
 
+            KeyBinding {
+                keys: @keys(M);
+                activated => {
+                    ExplorerBridge.toggle-view-mode();
+                }
+            }
+
+            key-released(event) => {
+                root.control-pressed = event.modifiers.control;
+                EventResult.reject
+            }
+
             key-pressed(event) => {
+                root.control-pressed = event.modifiers.control;
                 let was-pending-g = root.pending-g;
                 root.pending-g = false;
                 if event.text == Key.G {
@@ -1125,114 +1360,141 @@ export component Explorer inherits Rectangle {
                 }
                 EventResult.reject
             }
-            ta := TouchArea {
-                pointer-event(event) => {
-                    let at = Math.floor((-list.content-y + self.mouse-y) / ExplorerBridge.list-height);
 
-                    if event.kind == PointerEventKind.move {
-                        cursor-hover = at;
+            if ExplorerBridge.view == View.photos: ListView {
+                changed content-y => { root.alt-scroll-y = self.content-y; }
 
-                        if self.pressed {
-                            root.sel-x1 = Math.min(Math.max(self.mouse-x, 0px), self.width);
-                            root.sel-y1 = Math.min(Math.max(self.mouse-y - list.content-y, 0px), list.content-height);
+                for i in ceil(ExplorerBridge.entries.length / root.photos-columns): HorizontalLayout {
+                    padding-top: root.photos-gap;
+                    padding-left: root.photos-gap;
+                    padding-right: root.photos-gap;
+                    spacing: root.photos-gap;
+                    alignment: start;
 
-                            if !root.selecting
-                                && (Math.abs((root.sel-x1 - root.sel-x0) / 1px) > 4
-                                || Math.abs((root.sel-y1 - root.sel-y0) / 1px) > 4) {
-                                root.selecting = true;
-                                root.did-select = true;
-                            }
-                            if root.selecting {
-                                update-selection();
-                            }
-                        }
-                    }
-                    if event.kind == PointerEventKind.cancel {
-                        root.selecting = false;
-                    }
-                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
-                        if at >= 0 && at < ExplorerBridge.entries.length && !is-selected(at) {
-                            root.cursor = at;
-                            clear-selection();
-                        }
-                        ctx.open(self.mouse-x, self.mouse-y, self.width, self.height);
-                    }
-                    if event.button == PointerEventButton.left {
-                        if event.kind == PointerEventKind.down {
-                            root.sel-x0 = self.mouse-x;
-                            root.sel-y0 = self.mouse-y - list.content-y;
-                            root.sel-x1 = root.sel-x0;
-                            root.sel-y1 = root.sel-y0;
-                            root.selecting = false;
-                            root.did-select = false;
-                        }
-                        if event.kind == PointerEventKind.up {
-                            root.selecting = false;
+                    for j in root.photos-columns: Rectangle {
+                        property <int> idx: j + root.photos-columns * i;
+
+                        visible: idx < ExplorerBridge.entries.length;
+                        width: root.photos-cell;
+                        height: root.photos-cell;
+                        background: root.is-selected(idx) ? Theme.colors.fourth-col
+                            : root.cursor-hover == idx ? Theme.colors.third-col : transparent;
+                        border-radius: 12px;
+                        corner-shape: CornerShape.squircle;
+
+                        Image {
+                            source: ExplorerBridge.entries[idx].preview;
+                            width: parent.width;
+                            height: parent.height;
+                            image-fit: cover;
                         }
                     }
                 }
-                clicked => {
-                    if !root.did-select {
-                        root.open-at(Math.floor((-list.content-y + self.mouse-y) / ExplorerBridge.list-height));
+            }
+
+            if ExplorerBridge.view == View.grid: ScrollView {
+                content-width: root.view-w;
+                content-height: flex.preferred-height;
+                changed content-y => { root.alt-scroll-y = self.content-y; }
+
+                flex := FlexboxLayout {
+                    width: root.view-w;
+                    spacing: 0px;
+
+                    for entry[i] in ExplorerBridge.entries: Rectangle {
+                        width: root.grid-cell;
+                        height: root.grid-cell;
+
+                        Rectangle {
+                            x: 1px;
+                            y: 1px;
+                            width: parent.width - 2px;
+                            height: parent.height - 2px;
+                            background: entry.selected ? Theme.colors.fourth-col
+                                : root.cursor-hover == i ? Theme.colors.third-col : transparent;
+                            border-radius: 12px;
+                            // border-corner-shape: superellipse(Theme.config.edges-shape);
+
+                            VerticalLayout {
+                                padding-top: 12px;
+                                width: parent.width;
+                                height: parent.height;
+                                cross-axis-alignment: center;
+
+                                Image {
+                                    source: entry.preview;
+                                    image-fit: contain;
+                                }
+
+                                Rectangle {
+                                    height: 2.2rem;
+                                    clip: true;
+
+                                    Text {
+                                        text: entry.name;
+                                        width: parent.width;
+                                        horizontal-alignment: center;
+                                        font-size: 0.9rem;
+                                        color: Theme.colors.primary-font;
+                                        font-weight: 500;
+                                        wrap: char-wrap;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
                     }
-                    main-fs.focus();
                 }
             }
 
             list := ListView {
+                visible: ExplorerBridge.view == View.list;
 
-                property <[DirEntry]> entries: ExplorerBridge.search-results.length > 0 ?
-                    ExplorerBridge.search-results : ExplorerBridge.entries;
+                property <[DirEntry]> entries: ExplorerBridge.entries;
 
                 for entry[i] in entries: Rectangle {
-                    clip: true;
-                    z: 0;
                     width: parent.width - 12px;
                     height: ExplorerBridge.list-height;
-                    background: is-selected(i) ? Theme.colors.fourth-col :
+                    background: is-selected(i) ? (mod(i,2) == 0 ? Theme.colors.fourth-col : Theme.colors.fourth-col.with-alpha(0.75)) :
                         cursor-hover == i ? Theme.colors.third-col : transparent;
-
                     border-radius: 12px;
-                    // border-corner-shape: superellipse(Theme.config.edges-shape);
 
-                    transform-scale-y: (ta.pressed && root.cursor-hover == i) ? 0.99 : 1.0;
-                    transform-scale-x: (ta.pressed && root.cursor-hover == i) ? 0.998 : 1.0;
+                    border-top-left-radius: is-selected(i - 1) || root.cursor-hover == i - 1 ? 0px : 12px;
+                    border-top-right-radius: is-selected(i - 1) || root.cursor-hover == i - 1 ? 0px : 12px;
+
+                    border-bottom-left-radius: is-selected(i + 1) || root.cursor-hover == i + 1 ? 0px : 12px;
+                    border-bottom-right-radius: is-selected(i + 1) || root.cursor-hover == i + 1 ? 0px : 12px;
+
+                    corner-shape: CornerShape.squircle;
+                    transform-scale-y: (root.cursor-pressed && root.cursor-hover == i && !root.selecting) ? 0.99 : 1.0;
+                    transform-scale-x: (root.cursor-pressed && root.cursor-hover == i && !root.selecting) ? 0.998 : 1.0;
 
                     HorizontalLayout {
                         padding-left: 12px;
                         padding-right: 12px;
                         cross-axis-alignment: center;
-                        spacing: 8px;
+                        spacing: 12px;
 
-                        // if ExplorerBridge.relative: Rectangle {
-                        //     width: max(16px, t.preferred-width);
-                        //     t := Text {
-                        //         text: abs(i - root.cursor) + 1;
-                        //         font-size: 0.8rem;
-                        //         color: Theme.colors.primary-font;
-                        //         font-weight: 400;
-                        //     }
-                        // }
+                        Rectangle {
+                            border-radius: 8px;
+                            corner-shape: CornerShape.squircle;
+                            // width: img.width;
+                            // height: img.height;
+                            clip: true;
 
-                        if entry.type == EntryType.directory: Image {
-                            source: Icons.directory;
-                            height: ExplorerBridge.list-height - 12px;
-                            width: ExplorerBridge.list-height - 12px;
-                            colorize: Theme.colors.fourth-font;
-                        }
-
-                        if entry.type == EntryType.file: Image {
-                            source: Icons.file;
-                            height: ExplorerBridge.list-height - 12px;
-                            width: ExplorerBridge.list-height - 12px;
-                            colorize: Theme.colors.fourth-font;
+                            // img := Image {
+                            //     source: entry.preview;
+                            //     width: ExplorerBridge.list-height - 12px;
+                            //     height: ExplorerBridge.list-height - 12px;
+                            //     image-fit: contain;
+                            // }
                         }
 
                         Text {
                             text: entry.name;
-                            font-size: 0.8rem;
+                            font-size: 0.9rem;
                             color: Theme.colors.primary-font;
-                            font-weight: 400;
+                            font-weight: 500;
                         }
 
                         Rectangle { }
@@ -1247,23 +1509,146 @@ export component Explorer inherits Rectangle {
                 }
             }
 
+            // One overlay for list / photos / grid. Hit-testing is done with
+            // geometry (hit()), so click, ctrl/shift-click and rubber band
+            // behave identically in every view.
+            ov := TouchArea {
+                x: 0px;
+                width: root.view-w;
+                height: parent.height;
+                mouse-cursor: self.has-hover && root.cursor-hover >= 0 ? MouseCursor.pointer : MouseCursor.default;
+
+                changed has-hover => {
+                    if !self.has-hover { root.cursor-hover = -2; }
+                }
+
+                scroll-event(event) => { root.wheel(event.delta-y) }
+
+                pointer-event(event) => {
+                    // pointer clamped to the overlay, then converted to content coordinates
+                    let lx = Math.min(Math.max(self.mouse-x, 0px), self.width);
+                    let ly = Math.min(Math.max(self.mouse-y, 0px), self.height);
+                    let cy = ly - root.scroll-y;
+                    let at = root.hit(self.mouse-x, self.mouse-y - root.scroll-y);
+
+                    if event.kind == PointerEventKind.move {
+                        root.cursor-hover = at >= 0 ? at : -2;
+
+                        if self.pressed {
+                            root.sel-x1 = lx;
+                            root.sel-y1 = cy;
+
+                            if !root.selecting
+                                && (Math.abs((root.sel-x1 - root.sel-x0) / 1px) > 4
+                                || Math.abs((root.sel-y1 - root.sel-y0) / 1px) > 4) {
+                                root.selecting = true;
+                                root.did-select = true;
+                                ExplorerBridge.begin-drag(root.drag-additive);
+                            }
+                            if root.selecting {
+                                root.drag-update();
+                            }
+                        }
+                    }
+                    if event.kind == PointerEventKind.cancel {
+                        root.selecting = false;
+                        root.cursor-pressed = false;
+                    }
+                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                        if at >= 0 {
+                            // keep a multi-selection if the click lands inside it
+                            if !root.is-selected(at) { root.press(at, false, false); }
+                            else { root.cursor = at; }
+                            ctx.open(self.mouse-x, self.mouse-y, self.width, self.height);
+                        }
+                    }
+                    if event.button == PointerEventButton.left {
+                        if event.kind == PointerEventKind.down {
+                            root.press(at, event.modifiers.control, event.modifiers.shift);
+                            root.cursor-pressed = true;
+                            root.drag-additive = event.modifiers.control;
+                            root.sel-x0 = lx;
+                            root.sel-y0 = cy;
+                            root.sel-x1 = lx;
+                            root.sel-y1 = cy;
+                            root.selecting = false;
+                            root.did-select = false;
+                        }
+                        if event.kind == PointerEventKind.up {
+                            root.selecting = false;
+                            root.cursor-pressed = false;
+                        }
+                    }
+                }
+                clicked => { main-fs.focus(); }
+                double-clicked => {
+                    if !root.did-select {
+                        root.open-at(root.hit(self.mouse-x, self.mouse-y - root.scroll-y));
+                    }
+                }
+            }
+
             ctx := ContextMenu {
+                entry: ExplorerBridge.entries[root.cursor];
+                entry-idx: root.cursor;
+
                 action(id) => {
+                    debug("Action: ", id);
+                    if id == "open" { root.open-at(root.cursor); }
+                    else if id == "rename" { root.rename(); }
+                    else if id == "copy" { root.copy(); }
+                    else if id == "trash" { root.trash(); }
+                    else if id == "delete-permanently" { root.delete-permanently(); }
+                    else if id == "compress" { ExplorerBridge.compressing = true; }
                     main-fs.focus();
-                    debug("context action: ", id);
                 }
             }
 
             if root.selecting: Rectangle {
                 z: 1;
                 x: Math.min(root.sel-x0, root.sel-x1);
-                y: Math.min(root.sel-y0, root.sel-y1) + list.content-y;
+                y: Math.min(root.sel-y0, root.sel-y1) + root.scroll-y;
                 width: Math.max(root.sel-x0, root.sel-x1) - Math.min(root.sel-x0, root.sel-x1);
                 height: Math.max(root.sel-y0, root.sel-y1) - Math.min(root.sel-y0, root.sel-y1);
                 background: Theme.colors.fourth-col.brighter(1.0).with-alpha(0.5);
                 border-color: Theme.colors.fourth-font;
                 border-width: 1px;
-                border-radius: 8px;
+                border-radius: 12px;
+                corner-shape: CornerShape.squircle;
+            }
+
+            Rectangle {
+                x: parent.width - self.width - 1px;
+                y: parent.height - self.height + 7px;
+                width: it-l.preferred-width;
+                height: 24px;
+                background: Theme.colors.fourth-col;
+                border-top-left-radius: 12px;
+                corner-shape: CornerShape.squircle;
+            }
+
+            Rectangle {
+                z: 1;
+                x: parent.width - self.width;
+                y: parent.height - self.height + 8px;
+                width: it-l.preferred-width;
+                height: 24px;
+                background: Theme.colors.secondary-col;
+                border-top-left-radius: 12px;
+                corner-shape: CornerShape.squircle;
+                it-l := HorizontalLayout {
+                    alignment: end;
+                    padding-right: 12px;
+                    padding-left: 20px;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: "\{ExplorerBridge.entries.length} items";
+                        font-size: 11px;
+                        color: Theme.colors.primary-font;
+                        font-weight: 500;
+                    }
+                }
             }
         }
     }
@@ -1284,8 +1669,6 @@ export component Explorer inherits Rectangle {
     }
 
     if ExplorerBridge.compressing: CompressModal {
-        selection-start: root.anchor;
-        selection-end: root.cursor;
         on-close => {
             main-fs.focus();
             ExplorerBridge.compressing = false;

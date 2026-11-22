@@ -57,14 +57,18 @@ component DriveListItem inherits Rectangle {
     visible: root.shown;
 
     card := Rectangle {
-        y: 0;
         height: 52px;
-
         border-radius: 20px;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
-        background: root.selected ? Theme.colors.fourth-col
+        corner-shape: CornerShape.squircle;
+        background: root.selected ? Theme.colors.third-col
             : area.has-hover ? Theme.colors.third-col
             : transparent;
+        y: area.pressed ? 0.5px : 0;
+
+        animate y {
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
+        }
 
         HorizontalLayout {
             padding-left: 12px;
@@ -104,7 +108,7 @@ component MountRow inherits Rectangle {
     in property <MountUsageData> mount;
 
     border-radius: 12px;
-    border-corner-shape: superellipse(Theme.config.edges-shape);
+    corner-shape: CornerShape.squircle;
     background: Theme.colors.third-col;
     border-width: 1px;
     border-color: Theme.colors.fourth-col;
@@ -169,7 +173,7 @@ component DriveDetails inherits Rectangle {
     }
 
     border-radius: 12px;
-    border-corner-shape: superellipse(Theme.config.edges-shape);
+    corner-shape: CornerShape.squircle;
     background: Theme.colors.secondary-col;
 
     if !root.has-drive: Text {
@@ -208,13 +212,9 @@ component DriveDetails inherits Rectangle {
             Rectangle { }
 
             if root.drive.ejectable: IconButton {
-                width: 28px;
-                height: 28px;
-                SvgIcon {
-                    source: Icons.eject;
-                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.third-font;
-                    size: 14px;
-                }
+                icon: Icons.eject;
+                fg: self.hovered ? Theme.colors.secondary-font : Theme.colors.third-font;
+                icon-size: 14px;
 
                 clicked => {
                     root.eject();
@@ -226,13 +226,9 @@ component DriveDetails inherits Rectangle {
             }
 
             if root.drive.can-power-off: IconButton {
-                width: 28px;
-                height: 28px;
-                SvgIcon {
-                    source: Icons.power;
-                    fg: parent.hovered ? Theme.colors.secondary-font : Theme.colors.third-font;
-                    size: 16px;
-                }
+                icon: Icons.power;
+                fg: self.hovered ? Theme.colors.secondary-font : Theme.colors.third-font;
+                icon-size: 16px;
 
                 clicked => {
                     root.power-off();
@@ -287,7 +283,7 @@ component DriveDetails inherits Rectangle {
                 width: 100%;
                 background: Theme.colors.primary-col;
                 border-radius: 12px;
-                border-corner-shape: superellipse(Theme.config.edges-shape);
+                corner-shape: CornerShape.squircle;
                 border-width: 1px;
                 border-color: Theme.colors.fourth-col;
                 clip: true;
@@ -315,7 +311,6 @@ component DriveDetails inherits Rectangle {
 
                 HorizontalLayout {
                     alignment: start;
-                    spacing: 0;
 
                     for m[i] in root.drive.mounts: Rectangle {
                         width: root.drive.capacity-bytes > 0
@@ -355,7 +350,7 @@ component DriveDetails inherits Rectangle {
     }
 }
 
-export component Drives inherits TouchArea {
+export component Drives inherits FocusScope {
     width: 100%;
 
     property <int> count: DrivesBridge.drives.length;
@@ -369,39 +364,35 @@ export component Drives inherits TouchArea {
 
     init => { DrivesBridge.refresh(); }
 
-    fs := FocusScope {
-        init => { self.focus(); }
+    KeyBinding {
+        keys: @keys(J);
+        activated => { root.select(DrivesBridge.selected + 1); }
+    }
 
-        KeyBinding {
-            keys: @keys(J);
-            activated => { root.select(DrivesBridge.selected + 1); }
-        }
+    KeyBinding {
+        keys: @keys(DownArrow);
+        activated => { root.select(DrivesBridge.selected + 1); }
+    }
 
-        KeyBinding {
-            keys: @keys(DownArrow);
-            activated => { root.select(DrivesBridge.selected + 1); }
-        }
+    KeyBinding {
+        keys: @keys(K);
+        activated => { root.select(DrivesBridge.selected - 1); }
+    }
 
-        KeyBinding {
-            keys: @keys(K);
-            activated => { root.select(DrivesBridge.selected - 1); }
-        }
+    KeyBinding {
+        keys: @keys(UpArrow);
+        activated => { root.select(DrivesBridge.selected - 1); }
+    }
 
-        KeyBinding {
-            keys: @keys(UpArrow);
-            activated => { root.select(DrivesBridge.selected - 1); }
-        }
-
-        KeyBinding {
-            keys: @keys(R);
-            activated => { DrivesBridge.refresh(); }
-        }
+    KeyBinding {
+        keys: @keys(R);
+        activated => { DrivesBridge.refresh(); }
     }
 
     Rectangle {
         background: Theme.colors.secondary-col;
         border-radius: 12px;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
 
         VerticalLayout {
             padding: 20px;
@@ -420,7 +411,6 @@ export component Drives inherits TouchArea {
                     preferred-width: 240px;
                     min-width: 200px;
                     max-width: 280px;
-                    spacing: 0;
                     alignment: start;
 
                     HorizontalLayout {
@@ -465,7 +455,7 @@ export component Drives inherits TouchArea {
                         selected: i == DrivesBridge.selected;
                         clicked => {
                             DrivesBridge.selected = i;
-                            fs.focus();
+                            root.focus();
                         }
                     }
 
@@ -489,7 +479,7 @@ export component Drives inherits TouchArea {
                         selected: i == DrivesBridge.selected;
                         clicked => {
                             DrivesBridge.selected = i;
-                            fs.focus();
+                            root.focus();
                         }
                     }
                 }

@@ -1,0 +1,63 @@
+
+import { Theme, ThemeAnimator } from "../../shared/theme.slint";
+import {
+    NectanAppFrame,
+    Spinner,
+    Slider,
+    IconButton,
+    LinkButton,
+} from "../../shared/elements.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { Icons } from "../../shared/icons.slint";
+
+export component VideoPlayer inherits Window {
+    title: "Nectan Video Player";
+    preferred-width: 1080px;
+    preferred-height: 720px;
+    min-width: 400px;
+    min-height: 300px;
+    resize-border-width: 6px;
+    no-frame: !Theme.config.native-topbar;
+    background: transparent;
+    maximized: WindowBridge.maximized;
+
+    in-out property <bool> ffmpeg-found: true;
+
+    ThemeAnimator { }
+
+    FocusScope {
+        init => {
+            self.focus();
+        }
+
+        NectanAppFrame {
+            maximized: root.maximized || root.full-screen;
+            background: #000;
+
+            if !ffmpeg-found: Rectangle {
+                VerticalLayout {
+                    alignment: center;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: @tr("ffmpeg not found");
+                        color: #fff;
+                        font-size: 1.5rem;
+                        font-weight: 600;
+                    }
+
+                    Rectangle {
+                        height: 8px;
+                    }
+
+                    Text {
+                        text: @tr("Install ffmpeg to use video player.");
+                        color: #888;
+                        font-size: 0.8rem;
+                        font-weight: 500;
+                    }
+                }
+            }
+        }
+    }
+}

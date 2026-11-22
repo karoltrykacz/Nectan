@@ -1,0 +1,274 @@
+import { MenuRow, SvgIcon } from "../../shared/elements.slint";
+import { ColorPicker } from "../../shared/color_picker.slint";
+import { Theme } from "../../shared/theme.slint";
+import { Icons } from "../../shared/icons.slint";
+import { HoverBridge } from "../../shared/hover.slint";
+
+export struct EssentialTileData { id: int, slot: int, emoji: string, icon: image, color: brush, font_color: color }
+
+export global EssentialsBridge {
+    in-out property <[EssentialTileData]> essentials-data;
+
+    callback essentials();
+
+    in-out property <bool> essentials-select;
+    in-out property <int> essentials-cursor: -1;
+
+    essentials => {
+        essentials-cursor = essentials-data.length / 2;
+        essentials-select = true;
+    }
+
+    callback reorder(int, int);
+    pure callback id-at-slot(int) -> int;
+    callback clicked(int);
+    callback name();
+
+    callback remove(int);
+    callback change-icon(int);
+    callback set-color(int, [color]);
+    callback reset-color(int);
+
+    pure callback colors-of(int) -> [color];
+    callback preview-color(int, [color]);
+}
+
+component EssentialMenu inherits Rectangle {
+
+    property <int> menu-id: -1;
+    property <bool> picking-color: true;
+    property <[color]> start;
+    property <length> pop-x;
+    property <length> pop-y;
+
+    public function open(mx: length, my: length, id: int) {
+        root.menu-id = id;
+        root.picking-color = false;
+        root.start = EssentialsBridge.colors-of(id);
+        root.pop-x = mx;
+        root.pop-y = my;
+        popup.show();
+    }
+
+    popup := PopupWindow {
+        x: root.pop-x;
+        y: root.pop-y;
+        width: root.picking-color ? 512px : 256px;
+        height: root.picking-color ? 256px : 96px;
+
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: Theme.colors.primary-col;
+            border-radius: 24px;
+            corner-shape: CornerShape.squircle;
+            border-width: 1px;
+            border-color: Theme.colors.border-col;
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 20px;
+            clip: true;
+
+            if !root.picking-color: VerticalLayout {
+                padding: 6px;
+
+                MenuRow {
+                    text: @tr("Remove");
+                    clicked => { EssentialsBridge.remove(root.menu-id); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Change icon");
+                    clicked => { EssentialsBridge.change-icon(root.menu-id); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Change color");
+                    clicked => {
+                        root.picking-color = true;
+                    }
+                }
+            }
+
+            if root.picking-color: ColorPicker {
+                initial: root.start;
+                preview(cs) => { EssentialsBridge.preview-color(root.menu-id, cs); }
+                committed(cs) => { EssentialsBridge.set-color(root.menu-id, cs); }
+            }
+        }
+    }
+}
+
+
+export component Essentials {
+    in property <int> highlighted-slot: -1;
+
+    in property <[EssentialTileData]> tiles;
+    in property <length> min-cell-w: 120px;
+    in property <length> cell-h: 90px;
+    in property <length> gap;
+    in property <length> drag-threshold: 8px;
+
+    out property <int> pressed-id: (root-ta.pressed && !root.did-drag) ? root.press-id : -1;
+
+    out property <int> cols: Math.max(1, Math.floor((root.width + gap) / (min-cell-w + gap)));
+    property <length> cell-w: (root.width - gap * (cols - 1)) / cols;
+
+    property <int> press-id: -1;
+    property <length> press-x;
+    property <length> press-y;
+
+    property <int> dragged-id: -1;
+    property <bool> did-drag: false;
+    property <int> drag-slot: 0;
+    property <length> drag-x;
+    property <length> drag-y;
+    property <length> grab-dx;
+    property <length> grab-dy;
+
+    property <int> hover-slot: root-ta.has-hover
+        ? root.slot-hit(root-ta.mouse-x, root-ta.mouse-y)
+        : -1;
+
+    pure function slot-x(slot: int) -> length {
+        Math.mod(slot, cols) * (cell-w + gap)
+    }
+
+    pure function slot-y(slot: int) -> length {
+        Math.floor(slot / cols) * (cell-h + gap)
+    }
+
+    pure function slot-at(px: length, py: length) -> int {
+        Math.min(tiles.length - 1,
+                Math.max(0, Math.floor(py / (cell-h + gap))) * cols
+            + Math.min(cols - 1, Math.max(0, Math.floor(px / (cell-w + gap)))))
+    }
+
+    pure function slot-hit(px: length, py: length) -> int {
+        let s = slot-at(px, py);
+        let ox = px - slot-x(s);
+        let oy = py - slot-y(s);
+        (s >= 0 && ox >= 0px && ox <= cell-w && oy >= 0px && oy <= cell-h) ? s : -1
+    }
+
+    root-ta := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+
+        changed pressed => {
+            if (!self.pressed) {
+                root.dragged-id = -1;
+            }
+        }
+
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left) {
+                if (e.kind == PointerEventKind.down) {
+                    let s = root.slot-hit(self.mouse-x, self.mouse-y);
+                    if (s >= 0) {
+                        root.press-id = EssentialsBridge.id-at-slot(s);
+                        root.drag-slot = s;
+                        root.did-drag = false;
+                        root.press-x = self.mouse-x;
+                        root.press-y = self.mouse-y;
+                        root.grab-dx = self.mouse-x - root.slot-x(s);
+                        root.grab-dy = self.mouse-y - root.slot-y(s);
+                    }
+                } else if (e.kind == PointerEventKind.up) {
+                    if (root.press-id >= 0 && !root.did-drag) {
+                        EssentialsBridge.clicked(root.press-id);
+                    }
+                    root.press-id = -1;
+                    root.dragged-id = -1;
+                    root.did-drag = false;
+                } else if (e.kind == PointerEventKind.cancel) {
+                    root.press-id = -1;
+                    root.dragged-id = -1;
+                    root.did-drag = false;
+                }
+            } else if (e.button == PointerEventButton.right && e.kind == PointerEventKind.up) {
+                let s = root.slot-hit(self.mouse-x, self.mouse-y);
+                if (s >= 0) {
+                    menu.open(self.mouse-x, self.mouse-y, EssentialsBridge.id-at-slot(s));
+                }
+            }
+        }
+
+        moved => {
+            if (self.pressed && root.press-id >= 0) {
+                if (!root.did-drag) {
+                    let dx = (self.mouse-x - root.press-x) / 1px;
+                    let dy = (self.mouse-y - root.press-y) / 1px;
+                    if (dx * dx + dy * dy > (root.drag-threshold / 1px) * (root.drag-threshold / 1px)) {
+                        root.did-drag = true;
+                        root.dragged-id = root.press-id;
+                    }
+                }
+                if (root.dragged-id >= 0) {
+                    root.drag-x = self.mouse-x - root.grab-dx;
+                    root.drag-y = self.mouse-y - root.grab-dy;
+                    let target = root.slot-at(self.mouse-x, self.mouse-y);
+                    if (target != root.drag-slot) {
+                        EssentialsBridge.reorder(root.dragged-id, target);
+                        root.drag-slot = target;
+                    }
+                }
+            }
+        }
+    }
+
+    for t in root.tiles: Rectangle {
+        background: hovered ? t.color.brighter(0.25) : t.color.with-alpha(Theme.config.transparency);
+        backdrop-blur: Theme.blur;
+        x: grid-col * (root.cell-w + root.gap) + off-x;
+        y: grid-row * (root.cell-h + root.gap) + off-y;
+        width: root.cell-w;
+        height: root.cell-h;
+        z: dragged ? 10 : 0;
+        border-radius: 24px;
+        corner-shape: CornerShape.squircle;
+        drop-shadow-blur: dragged ? 20px : 5px;
+        drop-shadow-color: dragged ? #0007 : #0005;
+        border-color: Theme.colors.fourth-col;
+        border-width: 1px;
+
+        transform-scale: pressed-id == t.id ? 0.97 : 1.0;
+
+        property <bool> dragged: t.id == root.dragged-id;
+
+        function drop-hovered() -> bool {
+            HoverBridge.hovering ? HoverBridge.is-hovered(self.absolute-position, self.width, self.height) : false
+        }
+
+        property <bool> hovered: drop-hovered() ? true :
+            root.dragged-id >= 0 ?
+            dragged
+            : (t.slot == root.hover-slot || t.slot == root.highlighted-slot);
+
+        property <float> grid-col: Math.mod(t.slot, root.cols);
+        property <float> grid-row: Math.floor(t.slot / root.cols);
+
+        property <length> off-x: dragged ? root.drag-x - grid-col * (root.cell-w + root.gap) : 0px;
+        property <length> off-y: dragged ? root.drag-y - grid-row * (root.cell-h + root.gap) : 0px;
+
+        animate off-x, off-y {
+            duration: dragged ? 0ms : 100ms;
+            easing: ease;
+        }
+        animate grid-col, grid-row {
+            duration: 180ms;
+            easing: ease-in-out;
+        }
+
+        Text {
+            text: t.emoji;
+            font-size: 20px;
+        }
+
+        SvgIcon {
+            source: t.icon;
+            fg: hovered ? Theme.colors.primary-font : Theme.colors.secondary-font;
+            size: 16px;
+        }
+    }
+
+    menu := EssentialMenu { }
+}

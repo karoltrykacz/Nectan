@@ -8,6 +8,7 @@ import {
 import {
     OutcomingTransferModalBridge,
 } from "../../shared/transfer_offer_modal.slint";
+import { Icons } from "../../shared/icons.slint";
 
 export enum DeviceStatus {
     online,
@@ -167,16 +168,8 @@ export component DeviceScreen inherits Rectangle {
                         alignment: center;
                         spacing: 12px;
                         IconButton {
-
-                            width: 28px;
-                            height: 28px;
-                            SvgIcon {
-                                source: device.favourite ?
-                                    @image-url("icons/star_filled.svg") :
-                                    @image-url("icons/star.svg");
-                                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                                size: 16px;
-                            }
+                            icon: device.favourite ? Icons.star_filled : Icons.star;
+                            icon-size: 16px;
 
                             clicked => {
                                 device.favourite = !device.favourite;
@@ -185,13 +178,8 @@ export component DeviceScreen inherits Rectangle {
                         }
 
                         IconButton {
-                            width: 28px;
-                            height: 28px;
-                            SvgIcon {
-                                source: @image-url("icons/more-horizontal.svg");
-                                fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                                size: 16px;
-                            }
+                            icon: Icons.more-horizontal;
+                            icon-size: 16px;
 
                             clicked => {
                                 DevicesBridge.device-details-open-idx = device-idx;

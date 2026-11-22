@@ -48,31 +48,28 @@ export component Notification inherits Rectangle {
             background: Theme.colors.primary-col;
             border-width: 1px;
             border-color: Theme.colors.fourth-col;
-            border-corner-shape: superellipse(Theme.config.edges-shape);
+            corner-shape: CornerShape.squircle;
             border-radius: 64px;
         }
 
         Rectangle {
             y: 4px;
             width: parent.width - 6px;
-            height: parent.height;
             opacity: bg.opacity * root.multi;
             background: Theme.colors.primary-col.darker(0.15);
             border-width: 1px;
             border-color: Theme.colors.fourth-col;
-            border-corner-shape: superellipse(Theme.config.edges-shape);
+            corner-shape: CornerShape.squircle;
             border-radius: 64px;
         }
 
         bg := Rectangle {
-            width: parent.width;
-            height: parent.height;
             opacity: Math.clamp((parent.width - 64px) / 24px, 0, 1);
             clip: true;
             background: Theme.colors.primary-col;
             border-width: 1px;
             border-color: Theme.colors.fourth-col;
-            border-corner-shape: superellipse(Theme.config.edges-shape);
+            corner-shape: CornerShape.squircle;
             border-radius: 64px;
             drop-shadow-blur: 20px;
             drop-shadow-offset-y: 5px;
@@ -190,10 +187,14 @@ export component Notification inherits Rectangle {
                     animate title.opacity, subtitle.opacity {
                         delay: root.t * 5;
                         duration: root.t * 2;
+                        easing: Theme.easing;
                     }
                 }
                 out {
-                    animate title.opacity, subtitle.opacity { duration: root.t; }
+                    animate title.opacity, subtitle.opacity {
+                        duration: root.t;
+                        easing: Theme.easing;
+                    }
                     animate width {
                         delay: root.t;
                         duration: root.t * 4;

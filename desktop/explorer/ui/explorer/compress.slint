@@ -12,10 +12,7 @@ import { ExplorerBridge } from "bridge.slint";
 import { Icons } from "../../../shared/icons.slint";
 
 export component CompressModal inherits GeneralModal {
-    in property <int> selection-start;
-    in property <int> selection-end;
     property <string> archive-name;
-
     property <bool> encrypt;
     property <string> password;
     property <string> confirm-password;
@@ -24,9 +21,7 @@ export component CompressModal inherits GeneralModal {
     callback compress();
 
     compress => {
-        let start = min(root.selection-start, root.selection-end);
-        let end = max(root.selection-start, root.selection-end);
-        ExplorerBridge.compress-items(start, end, archive-name, encrypt, password);
+        ExplorerBridge.compress-items(archive-name, encrypt, password);
         root.on-close();
     }
 
@@ -73,12 +68,11 @@ export component CompressModal inherits GeneralModal {
             Rectangle {
                 height: 32px;
                 border-radius: 12px;
-                // border-corner-shape: superellipse(Theme.config.edges-shape);
+                corner-shape: CornerShape.squircle;
                 background: Theme.colors.third-col;
 
                 name := PlainLineEdit {
                     input-text <=> root.archive-name;
-                    end: root.selection-end;
                     rejected => {
                         root.on-close();
                     }
@@ -128,7 +122,7 @@ export component CompressModal inherits GeneralModal {
                     height: 32px;
                     width: parent.width - 28px;
                     border-radius: 8px;
-                    // border-corner-shape: superellipse(Theme.config.edges-shape);
+                    corner-shape: CornerShape.squircle;
                     background: Theme.colors.third-col;
                     property <bool> hide:true;
 
@@ -144,14 +138,8 @@ export component CompressModal inherits GeneralModal {
                     }
 
                     IconButton {
-                        width: 28px;
-                        height: 28px;
                         x: parent.width + 8px;
-                        SvgIcon {
-                            size: 20px;
-                            source: hide ? Icons.eye : Icons.eye-off;
-                        }
-
+                        icon: hide ? Icons.eye : Icons.eye-off;
                         clicked => { hide = !hide; }
                     }
                 }
@@ -174,7 +162,7 @@ export component CompressModal inherits GeneralModal {
                 Rectangle {
                     height: 32px;
                     border-radius: 8px;
-                    // border-corner-shape: superellipse(Theme.config.edges-shape);
+                    corner-shape: CornerShape.squircle;
                     background: Theme.colors.third-col;
 
                     confirm := PlainLineEdit {

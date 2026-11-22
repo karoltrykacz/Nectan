@@ -10,21 +10,56 @@ import { WindowBridge } from "../../shared/window.slint";
 import { Icons } from "../../shared/icons.slint";
 import { Properties, PropertiesBridge } from "../../shared/properties.slint";
 
+component ArtworkInspector inherits GeneralModal {
+    in property <image> artwork;
+
+    init => { self.focus(); }
+
+    Rectangle {
+        property <length> side: max(64px, min(512px, min(root.width, root.height) - 160px));
+
+        width: self.side;
+        height: self.side;
+        clip: true;
+        corner-shape: CornerShape.squircle;
+        drop-shadow-color: #00000099;
+        drop-shadow-blur: 28px;
+        background: #101010;
+        border-radius: 24px;
+        border-width: 1px;
+        border-color: #fff3;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        Rectangle {
+            Image {
+                source: root.artwork;
+                width: 100%;
+                height: 100%;
+                image-fit: contain;
+            }
+        }
+    }
+}
+
 component ShortcutsModal inherits GeneralModal {
 
     init => { self.focus(); }
 
     Rectangle {
         width: min(720px, parent.width - 40px);
-        height: min(480px,parent.height - 40px);
+        height: min(480px, parent.height - 40px);
         clip: true;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
         drop-shadow-color: #00000099;
         drop-shadow-blur: 28px;
-        background: Theme.colors.primary-col;
+        background: #0003;
+        backdrop-blur: 5px;
         border-radius: 24px;
         border-width: 1px;
-        border-color: Theme.colors.border-col;
+        border-color: #fff3;
 
         TouchArea {
             clicked => {}
@@ -36,9 +71,69 @@ component ShortcutsModal inherits GeneralModal {
                 font-size: 1.5rem;
                 font-weight: 600;
                 text: @tr("Shortcuts");
-                color: Theme.colors.primary-font;
+                color: #f1f1f1;
             }
         }
+    }
+}
+
+component ArtworkCard inherits Rectangle {
+    in property <image> source;
+    in property <length> size: min(200px, root.source.height * 1px);
+    callback clicked();
+
+    width: root.size;
+    height: root.size;
+
+    Rectangle {
+        border-radius: 20px;
+        corner-shape: CornerShape.squircle;
+        background: #121212;
+        clip: true;
+        transform-scale: art-ta.pressed ? 0.9975 : 1.0;
+        width: root.size;
+        height: root.size;
+
+        Image {
+            width: root.size;
+            height: root.size;
+            image-fit: contain;
+            source: root.source;
+        }
+    }
+
+    art-ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component TrackInfo inherits VerticalLayout {
+    in property <string> track;
+    in property <string> artist;
+    in property <length> track-size: 32px;
+    in property <length> artist-size: 14px;
+    in property <TextHorizontalAlignment> h-align: left;
+
+    spacing: 4px;
+    alignment: end;
+
+    Text {
+        text: root.track;
+        color: #fff;
+        font-size: root.track-size;
+        font-weight: 700;
+        overflow: elide;
+        horizontal-alignment: root.h-align;
+    }
+
+    Text {
+        text: root.artist;
+        color: #ffffffb3;
+        font-size: root.artist-size;
+        font-weight: 600;
+        overflow: elide;
+        horizontal-alignment: root.h-align;
     }
 }
 
@@ -46,14 +141,18 @@ export component MusicPlayer inherits Window {
     title: "Nectan Music Player";
     preferred-width: 1080px;
     preferred-height: 720px;
-    min-width: 400px;
-    min-height: 300px;
+    min-width: 128px;
+    min-height: 64px;
     resize-border-width: 6px;
     no-frame: !Theme.config.native-topbar;
     background: transparent;
     maximized: WindowBridge.maximized;
 
-    in property <image> artwork: @image-url("../../../assets/Nectan512.png");
+    in-out property <image> texture;
+    out property <int> requested-texture-width: preview.width / 1phx;
+    out property <int> requested-texture-height: preview.height / 1phx;
+
+    in property <image> artwork;
     in property <string> track-name: "Slint";
     in property <string> artist-name: "Unknown";
     in property <float> duration: 355;
@@ -69,11 +168,20 @@ export component MusicPlayer inherits Window {
     callback next();
     callback seek(float);
 
+    out property <bool> compact: root.height < 420px;
+    out property <bool> portrait: !root.compact && root.height > root.width;
+    out property <bool> wide: !root.compact && !root.portrait;
+
+    property <length> pad: root.compact ? 16px : (root.portrait ? 28px : 64px);
+    property <length> portrait-art-size: max(96px, min(root.width - 2 * root.pad, root.height * 0.38));
+
     property <int> hide-after-ticks: 6;
     property <int> idle-ticks: 0;
     property <bool> controls-visible: true;
-    property <bool> show-controls: root.controls-visible || !root.playing;
+    property <bool> show-controls: root.controls-visible || !root.playing || root.compact;
     property <length> controls-height: 56px;
+
+    property <bool> artwork-inspect;
 
     function wake() {
         root.idle-ticks = 0;
@@ -105,8 +213,9 @@ export component MusicPlayer inherits Window {
     ThemeAnimator { }
 
     NectanAppFrame {
+        border-color: #fff3;
+        background: #000;
         maximized: root.maximized || root.full-screen;
-        width: 100%;
 
         fs := FocusScope {
             init => { self.focus(); }
@@ -117,23 +226,53 @@ export component MusicPlayer inherits Window {
             }
 
             KeyBinding {
+                keys: @keys(F11);
+                activated => { root.full-screen = !root.full-screen; }
+            }
+
+            KeyBinding {
+                keys: @keys(F);
+                activated => { root.full-screen = !root.full-screen; }
+            }
+
+            KeyBinding {
+                keys: @keys(S);
+                activated => { root.shortcuts = !root.shortcuts; }
+            }
+
+            KeyBinding {
+                keys: @keys(Escape);
+                activated => { root.full-screen = false; root.maximized = false; }
+            }
+
+            KeyBinding {
                 keys: @keys(K);
-                activated => { /*todo vol up */ }
+                activated => {}
             }
 
             KeyBinding {
                 keys: @keys(J);
-                activated => { /*todo vol down*/ }
+                activated => {}
             }
 
             KeyBinding {
                 keys: @keys(UpArrow);
-                activated => { /*todo vol up */ }
+                activated => {}
             }
 
             KeyBinding {
                 keys: @keys(DownArrow);
-                activated => { /*todo vol down*/ }
+                activated => {}
+            }
+
+            KeyBinding {
+                keys: @keys(RightArrow);
+                activated => { root.next(); }
+            }
+
+            KeyBinding {
+                keys: @keys(LeftArrow);
+                activated => { root.previous(); }
             }
 
             KeyBinding {
@@ -148,7 +287,7 @@ export component MusicPlayer inherits Window {
 
             KeyBinding {
                 keys: @keys(M);
-                activated => { /*TODO MUTE*/ }
+                activated => {}
             }
 
             KeyBinding {
@@ -211,11 +350,18 @@ export component MusicPlayer inherits Window {
                 reject
             }
 
-            Rectangle {
-                background: #000;
+            preview := Rectangle {
+                background: #000000;
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.texture;
+                    image-fit: fill;
+                    Rectangle {
+                        background: #0005;
+                    }
+                }
             }
-
-            WindowMoveArea { }
 
             TouchArea {
                 mouse-cursor: root.show-controls ? MouseCursor.default : MouseCursor.none;
@@ -226,95 +372,104 @@ export component MusicPlayer inherits Window {
                 }
             }
 
+            WindowMoveArea { }
+
             VerticalLayout {
-                width: 100%;
-                padding: 64px;
-                spacing: 8px;
-                alignment: end;
+                x: 0;
+                y: 0;
+                padding: root.pad;
+                padding-bottom: 20px;
+                alignment: root.wide ? end : center;
 
-                HorizontalLayout {
-
-                    Rectangle {
-                        background: #121212;
-                        border-radius: 20px;
-                        border-corner-shape: superellipse(Theme.config.edges-shape);
-                        width: 256px;
-                        height: 256px;
-                        clip: true;
-
-                        Image {
-                            width: 256px;
-                            height: 256px;
-                            image-fit: contain;
-                            source: root.artwork;
-                        }
+                if root.wide: HorizontalLayout {
+                    if root.artwork.width != 0: ArtworkCard {
+                        source: root.artwork;
+                        size: 256px;
+                        clicked => { root.artwork-inspect = true; }
                     }
 
-                    Rectangle {
+                    if root.artwork.width != 0: Rectangle {
                         width: 32px;
                     }
 
-                    VerticalLayout {
-                        spacing: 4px;
-                        alignment: end;
+                    TrackInfo {
+                        track: root.track-name;
+                        artist: root.artist-name;
+                    }
+                }
 
-                        Text {
-                            text: root.track-name;
-                            color: #fff;
-                            font-size: 32px;
-                            font-weight: 700;
-                            overflow: elide;
+                if root.portrait: VerticalLayout {
+                    spacing: 20px;
+
+                    if root.artwork.width != 0: HorizontalLayout {
+                        alignment: center;
+
+                        ArtworkCard {
+                            source: root.artwork;
+                            size: root.portrait-art-size;
+                            clicked => { root.artwork-inspect = true; }
                         }
+                    }
 
+                    TrackInfo {
+                        track: root.track-name;
+                        artist: root.artist-name;
+                        track-size: 24px;
+                        artist-size: 14px;
+                        h-align: center;
+                    }
+                }
+
+                if root.compact: TrackInfo {
+                    track: root.track-name;
+                    artist: root.artist-name;
+                    track-size: 18px;
+                    artist-size: 12px;
+                    h-align: center;
+                }
+
+                Rectangle {
+                    height: root.compact ? 8px : 16px;
+                }
+
+                VerticalLayout {
+                    padding-left: root.compact ? 20px : 0;
+                    padding-right: root.compact ? 20px : 0;
+
+                    progress-slider := Slider {
+                        track-color: #0003;
+                        fill-color: #f1f1f1;
+                        knob-color: #f1f1f1;
+                        width: 100%;
+                        minimum: 0;
+                        maximum: 1;
+                        value <=> root.progress;
+
+                        released(v) => { root.seek(v); }
+                    }
+
+                    HorizontalLayout {
                         Text {
-                            text: root.artist-name;
+                            text: root.format-time(root.progress * root.duration);
                             color: #ffffffb3;
-                            font-size: 14px;
-                            font-weight: 600;
-                            overflow: elide;
+                            font-size: 12px;
+                        }
+
+                        Rectangle { }
+
+                        Text {
+                            text: root.format-time(root.duration);
+                            color: #ffffffb3;
+                            font-size: 12px;
                         }
                     }
                 }
 
                 Rectangle {
-                    height: 16px;
-                }
-
-                progress-slider := Slider {
-                    width: 100%;
-                    minimum: 0;
-                    maximum: 1;
-                    value <=> root.progress;
-
-                    released(v) => { root.seek(v); }
-                }
-
-                HorizontalLayout {
-                    Text {
-                        text: root.format-time(root.progress * root.duration);
-                        color: #ffffffb3;
-                        font-size: 12px;
-                    }
-
-                    Rectangle { }
-
-                    Text {
-                        text: root.format-time(root.duration);
-                        color: #ffffffb3;
-                        font-size: 12px;
-                    }
-                }
-
-                Rectangle {
-                    height: root.show-controls ? root.controls-height : 0px;
+                    height: root.controls-height;
                     opacity: root.show-controls ? 1.0 : 0.0;
                     clip: true;
                     visible: self.height > 0.5px;
-
-                    animate height {
-                        duration: 500ms;
-                        easing: Theme.easing;
-                    }
 
                     animate opacity {
                         duration: 500ms;
@@ -323,58 +478,50 @@ export component MusicPlayer inherits Window {
 
                     HorizontalLayout {
                         alignment: center;
-                        padding-top: 8px;
+                        cross-axis-alignment: center;
+                        spacing: root.compact ? 20px : 12px;
 
-                        HorizontalLayout {
-                            padding-left: 20px;
-                            padding-right: 20px;
-                            padding-top: 10px;
-                            padding-bottom: 10px;
-                            spacing: 20px;
-                            alignment: center;
+                        if !root.compact: IconButton {
+                            inner-bg: transparent;
+                            icon: Icons.shuffle;
+                            colorize: root.shuffle ? #f1f1f1 : #888;
+                            clicked => { root.shuffle = !root.shuffle; }
+                        }
 
-                            IconButton {
-                                inner-bg: transparent;
-                                icon: Icons.shuffle;
-                                colorize: root.shuffle ? #f1f1f1 : #888;
-                                clicked => { root.shuffle = !root.shuffle; }
-                            }
+                        IconButton {
+                            inner-bg: transparent;
+                            icon: Icons.fast-forward;
+                            rotation: 180deg;
+                            colorize: #f1f1f1;
+                            clicked => { root.previous(); }
+                        }
 
-                            IconButton {
-                                inner-bg: transparent;
-                                icon: Icons.fast-forward;
-                                rotation: 180deg;
-                                colorize: #f1f1f1;
-                                clicked => { root.previous(); }
-                            }
+                        IconButton {
+                            inner-bg: transparent;
+                            icon: root.playing ? Icons.pause : Icons.play;
+                            colorize: #f1f1f1;
+                            clicked => { root.playing = !root.playing; }
+                        }
 
-                            IconButton {
-                                inner-bg: transparent;
-                                icon: root.playing ? Icons.pause : Icons.play;
-                                colorize: #f1f1f1;
-                                clicked => { root.playing = !root.playing; }
-                            }
+                        IconButton {
+                            inner-bg: transparent;
+                            icon: Icons.fast-forward;
+                            colorize: #f1f1f1;
+                            clicked => { root.next(); }
+                        }
 
-                            IconButton {
-                                inner-bg: transparent;
-                                icon: Icons.fast-forward;
-                                colorize: #f1f1f1;
-                                clicked => { root.next(); }
-                            }
+                        if !root.compact: IconButton {
+                            inner-bg: transparent;
+                            icon: Icons.repeat;
+                            colorize: root.repeat ? #f1f1f1 : #888;
+                            clicked => { root.repeat = !root.repeat; }
+                        }
 
-                            IconButton {
-                                inner-bg: transparent;
-                                icon: Icons.repeat;
-                                colorize: root.repeat ? #f1f1f1 : #888;
-                                clicked => { root.repeat = !root.repeat; }
-                            }
-
-                            IconButton {
-                                inner-bg: transparent;
-                                icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
-                                colorize: #f1f1f1;
-                                clicked => { root.full-screen = !root.full-screen; }
-                            }
+                        if !root.compact: IconButton {
+                            inner-bg: transparent;
+                            icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
+                            colorize: #f1f1f1;
+                            clicked => { root.full-screen = !root.full-screen; }
                         }
                     }
                 }
@@ -385,7 +532,7 @@ export component MusicPlayer inherits Window {
                 y: 0px;
                 width: 100%;
                 height: 48px;
-                opacity: root.show-controls ? 1.0 : 0.0;
+                opacity: root.show-controls && !root.compact ? 1.0 : 0.0;
                 visible: self.opacity > 0.01;
 
                 animate opacity {
@@ -405,7 +552,7 @@ export component MusicPlayer inherits Window {
                     IconButton {
                         icon: Icons.key;
                         icon-size: 14px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #c8c8c8;
                         clicked => { root.shortcuts = true; }
                     }
@@ -413,7 +560,7 @@ export component MusicPlayer inherits Window {
                     IconButton {
                         icon: Icons.minimize;
                         icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => { root.minimized = true; }
                     }
@@ -421,7 +568,7 @@ export component MusicPlayer inherits Window {
                     IconButton {
                         icon: Icons.maximize;
                         icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => {
                             root.maximized = !root.maximized;
@@ -431,13 +578,18 @@ export component MusicPlayer inherits Window {
                     IconButton {
                         icon: Icons.close;
                         icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => { root.close(); }
                     }
                 }
             }
         }
+    }
+
+    if root.artwork-inspect: ArtworkInspector {
+        artwork <=> root.artwork;
+        on-close => { fs.focus(); root.artwork-inspect = false; }
     }
 
     if root.shortcuts: ShortcutsModal {

@@ -1,2 +1,1780 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme, ThemeAnimator } from "../../shared/theme.slint";
+import {
+    NectanAppFrame,
+    PrimaryButton,
+    Slider,
+    Switch,
+    IconButton,
+    SvgIcon,
+    Spinner,
+} from "../../shared/elements.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { Icons } from "../../shared/icons.slint";
 
-export component Print inherits Window { }
+// ─────────────────────────────────────────────────────────────────────────────
+//  Small building blocks (local to the print window)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Select with a popup list. Unlike the shared Dropdown the list lives in a
+// PopupWindow, so it is not clipped by the settings ScrollView.
+component PrintSelect inherits Rectangle {
+    in property <[string]> options;
+    in property <[string]> details;          // optional second line per row
+    in-out property <int> current;
+    in property <bool> enabled: true;
+    in property <length> max-list-height: 232px;
+    callback selected(int);
+
+    property <bool> has-details: root.details.length > 0;
+    property <length> row-h: root.has-details ? 46px : 34px;
+    property <length> list-h: min(root.max-list-height, root.options.length * (root.row-h + 2px) + 8px);
+
+    height: 34px;
+    border-radius: 10px;
+    corner-shape: CornerShape.squircle;
+    background: ta.has-hover && root.enabled ? Theme.colors.fourth-col : Theme.colors.third-col;
+    border-width: 1px;
+    border-color: Theme.colors.border-col;
+    opacity: root.enabled ? 1.0 : 0.45;
+    transform-scale: ta.pressed ? 0.99 : 1.0;
+
+    animate background, transform-scale {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 8px;
+
+        Text {
+            text: root.options[root.current];
+            color: Theme.colors.primary-font;
+            font-size: 13px;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        VerticalLayout {
+            alignment: center;
+            SvgIcon {
+                source: Icons.chevron-right;
+                fg: Theme.colors.third-font;
+                size: 14px;
+                transform-rotation: 90deg;
+            }
+        }
+    }
+
+    ta := TouchArea {
+        enabled: root.enabled && root.options.length > 0;
+        mouse-cursor: pointer;
+        clicked => { popup.show(); }
+    }
+
+    popup := PopupWindow {
+        x: 0px;
+        y: root.height + 4px;
+        width: root.width;
+        height: root.list-h;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: Theme.colors.primary-col;
+            border-radius: 12px;
+            corner-shape: CornerShape.squircle;
+            border-width: 1px;
+            border-color: Theme.colors.fourth-col;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000040;
+            drop-shadow-offset-y: 4px;
+
+            ScrollView {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+
+                VerticalLayout {
+                    padding: 4px;
+                    spacing: 2px;
+
+                    for opt[i] in root.options: Rectangle {
+                        height: root.row-h;
+                        border-radius: 8px;
+                        background: i == root.current ? Theme.colors.fourth-col
+                            : row-ta.has-hover ? Theme.colors.third-col : transparent;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 1px;
+
+                                Text {
+                                    text: opt;
+                                    color: Theme.colors.primary-font;
+                                    font-size: 13px;
+                                    font-weight: i == root.current ? 600 : 500;
+                                    overflow: elide;
+                                }
+
+                                if root.has-details: Text {
+                                    text: root.details[i];
+                                    color: Theme.colors.third-font;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+
+                        row-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.current = i;
+                                root.selected(i);
+                                popup.close();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// − 12 + with press-and-hold repeat
+component Stepper inherits Rectangle {
+    in-out property <int> value: 1;
+    in property <int> minimum: 0;
+    in property <int> maximum: 999;
+    in property <bool> zero-pad: false;
+    callback edited(int);
+
+    property <int> dir: 0;
+    property <bool> repeating: false;
+
+    function step(d: int) {
+        let n = Math.clamp(root.value + d, root.minimum, root.maximum);
+        if (n != root.value) {
+            root.value = n;
+            root.edited(n);
+        }
+    }
+
+    height: 32px;
+    min-width: 108px;
+    border-radius: 10px;
+    corner-shape: CornerShape.squircle;
+    background: Theme.colors.third-col;
+    border-width: 1px;
+    border-color: Theme.colors.border-col;
+
+    delay-timer := Timer {
+        interval: 380ms;
+        running: root.dir != 0 && !root.repeating;
+        triggered => { root.repeating = true; }
+    }
+
+    repeat-timer := Timer {
+        interval: 70ms;
+        running: root.repeating && root.dir != 0;
+        triggered => { root.step(root.dir); }
+    }
+
+    HorizontalLayout {
+        padding: 2px;
+
+        Rectangle {
+            width: 30px;
+            border-radius: 8px;
+            background: minus-ta.has-hover ? Theme.colors.fourth-col : transparent;
+            opacity: root.value > root.minimum ? 1.0 : 0.35;
+
+            Text {
+                text: "−";
+                color: Theme.colors.primary-font;
+                font-size: 16px;
+                font-weight: 500;
+            }
+
+            minus-ta := TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                        root.dir = -1;
+                        root.step(-1);
+                    } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                        root.dir = 0;
+                        root.repeating = false;
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: root.zero-pad && root.value < 10 ? "0\{root.value}" : "\{root.value}";
+            color: Theme.colors.primary-font;
+            font-size: 13px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        Rectangle {
+            width: 30px;
+            border-radius: 8px;
+            background: plus-ta.has-hover ? Theme.colors.fourth-col : transparent;
+            opacity: root.value < root.maximum ? 1.0 : 0.35;
+
+            Text {
+                text: "+";
+                color: Theme.colors.primary-font;
+                font-size: 16px;
+                font-weight: 500;
+            }
+
+            plus-ta := TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                        root.dir = 1;
+                        root.step(1);
+                    } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                        root.dir = 0;
+                        root.repeating = false;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in-out property <int> current;
+    callback selected(int);
+
+    height: 32px;
+    border-radius: 10px;
+    corner-shape: CornerShape.squircle;
+    background: Theme.colors.secondary-col;
+    border-width: 1px;
+    border-color: Theme.colors.border-col;
+
+    HorizontalLayout {
+        padding: 2px;
+        spacing: 2px;
+
+        for opt[i] in root.options: Rectangle {
+            border-radius: 8px;
+            corner-shape: CornerShape.squircle;
+            background: i == root.current ? Theme.colors.fourth-col
+                : seg-ta.has-hover ? Theme.colors.third-col : transparent;
+
+            animate background {
+                duration: Theme.animation-speed;
+                easing: Theme.easing;
+            }
+
+            Text {
+                text: opt;
+                font-size: 12px;
+                font-weight: i == root.current ? 600 : 500;
+                color: i == root.current ? Theme.colors.primary-font : Theme.colors.secondary-font;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            seg-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.current = i;
+                    root.selected(i);
+                }
+            }
+        }
+    }
+}
+
+component ToggleChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    height: 30px;
+    horizontal-stretch: 1;
+    border-radius: 10px;
+    corner-shape: CornerShape.squircle;
+    background: root.checked ? Theme.colors.primary-font
+        : ta.has-hover && root.enabled ? Theme.colors.fourth-col : Theme.colors.third-col;
+    opacity: root.enabled ? 1.0 : 0.4;
+    transform-scale: ta.pressed ? 0.975 : 1.0;
+
+    animate background, transform-scale {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    Text {
+        text: root.text;
+        font-size: 12px;
+        font-weight: 600;
+        color: root.checked ? Theme.colors.primary-col : Theme.colors.secondary-font;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Card with a small glyph (children) above a label
+component ChoiceCard inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    horizontal-stretch: 1;
+    height: 76px;
+    border-radius: 12px;
+    corner-shape: CornerShape.squircle;
+    border-width: 1.5px;
+    border-color: root.selected ? Theme.colors.primary-font : Theme.colors.border-col;
+    background: root.selected ? Theme.colors.third-col
+        : ta.has-hover && root.enabled ? Theme.colors.secondary-col : transparent;
+    opacity: root.enabled ? 1.0 : 0.4;
+    transform-scale: ta.pressed ? 0.98 : 1.0;
+
+    animate background, border-color, transform-scale {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+        alignment: center;
+
+        Rectangle {
+            height: 30px;
+            @children
+        }
+
+        Text {
+            text: root.text;
+            font-size: 12px;
+            font-weight: 600;
+            color: Theme.colors.primary-font;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component Field inherits VerticalLayout {
+    in property <string> label;
+    spacing: 6px;
+
+    Text {
+        text: root.label;
+        color: Theme.colors.third-font;
+        font-size: 11.5px;
+        font-weight: 500;
+    }
+
+    @children
+}
+
+// Collapsible group of settings
+component Section inherits VerticalLayout {
+    in property <string> title;
+    in-out property <bool> open: true;
+
+    Rectangle {
+        height: 40px;
+
+        HorizontalLayout {
+            padding-left: 2px;
+            padding-right: 2px;
+
+            Text {
+                text: root.title;
+                color: Theme.colors.primary-font;
+                font-size: 14px;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                SvgIcon {
+                    source: Icons.chevron-right;
+                    fg: Theme.colors.third-font;
+                    size: 14px;
+                    transform-rotation: root.open ? 90deg : 0deg;
+                    animate transform-rotation {
+                        duration: Theme.animation-speed;
+                        easing: Theme.easing;
+                    }
+                }
+            }
+        }
+
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.open = !root.open; }
+        }
+    }
+
+    body := Rectangle {
+        clip: true;
+        height: root.open ? inner.preferred-height : 0px;
+        animate height {
+            duration: Theme.animation-speed * 1.5;
+            easing: Theme.easing;
+        }
+
+        inner := VerticalLayout {
+            y: 0px;
+            height: self.preferred-height;
+            padding-top: 2px;
+            padding-bottom: 16px;
+            spacing: 12px;
+
+            @children
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.7);
+    }
+}
+
+// Floating pill used on the preview pane
+component Pill inherits Rectangle {
+    border-radius: self.height / 2;
+    background: Theme.colors.primary-col.with-alpha(0.88);
+    border-color: Theme.colors.fourth-col;
+    border-width: 1px;
+    backdrop-blur: 3px;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Mock document page used for the live preview until a real render is wired.
+//  Everything is positioned in fractions of the page, so it works at any size.
+// ─────────────────────────────────────────────────────────────────────────────
+component MockPage inherits Rectangle {
+    in property <int> page: 1;
+    in property <int> color-mode: 0;          // 0 colour, 1 grayscale, 2 black & white
+    in property <float> ink-strength: 1.0;    // < 1 for draft quality
+
+    property <length> pad: root.width * 0.1;
+    property <length> line-h: Math.max(1px, root.width * 0.018);
+    property <bool> chart-variant: Math.mod(root.page, 2) < 0.5;
+
+    property <color> ink: root.color-mode == 2 ? #000000
+        : root.color-mode == 1 ? #4b5563 : #374151;
+    property <color> accent: root.color-mode == 2 ? #000000
+        : root.color-mode == 1 ? #374151 : #2563eb;
+    property <color> accent2: root.color-mode == 2 ? #000000
+        : root.color-mode == 1 ? #9ca3af : #f59e0b;
+    property <color> sun: root.color-mode == 2 ? #ffffff
+        : root.color-mode == 1 ? #f3f4f6 : #fde047;
+    property <brush> photo: root.color-mode == 0
+        ? @linear-gradient(180deg, #7dd3fc 0%, #bae6fd 60%, #86efac 60%, #22c55e 100%)
+        : root.color-mode == 1
+        ? @linear-gradient(180deg, #d1d5db 0%, #e5e7eb 60%, #9ca3af 60%, #6b7280 100%)
+        : @linear-gradient(180deg, #ffffff 0%, #d4d4d4 60%, #000000 60%, #000000 100%);
+
+    background: #ffffff;
+    clip: true;
+    opacity: root.ink-strength;
+
+    // title + logo
+    Rectangle {
+        x: root.pad;
+        y: root.height * 0.07;
+        width: root.width * 0.5;
+        height: Math.max(2px, root.height * 0.032);
+        border-radius: 1px;
+        background: root.accent;
+    }
+
+    Rectangle {
+        x: root.width - root.pad - self.width;
+        y: root.height * 0.06;
+        width: root.width * 0.1;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: root.accent2;
+    }
+
+    Rectangle {
+        x: root.pad;
+        y: root.height * 0.13;
+        width: root.width * 0.3;
+        height: root.line-h;
+        background: root.ink.with-alpha(0.4);
+    }
+
+    // intro paragraph
+    for k in 5: Rectangle {
+        x: root.pad;
+        y: root.height * (0.19 + k * 0.035);
+        width: (root.width - 2 * root.pad) * (k == 4 ? 0.6 : 1.0);
+        height: root.line-h;
+        background: root.ink.with-alpha(0.7);
+    }
+
+    // figure
+    Rectangle {
+        x: root.pad;
+        y: root.height * 0.38;
+        width: root.width - 2 * root.pad;
+        height: root.height * 0.28;
+
+        if !root.chart-variant: Rectangle {
+            clip: true;
+            border-radius: 2px;
+            background: root.photo;
+
+            Rectangle {
+                x: parent.width * 0.68;
+                y: parent.height * 0.12;
+                width: parent.height * 0.22;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: root.sun;
+                border-width: root.color-mode == 2 ? 1px : 0px;
+                border-color: #000000;
+            }
+        }
+
+        if root.chart-variant: Rectangle {
+            Rectangle {
+                x: 0px;
+                y: parent.height - 1px;
+                width: parent.width;
+                height: Math.max(1px, root.line-h * 0.8);
+                background: root.ink.with-alpha(0.6);
+            }
+
+            for v[i] in [0.45, 0.7, 0.55, 0.9, 0.65]: Rectangle {
+                property <length> slot: parent.width / 5;
+                x: i * self.slot + self.slot * 0.2;
+                width: self.slot * 0.6;
+                height: parent.height * v * 0.92;
+                y: parent.height - self.height - 2px;
+                border-radius: 1px;
+                background: (i == 1 || i == 3) ? root.accent2 : root.accent;
+            }
+        }
+    }
+
+    // body copy
+    for k in 6: Rectangle {
+        x: root.pad;
+        y: root.height * (0.70 + k * 0.035);
+        width: (root.width - 2 * root.pad) * (k == 5 ? 0.45 : 1.0);
+        height: root.line-h;
+        background: root.ink.with-alpha(0.7);
+    }
+
+    // page number
+    Text {
+        x: 0px;
+        y: root.height * 0.93;
+        width: root.width;
+        height: root.height * 0.05;
+        text: "\{root.page}";
+        font-size: Math.max(5px, root.width * 0.035);
+        color: root.ink.with-alpha(0.6);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Print window
+// ─────────────────────────────────────────────────────────────────────────────
+export component Print inherits Window {
+    title: "Nectan Print";
+    preferred-width: 1120px;
+    preferred-height: 760px;
+    min-width: 820px;
+    min-height: 560px;
+    resize-border-width: 6px;
+    no-frame: !Theme.config.native-topbar;
+    background: transparent;
+    maximized: WindowBridge.maximized;
+
+    // ── data that Rust fills from CUPS / the PPD of the selected printer ──
+    in property <string> document-name: "Quarterly report.pdf";
+    in property <int> total-pages: 12;
+
+    in property <[string]> printer-names: [
+        "HP LaserJet Pro M404dn",
+        "Brother HL-L2350DW",
+        "Canon PIXMA TS8350",
+        "Print to PDF",
+    ];
+    in property <[string]> printer-locations: [
+        "Office · 2nd floor",
+        "Home office",
+        "Living room",
+        "Virtual printer",
+    ];
+    in property <string> printer-status: "Ready";
+    in property <int> printer-state: 0;                 // 0 idle, 1 busy, 2 offline / stopped
+
+    in property <[string]> paper-names: ["A4", "A3", "A5", "B5", "Letter", "Legal", "Tabloid", "Photo 4×6"];
+    in property <[float]> paper-widths: [210, 297, 148, 176, 215.9, 215.9, 279.4, 101.6];     // mm, portrait
+    in property <[float]> paper-heights: [297, 420, 210, 250, 279.4, 355.6, 431.8, 152.4];    // mm, portrait
+    in property <[string]> paper-types: [
+        "Plain paper",
+        "Recycled",
+        "Bond",
+        "Glossy photo",
+        "Matte photo",
+        "Cardstock",
+        "Envelope",
+        "Labels"
+    ];
+    in property <[string]> paper-sources: ["Auto select", "Tray 1 (multi-purpose)", "Tray 2", "Tray 3"];
+    in property <[string]> output-trays: ["Auto", "Top tray (face down)", "Rear tray (face up)"];
+    in property <[string]> optimizations: ["Automatic", "Text", "Graphics", "Photo"];
+    in property <[string]> profiles: [
+        "Default",
+        "Draft · save ink",
+        "Office document",
+        "Photo · glossy",
+        "Duplex · black & white"
+    ];
+    in property <[string]> schedule-options: [
+        "Print now",
+        "Hold",
+        "Daytime (6 am – 6 pm)",
+        "Evening (6 pm – midnight)",
+        "Night (midnight – 6 am)",
+        "Weekend",
+        "At specific time…",
+    ];                                                   // index 6 = specific time
+
+    in property <bool> has-duplex: true;
+    in property <bool> has-color: true;
+    in property <bool> has-paper-source: true;
+    in property <bool> has-output-tray: true;
+
+    in property <image> sheet-image;                     // real render of the current sheet (optional)
+    in property <bool> preview-loading: false;
+
+    // ── user choices (Rust reads these on print-requested) ──
+    in-out property <int> printer-index: 0;
+    in-out property <int> copies: 1;
+    in-out property <bool> collate: true;
+
+    in-out property <int> page-mode: 0;                  // 0 all, 1 current, 2 range
+    in-out property <int> current-page: 1;
+    in-out property <int> range-from: 1;
+    in-out property <int> range-to: 12;
+    in-out property <bool> odd-only: false;
+    in-out property <bool> even-only: false;
+    in-out property <bool> reverse-order: false;
+
+    in-out property <int> paper-index: 0;
+    in-out property <int> orientation: 0;                // 0 portrait, 1 landscape
+    in-out property <int> duplex: 0;                     // 0 off, 1 long edge, 2 short edge
+    in-out property <int> pps-index: 0;                  // index into 1, 2, 4, 6, 9, 16
+    in-out property <float> scale-percent: 100;
+    in-out property <bool> fit-to-page: true;
+
+    in-out property <int> paper-type-index: 0;
+    in-out property <int> paper-source-index: 0;
+    in-out property <int> output-tray-index: 0;
+
+    in-out property <int> color-mode: 0;                 // 0 colour, 1 grayscale, 2 black & white
+    in-out property <int> quality: 1;                    // 0 draft, 1 normal, 2 high
+    in-out property <int> optimization-index: 0;
+    in-out property <int> profile-index: 0;
+
+    in-out property <float> priority: 50;                // CUPS job-priority 1‒100
+    in-out property <int> schedule-index: 0;
+    in-out property <int> hold-hour: 22;
+    in-out property <int> hold-minute: 0;
+
+    out property <int> pages-per-sheet: root.pps-of(root.pps-index);
+
+    // ── callbacks ──
+    callback print-requested();
+    callback cancelled();
+    callback printer-changed(int);
+    callback profile-selected(int);
+    callback save-profile();
+    callback refresh-printers();
+    callback printer-properties();
+    callback sheet-changed(int);
+    callback window-drag(length, length);
+
+    // ── preview state ──
+    in-out property <int> sheet: 0;
+    property <float> zoom: 1.0;
+    property <length> pan-x: 0px;
+    property <length> pan-y: 0px;
+    property <length> start-pan-x: 0px;
+    property <length> start-pan-y: 0px;
+
+    property <bool> landscape: root.orientation == 1;
+    property <float> paper-w: root.paper-widths.length > root.paper-index ? root.paper-widths[root.paper-index] : 210;
+    property <float> paper-h: root.paper-heights.length > root.paper-index ? root.paper-heights[root.paper-index] : 297;
+    property <float> sheet-w-mm: root.landscape ? root.paper-h : root.paper-w;
+    property <float> sheet-h-mm: root.landscape ? root.paper-w : root.paper-h;
+
+    property <length> avail-w: Math.max(80px, preview-area.width - 96px);
+    property <length> avail-h: Math.max(80px, preview-area.height - 150px);
+    property <float> fit: Math.min(
+        root.avail-w / (root.sheet-w-mm * 1mm),
+        root.avail-h / (root.sheet-h-mm * 1mm));
+    property <length> disp-w: root.sheet-w-mm * 1mm * root.fit * root.zoom;
+    property <length> disp-h: root.sheet-h-mm * 1mm * root.fit * root.zoom;
+    property <length> margin: root.disp-w * (10.0 / root.sheet-w-mm);       // 10 mm printable margin
+    property <length> gap: root.pages-per-sheet > 1 ? root.disp-w * 0.015 : 0px;
+
+    property <length> max-pan-x: Math.max(0px, (root.disp-w - root.avail-w) / 2 + 60px);
+    property <length> max-pan-y: Math.max(0px, (root.disp-h - root.avail-h) / 2 + 60px);
+    property <length> eff-pan-x: Math.clamp(root.pan-x, -root.max-pan-x, root.max-pan-x);
+    property <length> eff-pan-y: Math.clamp(root.pan-y, -root.max-pan-y, root.max-pan-y);
+
+    property <int> grid-cols: root.pages-per-sheet == 2 ? (root.landscape ? 2 : 1)
+        : root.pages-per-sheet == 4 ? 2
+        : root.pages-per-sheet == 6 ? (root.landscape ? 3 : 2)
+        : root.pages-per-sheet == 9 ? 3
+        : root.pages-per-sheet == 16 ? 4 : 1;
+    property <int> grid-rows: root.pages-per-sheet == 2 ? (root.landscape ? 1 : 2)
+        : root.pages-per-sheet == 4 ? 2
+        : root.pages-per-sheet == 6 ? (root.landscape ? 2 : 3)
+        : root.pages-per-sheet == 9 ? 3
+        : root.pages-per-sheet == 16 ? 4 : 1;
+    property <float> content-scale: root.fit-to-page ? 1.0 : root.scale-percent / 100;
+
+    // ── page selection maths (odd / even / reverse / range) ──
+    property <int> first-page: root.page-mode == 0 ? 1
+        : (root.page-mode == 1 ? root.current-page : root.range-from);
+    property <int> last-page: root.page-mode == 0 ? root.total-pages
+        : (root.page-mode == 1 ? root.current-page : root.range-to);
+    property <int> page-count: root.odd-only
+        ? root.non-negative(Math.floor((root.last-page + 1) / 2) - Math.floor(root.first-page / 2))
+        : root.even-only
+        ? root.non-negative(Math.floor(root.last-page / 2) - Math.floor((root.first-page - 1) / 2))
+        : root.non-negative(root.last-page - root.first-page + 1);
+    property <int> sheet-count: root.page-count == 0 ? 1 : Math.ceil(root.page-count / root.pages-per-sheet);
+    property <int> eff-sheet: root.sheet < root.sheet-count ? root.sheet : root.sheet-count - 1;
+    property <int> paper-sheets: root.duplex > 0 ? Math.ceil(root.sheet-count / 2) : root.sheet-count;
+    property <bool> can-print: root.printer-names.length > 0 && root.page-count > 0;
+
+    property <string> pages-word: root.page-count == 1 ? "page" : "pages";
+    property <string> sheets-word: root.paper-sheets * root.copies == 1 ? "sheet" : "sheets";
+    property <string> side-word: root.duplex > 0
+        ? (Math.mod(root.eff-sheet, 2) == 1 ? " · Back" : " · Front") : "";
+    property <string> nav-label: "Sheet \{root.eff-sheet + 1} of \{root.sheet-count}\{root.side-word}";
+    property <string> paper-label: "\{root.paper-names[root.paper-index]} · \{Math.round(root.sheet-w-mm)} × \{Math.round(root.sheet-h-mm)} mm";
+    property <string> priority-word: root.priority < 25 ? "Low"
+        : root.priority < 60 ? "Normal"
+        : root.priority < 85 ? "High" : "Urgent";
+
+    pure function pps-of(i: int) -> int {
+        if (i == 1) { return 2; }
+        if (i == 2) { return 4; }
+        if (i == 3) { return 6; }
+        if (i == 4) { return 9; }
+        if (i == 5) { return 16; }
+        return 1;
+    }
+
+    pure function non-negative(v: int) -> int {
+        return v < 0 ? 0 : v;
+    }
+
+    // The real page number printed at output position i (0-based), 0 = nothing there
+    pure function page-at(i: int) -> int {
+        if (i < 0 || i >= root.page-count) {
+            return 0;
+        }
+        let j = root.reverse-order ? root.page-count - 1 - i : i;
+        if (root.odd-only) {
+            let f = Math.mod(root.first-page, 2) == 1 ? root.first-page : root.first-page + 1;
+            return f + 2 * j;
+        }
+        if (root.even-only) {
+            let f = Math.mod(root.first-page, 2) == 0 ? root.first-page : root.first-page + 1;
+            return f + 2 * j;
+        }
+        return root.first-page + j;
+    }
+
+    function go-sheet(d: int) {
+        let n = root.eff-sheet + d;
+        if (n >= 0 && n < root.sheet-count) {
+            root.sheet = n;
+            root.sheet-changed(n);
+        }
+    }
+
+    function set-zoom(z: float) {
+        root.zoom = Math.clamp(z, 0.5, 3.0);
+    }
+
+    function reset-view() {
+        root.zoom = 1.0;
+        root.pan-x = 0px;
+        root.pan-y = 0px;
+    }
+
+    ThemeAnimator { }
+
+    FocusScope {
+        init => { self.focus(); }
+
+        KeyBinding {
+            keys: @keys(Escape);
+            activated => { root.cancelled(); }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + Return);
+            activated => {
+                if (root.can-print) {
+                    root.print-requested();
+                }
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(PageDown);
+            activated => { root.go-sheet(1); }
+        }
+
+        KeyBinding {
+            keys: @keys(PageUp);
+            activated => { root.go-sheet(-1); }
+        }
+
+        NectanAppFrame {
+            maximized: root.maximized || root.full-screen;
+
+            VerticalLayout {
+                // ───────────── title bar ─────────────
+                Rectangle {
+                    height: 52px;
+
+                    TouchArea {
+                        moved => {
+                            if (self.pressed && !root.maximized) {
+                                root.window-drag(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                            }
+                        }
+                        double-clicked => { root.maximized = !root.maximized; }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 24px;
+                        padding-right: 16px;
+                        spacing: 12px;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+
+                            Text {
+                                text: "Print";
+                                color: Theme.colors.primary-font;
+                                font-size: 16px;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: root.document-name;
+                                color: Theme.colors.third-font;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+
+                        if !Theme.config.native-topbar: VerticalLayout {
+                            alignment: center;
+
+                            HorizontalLayout {
+                                spacing: 4px;
+
+                                IconButton {
+                                    icon: Icons.minimize;
+                                    icon-size: 16px;
+                                    clicked => { root.minimized = true; }
+                                }
+
+                                IconButton {
+                                    icon: Icons.maximize;
+                                    icon-size: 16px;
+                                    clicked => { root.maximized = !root.maximized; }
+                                }
+
+                                IconButton {
+                                    icon: Icons.close;
+                                    icon-size: 16px;
+                                    clicked => { root.cancelled(); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    // ───────────── preview pane ─────────────
+                    preview-area := Rectangle {
+                        horizontal-stretch: 1;
+                        clip: true;
+                        background: Theme.colors.secondary-col.with-alpha(0.55);
+
+                        // pan / zoom surface (below everything else)
+                        TouchArea {
+                            mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+
+                            pointer-event(e) => {
+                                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                                    root.start-pan-x = root.eff-pan-x;
+                                    root.start-pan-y = root.eff-pan-y;
+                                }
+                            }
+
+                            moved => {
+                                if (self.pressed) {
+                                    root.pan-x = root.start-pan-x + self.mouse-x - self.pressed-x;
+                                    root.pan-y = root.start-pan-y + self.mouse-y - self.pressed-y;
+                                }
+                            }
+
+                            double-clicked => { root.reset-view(); }
+
+                            scroll-event(e) => {
+                                root.set-zoom(root.zoom * (1.0 + e.delta-y / 1200px));
+                                return accept;
+                            }
+                        }
+
+                        // the sheet of paper
+                        sheet-rect := Rectangle {
+                            x: (preview-area.width - self.width) / 2 + root.eff-pan-x;
+                            y: (preview-area.height - self.height) / 2 + root.eff-pan-y - 14px;
+                            width: root.disp-w;
+                            height: root.disp-h;
+                            background: #ffffff;
+                            border-radius: 2px;
+                            drop-shadow-blur: 28px;
+                            drop-shadow-color: #00000066;
+                            drop-shadow-offset-y: 8px;
+
+                            animate width, height {
+                                duration: Theme.animation-speed;
+                                easing: Theme.easing;
+                            }
+
+                            printable := Rectangle {
+                                x: root.margin;
+                                y: root.margin;
+                                width: parent.width - 2 * root.margin;
+                                height: parent.height - 2 * root.margin;
+                                border-width: 1px;
+                                border-color: #2563eb22;
+
+                                for k in root.pages-per-sheet: cell := Rectangle {
+                                    property <length> cw: printable.width / root.grid-cols;
+                                    property <length> ch: printable.height / root.grid-rows;
+                                    property <float> g-col: Math.mod(k, root.grid-cols);
+                                    // property <float> g-row: Math.floor(k / root.grid-cols);
+                                    property <int> page-no: root.page-at(root.eff-sheet * root.pages-per-sheet + k);
+
+                                    x: self.g-col * self.cw + root.gap / 2;
+                                    y: self.row * self.ch + root.gap / 2;
+                                    width: self.cw - root.gap;
+                                    height: self.ch - root.gap;
+                                    clip: true;
+                                    border-width: root.pages-per-sheet > 1 && self.page-no > 0 ? 1px : 0px;
+                                    border-color: #00000022;
+
+                                    if cell.page-no > 0 && root.sheet-image.width == 0: MockPage {
+                                        x: 0px;
+                                        y: 0px;
+                                        width: cell.width * root.content-scale;
+                                        height: cell.height * root.content-scale;
+                                        page: cell.page-no;
+                                        color-mode: root.color-mode;
+                                        ink-strength: root.quality == 0 ? 0.72 : 1.0;
+                                    }
+                                }
+                            }
+
+                            if root.sheet-image.width > 0: Image {
+                                x: 0px;
+                                y: 0px;
+                                width: parent.width;
+                                height: parent.height;
+                                source: root.sheet-image;
+                                image-fit: ImageFit.contain;
+                            }
+
+                            if root.preview-loading: Rectangle {
+                                background: #ffffffcc;
+                                Spinner {
+                                    size: 28px;
+                                    spinner-color: #000000;
+                                }
+                            }
+
+                            if root.page-count == 0: Text {
+                                text: "No pages selected";
+                                color: #6b7280;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // paper info (top-left)
+                        Pill {
+                            x: 20px;
+                            y: 16px;
+                            height: 32px;
+                            width: paper-text.preferred-width + 28px;
+
+                            paper-text := Text {
+                                text: root.paper-label;
+                                color: Theme.colors.secondary-font;
+                                font-size: 12px;
+                                font-weight: 500;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // page navigation + zoom (bottom-centre)
+                        Pill {
+                            x: (parent.width - self.width) / 2;
+                            y: parent.height - self.height - 20px;
+                            height: 38px;
+                            width: tools.preferred-width + 20px;
+
+                            tools := HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 2px;
+                                alignment: center;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    IconButton {
+                                        icon: Icons.chevron-right;
+                                        icon-size: 16px;
+                                        transform-rotation: 180deg;
+                                        opacity: root.eff-sheet > 0 ? 1.0 : 0.35;
+                                        clicked => { root.go-sheet(-1); }
+                                    }
+                                }
+
+                                Text {
+                                    min-width: 136px;
+                                    text: root.nav-label;
+                                    color: Theme.colors.primary-font;
+                                    font-size: 12px;
+                                    font-weight: 500;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    IconButton {
+                                        icon: Icons.chevron-right;
+                                        icon-size: 16px;
+                                        opacity: root.eff-sheet < root.sheet-count - 1 ? 1.0 : 0.35;
+                                        clicked => { root.go-sheet(1); }
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: 13px;
+                                    Rectangle {
+                                        x: 6px;
+                                        width: 1px;
+                                        height: 18px;
+                                        background: Theme.colors.fourth-col;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    IconButton {
+                                        icon: Icons.zoom-out;
+                                        icon-size: 16px;
+                                        clicked => { root.set-zoom(root.zoom / 1.25); }
+                                    }
+                                }
+
+                                Text {
+                                    min-width: 44px;
+                                    text: "\{Math.round(root.zoom * 100)}%";
+                                    color: Theme.colors.primary-font;
+                                    font-size: 12px;
+                                    font-weight: 500;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    IconButton {
+                                        icon: Icons.zoom-in;
+                                        icon-size: 16px;
+                                        clicked => { root.set-zoom(root.zoom * 1.25); }
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: 40px;
+                                    border-radius: 8px;
+                                    background: fit-ta.has-hover ? Theme.colors.third-col : transparent;
+
+                                    Text {
+                                        text: "Fit";
+                                        color: Theme.colors.secondary-font;
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                    }
+
+                                    fit-ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.reset-view(); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ───────────── settings panel ─────────────
+                    Rectangle {
+                        width: 392px;
+
+                        Rectangle {
+                            x: 0px;
+                            width: 1px;
+                            background: Theme.colors.fourth-col;
+                        }
+
+                        VerticalLayout {
+                            ScrollView {
+                                vertical-stretch: 1;
+
+                                VerticalLayout {
+                                    width: 100%;
+                                    padding-left: 22px;
+                                    padding-right: 22px;
+                                    padding-top: 2px;
+                                    padding-bottom: 12px;
+
+                                    // ── Printer ──
+                                    Section {
+                                        title: "Printer";
+
+                                        PrintSelect {
+                                            options: root.printer-names;
+                                            details: root.printer-locations;
+                                            current <=> root.printer-index;
+                                            selected(i) => { root.printer-changed(i); }
+                                        }
+
+                                        HorizontalLayout {
+                                            spacing: 8px;
+
+                                            HorizontalLayout {
+                                                spacing: 8px;
+                                                horizontal-stretch: 1;
+
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    Rectangle {
+                                                        width: 8px;
+                                                        height: 8px;
+                                                        border-radius: 4px;
+                                                        background: root.printer-state == 0 ? #22c55e
+                                                            : root.printer-state == 1 ? #f59e0b : #ef4444;
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: root.printer-status;
+                                                    color: Theme.colors.secondary-font;
+                                                    font-size: 12px;
+                                                    vertical-alignment: center;
+                                                    overflow: elide;
+                                                }
+                                            }
+
+                                            PrimaryButton {
+                                                alt: true;
+                                                text: "Refresh";
+                                                clicked => { root.refresh-printers(); }
+                                            }
+
+                                            PrimaryButton {
+                                                alt: true;
+                                                text: "Properties";
+                                                clicked => { root.printer-properties(); }
+                                            }
+                                        }
+                                    }
+
+                                    // ── Copies & pages ──
+                                    Section {
+                                        title: "Copies and pages";
+
+                                        HorizontalLayout {
+                                            spacing: 12px;
+
+                                            Field {
+                                                label: "Copies";
+                                                Stepper {
+                                                    width: 132px;
+                                                    value <=> root.copies;
+                                                    minimum: 1;
+                                                    maximum: 999;
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                horizontal-stretch: 1;
+                                            }
+
+                                            VerticalLayout {
+                                                alignment: end;
+                                                HorizontalLayout {
+                                                    spacing: 10px;
+                                                    opacity: root.copies > 1 ? 1.0 : 0.4;
+
+                                                    Text {
+                                                        text: "Collate";
+                                                        color: Theme.colors.secondary-font;
+                                                        font-size: 12.5px;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    Switch {
+                                                        checked <=> root.collate;
+                                                    }
+                                                }
+
+                                                Rectangle {
+                                                    height: 5px;
+                                                }
+                                            }
+                                        }
+
+                                        Field {
+                                            label: "Pages";
+                                            Segmented {
+                                                options: ["All", "Current", "Range"];
+                                                current <=> root.page-mode;
+                                            }
+                                        }
+
+                                        if root.page-mode == 1: HorizontalLayout {
+                                            spacing: 10px;
+
+                                            Text {
+                                                text: "Page";
+                                                color: Theme.colors.secondary-font;
+                                                font-size: 12.5px;
+                                                vertical-alignment: center;
+                                            }
+
+                                            Stepper {
+                                                width: 132px;
+                                                value <=> root.current-page;
+                                                minimum: 1;
+                                                maximum: root.total-pages;
+                                            }
+                                        }
+
+                                        if root.page-mode == 2: HorizontalLayout {
+                                            spacing: 10px;
+
+                                            Text {
+                                                text: "From";
+                                                color: Theme.colors.secondary-font;
+                                                font-size: 12.5px;
+                                                vertical-alignment: center;
+                                            }
+
+                                            Stepper {
+                                                width: 112px;
+                                                value <=> root.range-from;
+                                                minimum: 1;
+                                                maximum: root.total-pages;
+                                                edited(v) => {
+                                                    if (v > root.range-to) {
+                                                        root.range-to = v;
+                                                    }
+                                                }
+                                            }
+
+                                            Text {
+                                                text: "to";
+                                                color: Theme.colors.secondary-font;
+                                                font-size: 12.5px;
+                                                vertical-alignment: center;
+                                            }
+
+                                            Stepper {
+                                                width: 112px;
+                                                value <=> root.range-to;
+                                                minimum: 1;
+                                                maximum: root.total-pages;
+                                                edited(v) => {
+                                                    if (v < root.range-from) {
+                                                        root.range-from = v;
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        HorizontalLayout {
+                                            spacing: 6px;
+
+                                            ToggleChip {
+                                                text: "Odd only";
+                                                checked: root.odd-only;
+                                                clicked => {
+                                                    root.odd-only = !root.odd-only;
+                                                    if (root.odd-only) {
+                                                        root.even-only = false;
+                                                    }
+                                                }
+                                            }
+
+                                            ToggleChip {
+                                                text: "Even only";
+                                                checked: root.even-only;
+                                                clicked => {
+                                                    root.even-only = !root.even-only;
+                                                    if (root.even-only) {
+                                                        root.odd-only = false;
+                                                    }
+                                                }
+                                            }
+
+                                            ToggleChip {
+                                                text: "Reverse";
+                                                checked: root.reverse-order;
+                                                clicked => { root.reverse-order = !root.reverse-order; }
+                                            }
+                                        }
+
+                                        Text {
+                                            text: "\{root.page-count} of \{root.total-pages} pages selected";
+                                            color: Theme.colors.third-font;
+                                            font-size: 11.5px;
+                                        }
+                                    }
+
+                                    // ── Layout ──
+                                    Section {
+                                        title: "Layout";
+
+                                        Field {
+                                            label: "Paper size";
+                                            PrintSelect {
+                                                options: root.paper-names;
+                                                current <=> root.paper-index;
+                                            }
+                                        }
+
+                                        Field {
+                                            label: "Orientation";
+
+                                            HorizontalLayout {
+                                                spacing: 8px;
+
+                                                ChoiceCard {
+                                                    text: "Portrait";
+                                                    selected: root.orientation == 0;
+                                                    clicked => { root.orientation = 0; }
+
+                                                    Rectangle {
+                                                        width: 20px;
+                                                        height: 26px;
+                                                        border-radius: 3px;
+                                                        border-width: 2px;
+                                                        border-color: Theme.colors.primary-font;
+                                                    }
+                                                }
+
+                                                ChoiceCard {
+                                                    text: "Landscape";
+                                                    selected: root.orientation == 1;
+                                                    clicked => { root.orientation = 1; }
+
+                                                    Rectangle {
+                                                        width: 26px;
+                                                        height: 20px;
+                                                        border-radius: 3px;
+                                                        border-width: 2px;
+                                                        border-color: Theme.colors.primary-font;
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        if root.has-duplex: Field {
+                                            label: "Two-sided printing";
+                                            Segmented {
+                                                options: ["Off", "Long edge", "Short edge"];
+                                                current <=> root.duplex;
+                                            }
+                                        }
+
+                                        Field {
+                                            label: "Pages per sheet";
+                                            Segmented {
+                                                options: ["1", "2", "4", "6", "9", "16"];
+                                                current <=> root.pps-index;
+                                            }
+                                        }
+
+                                        Field {
+                                            label: "Scale";
+
+                                            HorizontalLayout {
+                                                spacing: 12px;
+
+                                                VerticalLayout {
+                                                    horizontal-stretch: 1;
+                                                    alignment: center;
+                                                    Slider {
+                                                        value <=> root.scale-percent;
+                                                        minimum: 10;
+                                                        maximum: 400;
+                                                        scroll-step: 0.5;
+                                                        enabled: !root.fit-to-page;
+                                                    }
+                                                }
+
+                                                Text {
+                                                    min-width: 40px;
+                                                    text: "\{Math.round(root.scale-percent)}%";
+                                                    color: root.fit-to-page ? Theme.colors.third-font : Theme.colors.primary-font;
+                                                    font-size: 12.5px;
+                                                    font-weight: 600;
+                                                    horizontal-alignment: right;
+                                                    vertical-alignment: center;
+                                                }
+
+                                                ToggleChip {
+                                                    horizontal-stretch: 0;
+                                                    width: 92px;
+                                                    text: "Fit to page";
+                                                    checked: root.fit-to-page;
+                                                    clicked => { root.fit-to-page = !root.fit-to-page; }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // ── Colour & quality ──
+                                    Section {
+                                        title: "Colour and quality";
+
+                                        Field {
+                                            label: "Colour mode";
+
+                                            HorizontalLayout {
+                                                spacing: 8px;
+
+                                                ChoiceCard {
+                                                    text: "Colour";
+                                                    enabled: root.has-color;
+                                                    selected: root.color-mode == 0;
+                                                    clicked => { root.color-mode = 0; }
+
+                                                    Rectangle {
+                                                        width: 24px;
+                                                        height: 24px;
+                                                        border-radius: 12px;
+                                                        background: @linear-gradient(135deg, #ef4444 0%, #eab308 35%, #22c55e 65%, #3b82f6 100%);
+                                                    }
+                                                }
+
+                                                ChoiceCard {
+                                                    text: "Grayscale";
+                                                    selected: root.color-mode == 1;
+                                                    clicked => { root.color-mode = 1; }
+
+                                                    Rectangle {
+                                                        width: 24px;
+                                                        height: 24px;
+                                                        border-radius: 12px;
+                                                        background: @linear-gradient(135deg, #f3f4f6 0%, #4b5563 100%);
+                                                    }
+                                                }
+
+                                                ChoiceCard {
+                                                    text: "Black & white";
+                                                    selected: root.color-mode == 2;
+                                                    clicked => { root.color-mode = 2; }
+
+                                                    Rectangle {
+                                                        width: 24px;
+                                                        height: 24px;
+                                                        border-radius: 12px;
+                                                        border-width: 1px;
+                                                        border-color: Theme.colors.border-col;
+                                                        background: @linear-gradient(90deg, #ffffff 0%, #ffffff 50%, #000000 50%, #000000 100%);
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Field {
+                                            label: "Print quality";
+                                            Segmented {
+                                                options: ["Draft", "Normal", "High"];
+                                                current <=> root.quality;
+                                            }
+                                        }
+
+                                        Field {
+                                            label: "Optimise for";
+                                            PrintSelect {
+                                                options: root.optimizations;
+                                                current <=> root.optimization-index;
+                                            }
+                                        }
+
+                                        Field {
+                                            label: "Printer profile";
+
+                                            HorizontalLayout {
+                                                spacing: 8px;
+
+                                                PrintSelect {
+                                                    horizontal-stretch: 1;
+                                                    options: root.profiles;
+                                                    current <=> root.profile-index;
+                                                    selected(i) => { root.profile-selected(i); }
+                                                }
+
+                                                PrimaryButton {
+                                                    alt: true;
+                                                    text: "Save as…";
+                                                    clicked => { root.save-profile(); }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // ── Paper handling ──
+                                    Section {
+                                        title: "Paper handling";
+                                        open: false;
+
+                                        Field {
+                                            label: "Paper type";
+                                            PrintSelect {
+                                                options: root.paper-types;
+                                                current <=> root.paper-type-index;
+                                            }
+                                        }
+
+                                        if root.has-paper-source: Field {
+                                            label: "Paper source";
+                                            PrintSelect {
+                                                options: root.paper-sources;
+                                                current <=> root.paper-source-index;
+                                            }
+                                        }
+
+                                        if root.has-output-tray: Field {
+                                            label: "Output tray";
+                                            PrintSelect {
+                                                options: root.output-trays;
+                                                current <=> root.output-tray-index;
+                                            }
+                                        }
+                                    }
+
+                                    // ── Job ──
+                                    Section {
+                                        title: "Job";
+                                        open: false;
+
+                                        Field {
+                                            label: "Priority";
+
+                                            HorizontalLayout {
+                                                spacing: 12px;
+
+                                                VerticalLayout {
+                                                    horizontal-stretch: 1;
+                                                    alignment: center;
+                                                    Slider {
+                                                        value <=> root.priority;
+                                                        minimum: 1;
+                                                        maximum: 100;
+                                                        scroll-step: 0.25;
+                                                    }
+                                                }
+
+                                                Text {
+                                                    min-width: 56px;
+                                                    text: root.priority-word;
+                                                    color: Theme.colors.primary-font;
+                                                    font-size: 12.5px;
+                                                    font-weight: 600;
+                                                    horizontal-alignment: right;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        Field {
+                                            label: "Schedule";
+                                            PrintSelect {
+                                                options: root.schedule-options;
+                                                current <=> root.schedule-index;
+                                            }
+                                        }
+
+                                        if root.schedule-index == 6: HorizontalLayout {
+                                            spacing: 10px;
+
+                                            Text {
+                                                text: "Start at";
+                                                color: Theme.colors.secondary-font;
+                                                font-size: 12.5px;
+                                                vertical-alignment: center;
+                                            }
+
+                                            Stepper {
+                                                width: 100px;
+                                                value <=> root.hold-hour;
+                                                minimum: 0;
+                                                maximum: 23;
+                                                zero-pad: true;
+                                            }
+
+                                            Text {
+                                                text: ":";
+                                                color: Theme.colors.secondary-font;
+                                                font-size: 14px;
+                                                vertical-alignment: center;
+                                            }
+
+                                            Stepper {
+                                                width: 100px;
+                                                value <=> root.hold-minute;
+                                                minimum: 0;
+                                                maximum: 59;
+                                                zero-pad: true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ── footer ──
+                            Rectangle {
+                                height: 68px;
+
+                                Rectangle {
+                                    x: 0px;
+                                    y: 0px;
+                                    height: 1px;
+                                    background: Theme.colors.fourth-col;
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 22px;
+                                    padding-right: 22px;
+                                    spacing: 10px;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+
+                                        Text {
+                                            text: "\{root.page-count} \{root.pages-word} · \{root.paper-sheets * root.copies} \{root.sheets-word}";
+                                            color: Theme.colors.primary-font;
+                                            font-size: 12.5px;
+                                            font-weight: 600;
+                                        }
+
+                                        Text {
+                                            text: root.duplex > 0 ? "Two-sided" : "One-sided";
+                                            color: Theme.colors.third-font;
+                                            font-size: 11.5px;
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        PrimaryButton {
+                                            alt: true;
+                                            text: "Cancel";
+                                            clicked => { root.cancelled(); }
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        PrimaryButton {
+                                            text: root.schedule-index == 0 ? "Print" : "Schedule";
+                                            image: Icons.print;
+                                            button-enabled: root.can-print;
+                                            clicked => { root.print-requested(); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

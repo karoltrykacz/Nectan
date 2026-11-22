@@ -1,13 +1,13 @@
 
 export enum EntryType { directory, symlink, file }
-export struct DirEntry { name: string, type: EntryType, size: string, preview: image }
-export enum Builtin { recent, documents, pictures, videos, downloads, home, music, trash, drives }
 
-export struct Explorer {
-    entries: [DirEntry],
-    current-dir: [string],
-    search-results: [string],
-}
+export struct DirEntry { name: string, type: EntryType, size: string, preview: image, selected: bool }
+
+export enum Builtin { recent, documents, pictures, videos, downloads, home, music, trash }
+
+export struct SimpleDirEntry {name: string}
+
+export enum View { list, grid, photos }
 
 export global ExplorerBridge {
 
@@ -15,13 +15,23 @@ export global ExplorerBridge {
 
     in-out property <[string]> current-dir;
     in-out property <[DirEntry]> entries;
-    in-out property <[DirEntry]> search-results;
 
+    in-out property <[SimpleDirEntry]> search-entries;
+
+    in-out property <View> view: View.photos;
     in-out property <length> list-height: 32px;
-    in-out property <bool> relative:true;
+    in-out property <length> grid-size: 128px;
+    in-out property <bool> relative: true;
+    in-out property <bool> split;
 
     in-out property <bool> searching;
+    in-out property <bool> filtering;
+
     in-out property <bool> searching-recursive;
+    // Number of items in recursive scan
+    in-out property <int> searching-recursive-in-n;
+    in-out property <bool> recursive-scanning;
+
     in-out property <bool> ripgrepping;
     in-out property <bool> compressing;
 
@@ -30,41 +40,80 @@ export global ExplorerBridge {
     callback up();
     // Navigate to component in current dir
     callback navigate-to-in-current(int);
-
     callback search-current(string);
+
+    callback scan-recursive();
+    callback abort-recursive();
+
+    callback search-recursive(string);
+    callback ripgrep(string);
+
     callback clear-search();
 
     // History
     callback forward();
     callback back();
 
-    callback copy(int, int);
+    callback copy();
+    callback cut();
+    callback select(int, int);
+    callback toggle-select(int);
+    callback select-all();
+    callback clear-selection();
 
-    callback cut(int, int);
     callback paste();
-    callback delete-items(int, int);
-    callback trash-items(int, int);
+    callback delete-items();
+    callback trash-items();
     callback rename(int, string);
     callback new-folder();
     callback new-file();
     callback refresh();
     callback properties(int);
     callback terminal();
-    callback compress-items(int, int, string, bool, string);
+    callback compress-items(string, bool, string);
 
     callback builtin(Builtin);
     pure callback get-dot-pos(int) -> int;
 
+    callback begin-drag(bool);
+    // first-row, last-row, first-col, last-col, columns
+    callback drag-select(int, int, int, int, int);
+
     public function zoom-in() {
-        root.list-height += 2px;
+        debug("Zoom in");
+
+        if root.view == View.list {
+            root.list-height += 2px;
+        } else {
+            root.grid-size += 2px;
+        }
     }
 
     public function zoom-out() {
-        root.list-height -= 2px;
+        debug("Zoom out");
+        if root.view == View.list {
+            if root.list-height > 28px {
+                root.list-height -= 2px;
+            }
+        } else {
+            if root.grid-size > 28px {
+                root.grid-size -= 2px;
+            }
+        }
     }
 
     in-out property <int> focus-tick;
     public function focus() {
         root.focus-tick += 1;
+    }
+
+    public function toggle-view-mode() {
+        if root.view == View.list {
+            root.view = View.grid;
+        } else if root.view == View.grid {
+            root.view = View.photos;
+        } else {
+            root.view = View.list;
+        }
     }
 }

@@ -1,0 +1,218 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../../shared/theme.slint";
+import {
+    PrimaryButton,
+    PlainLineEdit,
+    LinkButton,
+} from "../../shared/elements.slint";
+
+export struct FilterOption {
+    name: string,
+    checked: bool,
+    visible: bool,
+    header: bool,
+    count: int,
+}
+
+export struct FilterColumnData {
+    title: string,
+    searchable: bool,
+    options: [FilterOption],
+}
+
+export global FilterBridge {
+    in property <[FilterColumnData]> columns;
+    in property <int> pending-count;
+
+    callback toggled(int /* column */, int /* row */);
+    callback search(int /* column */, string);
+    callback apply();
+    callback clear();
+}
+
+component FilterCheckBox inherits Rectangle {
+    in property <bool> checked;
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    corner-shape: CornerShape.squircle;
+    border-width: 1.5px;
+    border-color: root.checked ? Theme.colors.primary-font : Theme.colors.third-font;
+    background: root.checked ? Theme.colors.primary-font : transparent;
+
+    animate background, border-color {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    if root.checked: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        commands: "M 3.5 8.5 L 6.5 11.5 L 12.5 4.5";
+        stroke: Theme.colors.primary-col;
+        stroke-width: 1.6px;
+    }
+}
+
+component FilterColumn inherits Rectangle {
+    in property <string> title;
+    in property <[FilterOption]> options;
+    in property <int> column-id;
+    in property <bool> searchable: false;
+
+    min-width: 140px;
+    clip: true;
+
+    VerticalLayout {
+        padding-top: 12px;
+
+        Text {
+            x: 14px;
+            width: self.preferred-width;
+            text: root.title;
+            color: Theme.colors.primary-font;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if root.searchable: Rectangle {
+            height: 44px;
+
+            Rectangle {
+                x: 10px;
+                y: 6px;
+                width: parent.width - 20px;
+                height: 32px;
+                border-radius: 20px;
+                corner-shape: CornerShape.squircle;
+                border-width: 1px;
+                border-color: Theme.colors.border-col;
+                background: Theme.colors.secondary-col;
+
+                PlainLineEdit {
+                    autofocus: false;
+                    placeholder-text: @tr("Search...");
+                    edited(t) => {
+                        FilterBridge.search(root.column-id, t);
+                    }
+                }
+            }
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                alignment: start;
+
+                for opt[i] in root.options: Rectangle {
+                    visible: opt.visible;
+                    clip: true;
+                    height: !opt.visible ? 0px : opt.header ? 32px : 28px;
+                    background: (!opt.header && ta.has-hover) ? Theme.colors.third-col : transparent;
+
+                    if opt.header: Text {
+                        x: 14px;
+                        y: 4px;
+                        width: self.preferred-width;
+                        height: parent.height - 4px;
+                        text: opt.name;
+                        color: Theme.colors.primary-font;
+                        font-size: 13px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+
+                    if !opt.header: HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 10px;
+
+                        VerticalLayout {
+                            alignment: center;
+                            FilterCheckBox {
+                                checked: opt.checked;
+                            }
+                        }
+
+                        Text {
+                            text: opt.name;
+                            color: Theme.colors.primary-font;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        Rectangle { }
+
+                        Text {
+                            text: @tr("{}", opt.count);
+                            color: Theme.colors.third-font;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    ta := TouchArea {
+                        enabled: opt.visible && !opt.header;
+                        mouse-cursor: opt.header ? default : pointer;
+                        clicked => {
+                            FilterBridge.toggled(root.column-id, i);
+                            FilterBridge.apply();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component FilterPanel inherits Rectangle {
+
+    in property <length> gap: 12px;
+
+    border-width: 1px;
+    border-radius: 20px;
+    background: Theme.colors.primary-col;
+    border-color: Theme.colors.third-col;
+    corner-shape: CornerShape.squircle;
+
+    VerticalLayout {
+        spacing: gap;
+
+        HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: root.gap;
+
+            for col[ci] in FilterBridge.columns: FilterColumn {
+                column-id: ci;
+                title: col.title;
+                searchable: col.searchable;
+                options: col.options;
+            }
+        }
+
+        // HorizontalLayout {
+        //     spacing: 16px;
+        //     alignment: start;
+        //     cross-axis-alignment: center;
+        //
+        //     // VerticalLayout {
+        // //     alignment: center;
+        // //     PrimaryButton {
+        // //         text: @tr("Apply all");
+        // //         clicked => { FilterBridge.apply(); }
+        // //     }
+        // // }
+        //
+        //     LinkButton {
+        //         text: @tr("Clear all");
+        //         clicked => { FilterBridge.clear(); }
+        //     }
+        // }
+    }
+}
