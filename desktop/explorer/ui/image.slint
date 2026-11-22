@@ -18,8 +18,6 @@ export enum ViewMode {
     fill,
 }
 
-
-
 component EditSlider inherits VerticalLayout {
     in property <string> label;
     in property <float> minimum: -100;
@@ -127,6 +125,15 @@ export component ImageViewer inherits Window {
     in property <bool> has-prev: true;
     in property <bool> has-next: true;
 
+    in property <int> full-width: 0;
+    in property <int> full-height: 0;
+    in property <image> detail;
+    in property <float> detail-x: 0;
+    in property <float> detail-y: 0;
+    in property <float> detail-w: 1;
+    in property <float> detail-h: 1;
+    in-out property <bool> detail-valid: false;
+
     in-out property <int> turns: 0;
 
     in-out property <bool> cropping: false;
@@ -140,6 +147,8 @@ export component ImageViewer inherits Window {
         if (root.editing) {
             root.turns = 0;
         }
+        root.detail-valid = false;
+        detail-timer.restart();
     }
 
     in-out property <float> brightness: 0;
@@ -165,6 +174,7 @@ export component ImageViewer inherits Window {
     callback flip-vertical();
     callback save-requested();
     callback edit-cancelled();
+    callback detail-requested(float, float, float, float, int, float);
 
     property <angle> rot: root.turns * 90deg;
     animate rot {
@@ -178,8 +188,10 @@ export component ImageViewer inherits Window {
     property <length> start-pan-x: 0px;
     property <length> start-pan-y: 0px;
 
-    property <length> iw: root.image.width * 1px;
-    property <length> ih: root.image.height * 1px;
+    property <length> vw: viewport.width;
+    property <length> vh: viewport.height;
+    property <length> iw: (root.full-width > 0 ? root.full-width : root.image.width) * 1px;
+    property <length> ih: (root.full-height > 0 ? root.full-height : root.image.height) * 1px;
     property <float> cs: Math.abs(Math.cos(root.rot));
     property <float> sn: Math.abs(Math.sin(root.rot));
     property <length> bw: root.iw * root.cs + root.ih * root.sn;
@@ -203,6 +215,16 @@ export component ImageViewer inherits Window {
     in property <string> file-name;
     in property <string> file-size;
 
+    changed zoom => { detail-timer.restart(); }
+    changed eff-pan-x => { detail-timer.restart(); }
+    changed eff-pan-y => { detail-timer.restart(); }
+    changed vw => { detail-timer.restart(); }
+    changed vh => { detail-timer.restart(); }
+    changed turns => {
+        root.detail-valid = false;
+        detail-timer.restart();
+    }
+
     public function reset-view() {
         root.zoom = 1.0;
         root.pan-x = 0px;
@@ -212,6 +234,28 @@ export component ImageViewer inherits Window {
     public function poke() {
         root.idle = false;
         idle-timer.restart();
+    }
+
+    function request-detail() {
+        if (root.full-width <= 0 || root.editing || root.cropping || root.loading) {
+            return;
+        }
+        if (root.box-w <= 0px || root.box-h <= 0px) {
+            return;
+        }
+        let left = (viewport.width - root.box-w) / 2 + root.eff-pan-x;
+        let top = (viewport.height - root.box-h) / 2 + root.eff-pan-y;
+        let x0 = Math.max(0px, -left);
+        let y0 = Math.max(0px, -top);
+        let x1 = Math.min(root.box-w, viewport.width - left);
+        let y1 = Math.min(root.box-h, viewport.height - top);
+        root.detail-requested(
+            x0 / root.box-w,
+            y0 / root.box-h,
+            (x1 - x0) / root.box-w,
+            (y1 - y0) / root.box-h,
+            root.turns,
+            root.base-scale * root.zoom);
     }
 
     function zoom-from(z0: float, pan0-x: length, pan0-y: length, factor: float, px: length, py: length) {
@@ -271,9 +315,9 @@ export component ImageViewer inherits Window {
         if (!root.cropping) {
             root.reset-view();
         }
+        detail-timer.restart();
     }
 
-    // a = width / height in pixels, 0 = free (whole image)
     function set-aspect(a: float) {
         let ia = root.box-w / root.box-h;
         let w = a == 0 ? 1.0 : (a > ia ? 1.0 : a / ia);
@@ -323,6 +367,8 @@ export component ImageViewer inherits Window {
 
     changed image => {
         root.cropping = false;
+        root.detail-valid = false;
+        detail-timer.restart();
         if (!root.editing) {
             root.turns = 0;
             root.reset-view();
@@ -346,6 +392,15 @@ export component ImageViewer inherits Window {
         triggered => {
             self.running = false;
             root.idle = true;
+        }
+    }
+
+    detail-timer := Timer {
+        interval: 120ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.request-detail();
         }
     }
 
@@ -511,6 +566,15 @@ export component ImageViewer inherits Window {
                     transform-rotation: root.rot;
                 }
 
+                if root.detail-valid && !root.editing && !root.cropping: Image {
+                    source: root.detail;
+                    image-fit: ImageFit.fill;
+                    x: (viewport.width - root.box-w) / 2 + root.eff-pan-x + root.detail-x * root.box-w;
+                    y: (viewport.height - root.box-h) / 2 + root.eff-pan-y + root.detail-y * root.box-h;
+                    width: root.detail-w * root.box-w;
+                    height: root.detail-h * root.box-h;
+                }
+
                 TouchArea {
                     enabled: !root.cropping;
                     mouse-cursor: root.z-held ? MouseCursor.ns-resize
@@ -528,7 +592,6 @@ export component ImageViewer inherits Window {
                     moved => {
                         if (self.pressed) {
                             if (root.z-held) {
-                                // drag up = zoom in, drag down = zoom out, anchored at the press point
                                 root.zoom-from(
                                     root.drag-start-zoom,
                                     root.start-pan-x, root.start-pan-y,
@@ -673,7 +736,6 @@ export component ImageViewer inherits Window {
                 Spinner { }
             }
 
-            // arrows
             IconButton {
                 shown: root.ui-visible && !root.cropping;
                 inner-bg: self.hovered ? #0008 : #0003;
@@ -765,7 +827,6 @@ export component ImageViewer inherits Window {
                 }
             }
 
-            // BOTTOM TOOLS
             if !root.cropping: GlassPanel {
                 shown: root.ui-visible;
                 activity => { root.poke(); }
@@ -876,7 +937,7 @@ export component ImageViewer inherits Window {
                         icon: Icons.print;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => { root.print-requested(); }
                     }
 
@@ -884,7 +945,7 @@ export component ImageViewer inherits Window {
                         icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
                         icon-size: 16px;
                         inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: Theme.colors.primary-font;
+                        colorize: #f1f1f1;
                         clicked => {
                             root.full-screen = !root.full-screen;
                         }
@@ -904,44 +965,9 @@ export component ImageViewer inherits Window {
                     padding: 8px;
                     spacing: 4px;
                     alignment: center;
-
-                    // Chip {
-                    //     text: "Free";
-                    //     clicked => { root.set-aspect(0); }
-                    // }
-                    //
-                    // Chip {
-                    //     text: "1:1";
-                    //     clicked => { root.set-aspect(1); }
-                    // }
-                    //
-                    // Chip {
-                    //     text: "4:3";
-                    //     clicked => { root.set-aspect(4.0 / 3.0); }
-                    // }
-                    //
-                    // Chip {
-                    //     text: "16:9";
-                    //     clicked => { root.set-aspect(16.0 / 9.0); }
-                    // }
-                    //
-                    // Chip {
-                    //     text: "Cancel";
-                    //     clicked => { root.cropping = false; }
-                    // }
-                    //
-                    // Chip {
-                    //     text: "Apply";
-                    //     active: true;
-                    //     clicked => {
-                    //         root.cropping = false;
-                    //         root.crop-apply();
-                    //     }
-                    // }
                 }
             }
 
-            // EDIT
             GlassPanel {
                 opacity: root.editing ? 1.0 : 0.0;
                 visible: self.opacity > 0.01;
@@ -1039,15 +1065,6 @@ export component ImageViewer inherits Window {
                             colorize: #f1f1f1;
                             clicked => { root.invert = !root.invert; root.edits-changed(); }
                         }
-
-                        // IconButton {
-                        //     icon: Icons.grayscale;
-                        //     rotation: 90deg;
-                        //     icon-size: 16px;
-                        //     inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        //     colorize: #f1f1f1;
-                        //     clicked => { root.grayscale = !root.grayscale; root.edits-changed(); }
-                        // }
                     }
 
                     HorizontalLayout {
