@@ -5,10 +5,134 @@ import {
     IconButton,
     GlassPanel,
     GeneralModal,
+    TextButton,
+    SvgIcon,
 } from "../../shared/elements.slint";
 import { WindowBridge } from "../../shared/window.slint";
 import { Icons } from "../../shared/icons.slint";
 import { Properties, PropertiesBridge } from "../../shared/properties.slint";
+import { RecursiveSearch } from "explorer/explorer.slint";
+import { ListView } from "std-widgets.slint";
+
+export struct Track { artwork: image, title: string, artist: string, current: bool }
+
+component QueueRow inherits Rectangle {
+    in property <Track> track;
+    in property <bool> dragging;
+
+    callback play();
+    callback remove();
+    callback drag-started();
+    callback drag-ended();
+    callback drag-cancelled();
+    // Cursor y in window coordinates.
+    callback drag-position(length);
+
+    height: 48px;
+    opacity: root.dragging ? 0.35 : 1.0;
+    background: row-ta.pressed ? #fff5 : row-ta.has-hover ? #fff3 : transparent;
+    border-radius: 12px;
+    corner-shape: CornerShape.squircle;
+
+    row-ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.play();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 4px;
+        spacing: 12px;
+        cross-axis-alignment: center;
+
+        Rectangle {
+            height: 42px;
+            width: 42px;
+            border-radius: 12px;
+            corner-shape: CornerShape.squircle;
+            clip: true;
+
+            Image {
+                source: root.track.artwork.width > 0 ? root.track.artwork : Icons.default-artwork;
+                height: parent.height;
+                width: parent.width;
+                image-fit: contain;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+
+            Text {
+                text: root.track.title;
+                font-size: 14px;
+                font-weight: 700;
+                color: root.track.current ? #4287f5 : #c1c1c1;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.track.artist;
+                font-size: 13px;
+                font-weight: 500;
+                color: #b1b1b1;
+                overflow: elide;
+            }
+        }
+
+        Rectangle {
+            width: 60px;
+        }
+
+        Rectangle { }
+    }
+
+    IconButton {
+        x: parent.width - self.width - 48px;
+        y: (parent.height - self.height) / 2;
+        icon: Icons.trash;
+        icon-size: 14px;
+        inner-bg: self.hovered ? #fff2 : transparent;
+        colorize: #c8c8c8;
+        visible: row-ta.has-hover || self.hovered;
+
+        clicked => {
+            root.remove();
+        }
+    }
+
+    handle := TouchArea {
+        x: parent.width - self.width - 20px;
+        y: (parent.height - self.height) / 2;
+        width: 18px;
+        height: 18px;
+        mouse-cursor: grab;
+
+        SvgIcon {
+            source: Icons.menu-bars;
+            fg: handle.has-hover ? #f1f1f1 : #c8c8c8;
+            size: 16px;
+        }
+
+        pointer-event(e) => {
+            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                root.drag-started();
+            } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up {
+                root.drag-ended();
+            } else if e.kind == PointerEventKind.cancel {
+                root.drag-cancelled();
+            }
+        }
+
+        moved => {
+            if self.pressed {
+                root.drag-position(self.absolute-position.y + self.mouse-y);
+            }
+        }
+    }
+}
 
 component ArtworkInspector inherits GeneralModal {
     in property <image> artwork;
@@ -156,17 +280,39 @@ export component MusicPlayer inherits Window {
     in property <string> track-name: "Slint";
     in property <string> artist-name: "Unknown";
     in property <float> duration: 355;
+    in-out property <float> volume: 0.3;
     in-out property <float> progress: 0.5;
     in-out property <bool> playing: true;
     in-out property <bool> shuffle: false;
     in-out property <bool> repeat: false;
     in-out property <bool> shortcuts: false;
     in-out property <bool> properties: false;
+    in-out property <bool> queue-open;
+    in-out property <[Track]> queue-tracks;
+    property <int> drag-source: -1;
+    property <int> drag-target: -1;
+    // Ghost y, in `queue` coordinates.
+    property <length> drag-cursor-y: 0px;
     out property <bool> scrubbing: progress-slider.pressed;
+    property <bool> volume-visible;
+
+    callback queue-move(int, int);
+    callback queue-remove(int);
+    callback queue-play(int);
+    callback queue-add();
+
+    Timer {
+        running: volume-visible;
+        interval: 2s;
+        triggered => {
+            volume-visible = false;
+        }
+    }
 
     callback previous();
     callback next();
     callback seek(float);
+    callback volume-changed(float);
 
     out property <bool> compact: root.height < 420px;
     out property <bool> portrait: !root.compact && root.height > root.width;
@@ -183,9 +329,31 @@ export component MusicPlayer inherits Window {
 
     property <bool> artwork-inspect;
 
+    function volume-down() {
+        root.volume-visible = true;
+        root.volume = clamp(root.volume - 0.05, 0, 1);
+        root.volume-changed(root.volume);
+    }
+
+    function volume-up() {
+        root.volume-visible = true;
+        root.volume = clamp(root.volume + 0.05, 0, 1);
+        root.volume-changed(root.volume);
+    }
+
+    function set-volume(v: float) {
+        root.volume = clamp(v, 0, 1);
+        root.volume-changed(root.volume);
+    }
+
     function wake() {
         root.idle-ticks = 0;
         root.controls-visible = true;
+    }
+
+    function cancel-drag() {
+        root.drag-source = -1;
+        root.drag-target = -1;
     }
 
     changed playing => {
@@ -247,22 +415,30 @@ export component MusicPlayer inherits Window {
 
             KeyBinding {
                 keys: @keys(K);
-                activated => {}
+                activated => {
+                    volume-up();
+                }
             }
 
             KeyBinding {
                 keys: @keys(J);
-                activated => {}
+                activated => {
+                    volume-down();
+                }
             }
 
             KeyBinding {
                 keys: @keys(UpArrow);
-                activated => {}
+                activated => {
+                    volume-up();
+                }
             }
 
             KeyBinding {
                 keys: @keys(DownArrow);
-                activated => {}
+                activated => {
+                    volume-down();
+                }
             }
 
             KeyBinding {
@@ -343,6 +519,11 @@ export component MusicPlayer inherits Window {
             KeyBinding {
                 keys: @keys(I);
                 activated => { root.properties = true; }
+            }
+
+            KeyBinding {
+                keys: @keys(Q);
+                activated => { root.queue-open = !root.queue-open; }
             }
 
             key-pressed(e) => {
@@ -477,14 +658,23 @@ export component MusicPlayer inherits Window {
                     }
 
                     HorizontalLayout {
-                        alignment: center;
                         cross-axis-alignment: center;
                         spacing: root.compact ? 20px : 12px;
 
                         if !root.compact: IconButton {
                             inner-bg: transparent;
+                            icon: Icons.disc;
+                            colorize: #f1f1f1;
+
+                            clicked => { root.queue-open = !root.queue-open; }
+                        }
+
+                        Rectangle { }
+
+                        if !root.compact: IconButton {
+                            inner-bg: transparent;
                             icon: Icons.shuffle;
-                            colorize: root.shuffle ? #f1f1f1 : #888;
+                            colorize: root.shuffle ? #f1f1f1 : #ccc;
                             clicked => { root.shuffle = !root.shuffle; }
                         }
 
@@ -513,9 +703,11 @@ export component MusicPlayer inherits Window {
                         if !root.compact: IconButton {
                             inner-bg: transparent;
                             icon: Icons.repeat;
-                            colorize: root.repeat ? #f1f1f1 : #888;
+                            colorize: root.repeat ? #f1f1f1 : #ccc;
                             clicked => { root.repeat = !root.repeat; }
                         }
+
+                        if !root.compact: Rectangle { }
 
                         if !root.compact: IconButton {
                             inner-bg: transparent;
@@ -585,6 +777,189 @@ export component MusicPlayer inherits Window {
                 }
             }
         }
+
+        if root.queue-open: TouchArea {
+            width: 100%;
+            height: 100%;
+
+            clicked => {
+                root.queue-open = false;
+            }
+        }
+
+        queue := Rectangle {
+            x: root.queue-open ? 0 : -self.width;
+            background: #121212cc;
+            backdrop-blur: 10px;
+            border-width: 1px;
+            border-color: #fff3;
+            width: min(720px, root.width - 32px);
+            height: 100%;
+
+            animate x {
+                easing: Theme.easing;
+                duration: Theme.animation-speed;
+            }
+
+            panel-ta := TouchArea {
+                clicked => {}
+            }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-top: 16px;
+                padding-right: 4px;
+
+                HorizontalLayout {
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: @tr("Queue");
+                        font-size: 20px;
+                        font-weight: 600;
+                        color: #f1f1f1;
+                    }
+
+                    Rectangle { }
+
+                    Text {
+                        text: "\{root.queue-tracks.length} \{root.queue-tracks.length == 1 ? "track" : "tracks"}";
+                        font-size: 12px;
+                        color: #f1f1f1;
+                    }
+
+                    Rectangle {
+                        width: 8px;
+                    }
+
+                    IconButton {
+                        icon: Icons.plus;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? #fff2 : transparent;
+                        colorize: #f1f1f1;
+
+                        clicked => {
+                            root.queue-add();
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 12px;
+                }
+
+                VerticalLayout {
+
+                    queue-list := ListView {
+
+                        for track[i] in root.queue-tracks: QueueRow {
+                            track: track;
+                            width: parent.width - 12px;
+                            dragging: root.drag-source == i;
+
+                            play() => {
+                                root.queue-play(i);
+                            }
+
+                            remove() => {
+                                root.queue-remove(i);
+                            }
+
+                            drag-started() => {
+                                root.drag-source = i;
+                                root.drag-target = i;
+                            }
+
+                            drag-position(win-y) => {
+                                // win-y is in window coordinates. Convert to content-space
+                                // inside the list (scroll offset included).
+                                let content-y = win-y - queue-list.absolute-position.y - queue-list.viewport-y;
+                                root.drag-target = Math.max(0, Math.min(root.queue-tracks.length - 1, Math.floor(content-y / 48px)));
+                                // Ghost y in `queue` coordinates.
+                                root.drag-cursor-y = win-y - queue.absolute-position.y;
+                            }
+
+                            drag-ended() => {
+                                if root.drag-source >= 0 && root.drag-target >= 0 && root.drag-source != root.drag-target {
+                                    root.queue-move(root.drag-source, root.drag-target);
+                                }
+                                root.cancel-drag();
+                            }
+
+                            drag-cancelled() => {
+                                root.cancel-drag();
+                            }
+                        }
+                    }
+                }
+            }
+
+            if root.drag-source >= 0 && root.drag-source < root.queue-tracks.length: Rectangle {
+                x: 20px;
+                y: root.drag-cursor-y - 24px;
+                width: queue-list.width - 40px;
+                height: 48px;
+                background: #1b1b1bee;
+                border-radius: 12px;
+                corner-shape: CornerShape.squircle;
+                border-width: 1px;
+                border-color: #ffffff22;
+                drop-shadow-color: #000000aa;
+                drop-shadow-blur: 16px;
+
+                HorizontalLayout {
+                    padding: 6px;
+                    spacing: 10px;
+
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 8px;
+                        corner-shape: CornerShape.squircle;
+                        clip: true;
+
+                        Image {
+                            source: root.queue-tracks[root.drag-source].artwork;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+
+                        Text {
+                            text: root.queue-tracks[root.drag-source].title;
+                            font-size: 13px;
+                            font-weight: 600;
+                            color: #f1f1f1;
+                        }
+
+                        Text {
+                            text: root.queue-tracks[root.drag-source].artist;
+                            font-size: 12px;
+                            font-weight: 500;
+                            color: #c8c8c8;
+                        }
+                    }
+                }
+            }
+
+            // Insertion line: below the target row when moving down, above it when moving up.
+            if root.drag-source >= 0 && root.drag-target >= 0 && root.drag-target != root.drag-source: Rectangle {
+                x: 20px;
+                y: queue-list.absolute-position.y - queue.absolute-position.y
+                    + queue-list.viewport-y
+                    + (root.drag-target + (root.drag-target > root.drag-source ? 1 : 0)) * 48px
+                    - 1px;
+                width: queue-list.width - 40px;
+                height: 2px;
+                border-radius: 1px;
+                background: #4287f5;
+            }
+        }
     }
 
     if root.artwork-inspect: ArtworkInspector {
@@ -598,5 +973,72 @@ export component MusicPlayer inherits Window {
 
     if PropertiesBridge.open: Properties {
         restore-focus => { fs.focus(); }
+    }
+
+    volume-zone := Rectangle {
+        height: 360px;
+        width: 64px;
+        x: parent.width - self.width;
+        y: (parent.height - self.height) / 2;
+        background: transparent;
+
+        property <length> track-height: 256px;
+        property <length> track-y: (self.height - self.track-height) / 2;
+        property <bool> active: vol-ta.pressed || root.volume-visible;
+
+        function volume-at(y: length) -> float {
+            return 1 - (y - self.track-y) / self.track-height;
+        }
+
+        vol-ta := TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+
+            pointer-event(e) => {
+                if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                    root.set-volume(volume-zone.volume-at(self.mouse-y));
+                }
+            }
+
+            moved => {
+                if self.pressed {
+                    root.set-volume(volume-zone.volume-at(self.mouse-y));
+                }
+            }
+
+            scroll-event(e) => {
+                root.set-volume(root.volume + e.delta-y / 3000px);
+                accept
+            }
+        }
+
+        Rectangle {
+            x: volume-zone.active ? volume-zone.width - self.width - 20px : volume-zone.width;
+            y: volume-zone.track-y;
+            height: volume-zone.track-height;
+            width: 16px;
+            background: #fff8;
+            backdrop-blur: 5px;
+            corner-shape: CornerShape.squircle;
+            border-radius: 32px;
+
+            animate x {
+                duration: Theme.animation-speed;
+                easing: Theme.easing;
+            }
+
+            Rectangle {
+                y: parent.height - self.height;
+                height: parent.height * root.volume;
+                background: #fff8;
+                backdrop-blur: 5px;
+                corner-shape: CornerShape.squircle;
+                border-radius: 16px;
+
+                animate height {
+                    duration: Theme.animation-speed;
+                    easing: Theme.easing;
+                }
+            }
+        }
     }
 }
