@@ -1,0 +1,550 @@
+import {
+    PrimaryButton,
+    IconButton,
+    SvgIcon,
+    NectanAppFrame,
+    Spinner,
+    SearchBar,
+    MenuRow,
+    SettingsPage,
+    GeneralModal,
+    SettingsTab,
+    SettingsRow,
+} from "../../shared/elements.slint";
+import { Theme, ThemeAnimator } from "../../shared/theme.slint";
+import { Icons } from "../../shared/icons.slint";
+import { ListView, HorizontalBox } from "std-widgets.slint";
+import { WindowBridge } from "../../shared/window.slint";
+import { MenuPopup } from "sidebar.slint";
+
+export struct GalleryImage { img: image, name: string }
+
+export global GalleryBridge {
+    in-out property <bool> settings-open;
+
+    in-out property <[GalleryImage]> images;
+
+    in-out property <bool> loading;
+
+    in-out property <bool> sidebar-visible: true;
+    in-out property <bool> sidebar-hover;
+    in-out property <length> sidebar-width: 200px;
+
+    in-out property <bool> topbar-hover;
+    in-out property <bool> fullscreen;
+
+    in-out property <length> window-height: 720px;
+    in-out property <length> window-width: 1080px;
+}
+
+
+component General inherits SettingsPage {
+
+    title: @tr("General");
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+}
+
+component Directories inherits SettingsPage {
+
+    title: @tr("Directories");
+    subtitle: @tr("Add directories to scan for photos.");
+    row-count: 6;
+
+    SettingsRow {
+        z: 1;
+        idx: 1;
+        title: @tr("Language");
+        subtitle: @tr("Change language.");
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+}
+
+component AIProcessing inherits SettingsPage {
+
+    title: @tr("AI processing");
+
+    SettingsRow {
+        z: 1;
+        idx: 1;
+        title: @tr("Connect server");
+        subtitle: @tr("Change language.");
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.colors.fourth-col.with-alpha(0.5);
+    }
+}
+
+
+export component Settings inherits GeneralModal {
+
+    property <int> active-tab;
+    property <int> tab-count: 3;
+
+    public function next-tab() {
+        active-tab = Math.mod(active-tab + 1, tab-count);
+    }
+
+    public function previous-tab() {
+        active-tab = Math.mod(active-tab + tab-count - 1, tab-count);
+    }
+
+    on-close => { GalleryBridge.settings-open = false; }
+
+    forward-focus: fs;
+
+    fs := FocusScope {
+        init => { self.focus(); }
+
+        KeyBinding {
+            keys: @keys(H);
+            activated => { previous-tab() }
+        }
+
+        KeyBinding {
+            keys: @keys(L);
+            activated => { next-tab() }
+        }
+
+        KeyBinding {
+            keys: @keys(Tab);
+            activated => { next-tab() }
+        }
+
+        KeyBinding {
+            keys: @keys(RightArrow);
+            activated => { next-tab() }
+        }
+
+        KeyBinding {
+            keys: @keys(LeftArrow);
+            activated => { previous-tab() }
+        }
+
+        TouchArea {
+            clicked => { GalleryBridge.settings-open = false; }
+        }
+
+        Rectangle {
+            width: min(920px, parent.width - 160px);
+            height: min(620px, parent.height - 160px);
+            clip: true;
+
+            background: Theme.colors.primary-col.with-alpha(Theme.config.transparency);
+            backdrop-blur: Theme.blur;
+            border-radius: 20px;
+            corner-shape: CornerShape.squircle;
+            border-width: 1px;
+            border-color: Theme.colors.fourth-col.with-alpha(0.5);
+
+            drop-shadow-color: #00000099;
+            drop-shadow-blur: 50px;
+
+            TouchArea { }
+
+            HorizontalLayout {
+
+                VerticalLayout {
+                    width: 196px;
+                    padding: 8px;
+                    spacing: 2px;
+
+                    SettingsTab {
+                        tab-idx: 0;
+                        active-tab <=> root.active-tab;
+                        tab-name: @tr("General");
+                        icon-size: 14px;
+                        icon: Icons.settings;
+                    }
+
+                    SettingsTab {
+                        tab-idx: 1;
+                        tab-name: @tr("Directories");
+                        active-tab <=> root.active-tab;
+                        icon-size: 14px;
+                        icon: Icons.directory;
+                    }
+
+                    SettingsTab {
+                        tab-idx: 2;
+                        active-tab <=> root.active-tab;
+                        tab-name: @tr("AI processing");
+                        icon-size: 14px;
+                        icon: Icons.cpu;
+                    }
+                }
+
+                Rectangle {
+                    width: 1px;
+                    background: Theme.colors.fourth-col.with-alpha(0.5);
+                }
+
+                if active-tab == 0: General { }
+
+                if active-tab == 1: Directories { }
+
+                if active-tab == 2: AIProcessing { }
+            }
+        }
+    }
+}
+
+component GalleryFocusScope inherits FocusScope {
+
+    KeyBinding {
+        keys: @keys(Control + B);
+        activated => {
+            GalleryBridge.sidebar-visible = !GalleryBridge.sidebar-visible;
+        }
+    }
+
+    @children
+}
+
+component SidebarFolder inherits Rectangle {
+    height: 32px;
+
+    in property <string> title;
+    in property <image> icon;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        cross-axis-alignment: center;
+        spacing: 8px;
+
+        Rectangle {
+            width: 18px;
+
+            Image {
+                source: icon;
+                colorize: Theme.colors.third-font;
+                width: 16px;
+                height: 16px;
+            }
+        }
+
+        Text {
+            text: title;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: Theme.colors.third-font;
+        }
+
+        Rectangle { }
+
+        Image {
+            source: Icons.chevron-left;
+            transform-rotation: -90deg;
+            colorize: Theme.colors.third-font;
+            width: 13px;
+            height: 13px;
+        }
+    }
+}
+
+component Sidebar inherits Rectangle {
+    background: Theme.colors.primary-col.with-alpha(Theme.config.transparency);
+    backdrop-blur: Theme.blur;
+    x: GalleryBridge.sidebar-visible ? 0 : (GalleryBridge.sidebar-hover ? 0 : -GalleryBridge.sidebar-width);
+    width: GalleryBridge.sidebar-width;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: GalleryBridge.sidebar-visible ? transparent : Theme.colors.border-col;
+
+    animate x, border-color {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    forward-focus: fs;
+
+    fs := FocusScope {
+
+        WindowMoveArea { }
+
+        VerticalLayout {
+            padding-top: 8px;
+            padding: 8px;
+
+            SearchBar { }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            SidebarFolder {
+                title: @tr("Favourites");
+                icon: Icons.heart;
+            }
+
+            SidebarFolder {
+                title: @tr("Library");
+                icon: Icons.archive;
+            }
+
+            SidebarFolder {
+                title: @tr("Recent");
+                icon: Icons.recent;
+            }
+
+            SidebarFolder {
+                title: @tr("Videos");
+                icon: Icons.videos;
+            }
+
+            SidebarFolder {
+                title: @tr("Map");
+                icon: Icons.archive;
+            }
+
+            SidebarFolder {
+                title: @tr("People & Pets");
+                icon: Icons.face;
+            }
+
+            SidebarFolder {
+                title: @tr("Trash");
+                icon: Icons.trash;
+            }
+
+            SidebarFolder {
+                title: @tr("Music");
+                icon: Icons.heart;
+            }
+
+            Rectangle { }
+
+            HorizontalLayout {
+                spacing: 4px;
+                IconButton {
+                    icon: Icons.settings;
+                    icon-size: 16px;
+
+                    clicked => {
+                        GalleryBridge.settings-open = true;
+                    }
+                }
+
+                Rectangle { }
+
+                IconButton {
+                    icon: Icons.refresh;
+                    icon-size: 16px;
+
+                    clicked => {}
+                }
+
+                //     menu-btn := IconButton {
+            //         icon: Icons.menu;
+            //         icon-size: 16px;
+            //
+            //         clicked => {
+            //             menu-popup.show();
+            //         }
+            //
+            //         menu-popup := MenuPopup {
+            //             width: parent.width;
+            //             height: parent.height;
+            //             menu-width: 208px;
+            //
+            //             MenuRow {
+            //                 text: @tr("Nectan Cloud");
+            //                 icon: Icons.cloud;
+            //                 clicked => {
+            //                     CommandBridge.open = true;
+            //                     menu-popup.close();
+            //                 }
+            //             }
+            //
+            //             MenuRow {
+            //                 text: @tr("Nectan Server");
+            //                 icon: Icons.server;
+            //                 clicked => {
+            //                     // SettingsBridge.open = true;
+            //                     menu-popup.close();
+            //                 }
+            //             }
+            //         }
+            //     }
+            }
+        }
+    }
+}
+
+component MainContentArea inherits HorizontalLayout {
+    spacing: 8px;
+    padding: 8px;
+    padding-left: !GalleryBridge.sidebar-visible ? 8px : GalleryBridge.sidebar-width;
+    padding-top: Theme.config.native-topbar ? 8px :
+        Theme.config.topbar-always-on ? 24px :
+        GalleryBridge.topbar-hover ? 24px : 8px;
+
+    animate x, padding-left {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    animate padding-top {
+        delay: 200ms;
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    @children
+}
+
+    component DummyRow inherits HorizontalLayout {
+    alignment: start;
+    spacing: 12px;
+    cross-axis-alignment: center;
+    in property <int> amount: 4;
+
+    for i in amount: Rectangle {
+        background: Theme.colors.third-col;
+        height: 128px;
+        width: 128px;
+        border-radius: 20px;
+        corner-shape: CornerShape.squircle;
+    }
+}
+
+    component SectionTitle inherits HorizontalLayout {
+    alignment: start;
+    cross-axis-alignment: center;
+
+    in property <string> title;
+
+    Text {
+        text: title;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: Theme.colors.primary-font;
+    }
+
+    Rectangle {
+        width: 2px;
+    }
+
+    Image {
+        source: Icons.chevron-right;
+        width: 14px;
+        height: 14px;
+        colorize: Theme.colors.primary-font;
+    }
+}
+
+    export component GalleryApp inherits Window {
+    title: "Nectan gallery";
+    preferred-width: GalleryBridge.window-width;
+    preferred-height: GalleryBridge.window-height;
+    min-width: 128px;
+    min-height: 64px;
+    resize-border-width: 6px;
+    no-frame: !Theme.config.native-topbar;
+    background: transparent;
+    maximized: WindowBridge.maximized;
+    default-font-size: Theme.font-size;
+    full-screen <=> GalleryBridge.fullscreen;
+
+    ThemeAnimator { }
+
+    NectanAppFrame {
+        maximized: root.maximized || root.full-screen;
+
+        gallery-fs := GalleryFocusScope {
+
+            Sidebar { }
+
+            MainContentArea {
+                Rectangle {
+                    clip: true;
+                    background: Theme.colors.secondary-col.with-alpha(Theme.config.transparency);
+                    backdrop-blur: Theme.blur;
+                    border-radius: 12px;
+                    corner-shape: CornerShape.squircle;
+                    height: 100%;
+
+                    VerticalLayout {
+                        padding: 20px;
+                        height: 100%;
+                        padding-top: 16px;
+                        alignment: start;
+
+                        SectionTitle {
+                            title: @tr("Recent");
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        DummyRow { }
+
+                        Rectangle {
+                            height: 20px;
+                        }
+
+                        SectionTitle {
+                            title: @tr("Albums");
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        DummyRow { }
+
+                        Rectangle {
+                            height: 20px;
+                        }
+
+                        SectionTitle {
+                            title: @tr("People & Pets");
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        DummyRow { }
+
+                        Rectangle {
+                            height: 32px;
+                            width: 32px;
+                            background: red;
+                        }
+
+                        VerticalLayout {
+
+                            ListView {
+                                min-height: 1000px;
+                                for img in GalleryBridge.images: Image {
+                                    source: img.img;
+                                    height: 100px;
+                                    width: 100px;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if GalleryBridge.settings-open: Settings { }
+
+            // if GalleryBridge.loading: Rectangle {
+            //     background: Theme.colors.primary-col;
+            //     Spinner { }
+            // }
+        }
+    }
+}
