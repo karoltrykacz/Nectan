@@ -3,7 +3,7 @@ import { WindowBridge } from "window.slint";
 import { Icons } from "icons.slint";
 import { Theme } from "theme.slint";
 
-export component Topbar inherits Rectangle {
+export component Topbar inherits WindowMoveArea {
     x: 0;
     y: 0;
     z: 10;
@@ -14,8 +14,8 @@ export component Topbar inherits Rectangle {
 
     animate opacity {
         delay: 200ms;
-        duration: 200ms;
-        easing: ease;
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
     }
 
     HorizontalLayout {

@@ -18,9 +18,10 @@ export global Icons {
     in property <image> chevron-right: @image-url("icons/chevron-right.svg");
     in property <image> filter: @image-url("icons/filter.svg");
     in property <image> grid: @image-url("icons/grid.svg");
+    in property <image> map: @image-url("icons/map.svg");
+    in property <image> layers: @image-url("icons/layers.svg");
     in property <image> list: @image-url("icons/list.svg");
-    in property <image> file: @image-url("icons/file-nofill.svg");
-    in property <image> directory: @image-url("icons/folder-nofill.svg");
+    in property <image> directory: @image-url("icons/directory.svg");
     in property <image> eye: @image-url("icons/eye.svg");
     in property <image> eye-off: @image-url("icons/eye-off.svg");
     in property <image> cpu: @image-url("icons/cpu.svg");
@@ -34,6 +35,8 @@ export global Icons {
     in property <image> sidebar: @image-url("icons/sidebar.svg");
     in property <image> minimize: @image-url("icons/minimize.svg");
     in property <image> maximize: @image-url("icons/maximize.svg");
+    in property <image> fullscreen: @image-url("icons/fullscreen.svg");
+    in property <image> exit-fullscreen: @image-url("icons/exit_fullscreen.svg");
     in property <image> close: @image-url("icons/close.svg");
     in property <image> nearby: @image-url("icons/radio.svg");
     in property <image> terminal: @image-url("icons/terminal.svg");
@@ -41,15 +44,55 @@ export global Icons {
     in property <image> text: @image-url("icons/file-text.svg");
     in property <image> edit: @image-url("icons/edit.svg");
     in property <image> help: @image-url("icons/help-circle.svg");
-    in property <image> star: @image-url("icons/star.svg");
     in property <image> send: @image-url("icons/send.svg");
+    in property <image> paperclip: @image-url("icons/paperclip.svg");
+    in property <image> email: @image-url("icons/at-sign.svg");
+    in property <image> star: @image-url("icons/star.svg");
     in property <image> star-filled: @image-url("icons/star_filled.svg");
     in property <image> globe: @image-url("icons/globe.svg");
     in property <image> offline: @image-url("icons/wifi-off.svg");
     in property <image> zoom-in: @image-url("icons/zoom-in.svg");
     in property <image> zoom-out: @image-url("icons/zoom-out.svg");
-    in property <image> nectan: @image-url("icons/tray.png");
+    in property <image> nectan: @image-url("icons/nectan90.svg");
+    in property <image> link: @image-url("icons/external-link.svg");
+    in property <image> power: @image-url("icons/power.svg");
+    in property <image> eject: @image-url("icons/eject.svg");
+    in property <image> cloud: @image-url("icons/cloud.svg");
+    in property <image> github: @image-url("icons/github.svg");
+    in property <image> print: @image-url("icons/printer.svg");
+    in property <image> info: @image-url("icons/info.svg");
+    in property <image> hash: @image-url("icons/hash.svg");
+    in property <image> crop: @image-url("icons/crop.svg");
+    in property <image> rotate-right: @image-url("icons/rotate-cw.svg");
+    in property <image> rotate-left: @image-url("icons/rotate-ccw.svg");
+    in property <image> anchor: @image-url("icons/anchor.svg");
+    in property <image> play: @image-url("icons/play.svg");
+    in property <image> pause: @image-url("icons/pause.svg");
+    in property <image> flip-horizontal: @image-url("icons/flip-horizontal.svg");
+    in property <image> invert: @image-url("icons/invert.svg");
+    in property <image> grayscale: @image-url("icons/invert.svg");
+    in property <image> repeat: @image-url("icons/repeat.svg");
+    in property <image> shuffle: @image-url("icons/shuffle.svg");
+    in property <image> fast-forward: @image-url("icons/fast-forward.svg");
+    in property <image> more-horizontal: @image-url("icons/more-horizontal.svg");
+    in property <image> copy: @image-url("icons/copy.svg");
+    in property <image> cut: @image-url("icons/scissors.svg");
+    in property <image> file: @image-url("icons/text_line_aep.svg");
+    in property <image> server: @image-url("icons/server.svg");
+    in property <image> menu: @image-url("icons/more-horizontal.svg");
+    in property <image> menu-bars: @image-url("icons/menu.svg");
+    in property <image> disc: @image-url("icons/disc.svg");
+    in property <image> archive: @image-url("icons/archive.svg");
+    in property <image> face: @image-url("icons/smile.svg");
+    in property <image> heart: @image-url("icons/heart.svg");
+    in property <image> default-artwork: @image-url("icons/default-artwork.svg");
+    in property <image> pipette: @image-url("icons/pipette.svg");
+    in property <image> flag: @image-url("icons/flag.svg");
 
-    // Args: [icon_id] [path]
+    // [icon_id] [path]
     callback set-icon(string, string);
+    // todo!
+    public pure function icon(name: string) -> image {
+        @image-url("")
+    }
 }

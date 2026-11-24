@@ -15,21 +15,15 @@ export global HasherBridge {
     in-out property <bool> open;
     in-out property <bool> busy;
     in-out property <string> output;
+    in-out property <string> file-path;
 
-    callback compute(string, string);
+    callback compute(string, string, string);
     callback abort-compute();
-
-    function open-hasher() {
-        abort-compute();
-        open = true;
-        busy = false;
-        output = "";
-    }
 }
 
 export component Hasher inherits GeneralModal {
 
-    on-close => { HasherBridge.output = ""; HasherBridge.open = false; }
+    on-close => { HasherBridge.output = ""; HasherBridge.file-path = ""; HasherBridge.open = false; }
 
     property <[DropDownOption]> algorithms: [
         { code: "md5", name: "MD5" },
@@ -74,7 +68,8 @@ export component Hasher inherits GeneralModal {
     function start-compute() {
         HasherBridge.compute(
                 root.algorithms[root.algorithm-index].code,
-                root.formats[root.format-index].code);
+                root.formats[root.format-index].code,
+                HasherBridge.file-path);
     }
 
     function close-modal() {
@@ -96,7 +91,7 @@ export component Hasher inherits GeneralModal {
 
         background: Theme.colors.primary-col;
         border-radius: Theme.config.round-edges ? 24px : 4px;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
         border-width: 1px;
         border-color: Theme.colors.fourth-col;
         drop-shadow-blur: 24px;
@@ -118,8 +113,14 @@ export component Hasher inherits GeneralModal {
                 font-size: 20px;
             }
 
+            Text {
+                text: HasherBridge.file-path;
+                font-size: 12px;
+                color: Theme.colors.third-font;
+                overflow: elide;
+            }
+
             Rectangle {
-                z: 10;
                 height: 56px;
 
                 HorizontalLayout {
@@ -170,7 +171,7 @@ export component Hasher inherits GeneralModal {
             }
 
             VerticalLayout {
-                spacing: 6px;
+                spacing: 4px;
 
                 Text {
                     text: @tr("Result");
@@ -183,7 +184,7 @@ export component Hasher inherits GeneralModal {
                 Rectangle {
                     height: 112px;
                     border-radius: 12px;
-                    border-corner-shape: superellipse(Theme.config.edges-shape);
+                    corner-shape: CornerShape.squircle;
                     background: Theme.colors.secondary-col;
                     border-width: 1px;
                     border-color: Theme.colors.hover-col;

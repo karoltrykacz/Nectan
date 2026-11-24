@@ -3,24 +3,6 @@ import { Icons } from "icons.slint";
 import { Switch } from "elements.slint";
 
 
-component Preset inherits Rectangle {
-    in property <color> fill;
-    callback clicked;
-
-    width: 22px;
-    height: 22px;
-    border-radius: 11px;
-    border-corner-shape: superellipse(Theme.config.edges-shape);
-    border-width: ta.has-hover ? 2px : 1px;
-    border-color: ta.has-hover ? Theme.colors.primary-font : Theme.colors.border-col;
-    background: @linear-gradient(135deg, root.fill.brighter(0.25) 0%, root.fill.darker(0.35) 100%);
-
-    ta := TouchArea {
-        mouse-cursor: MouseCursor.pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
 export component RotaryEncoder inherits Rectangle {
     in property <length> size: 64px;
     in property <int> steps: 5;
@@ -144,8 +126,7 @@ export component Knob inherits Rectangle {
         height: parent.height;
         source: Icons.knob;
         transform-rotation: root.rotation;
-        rotation-origin-x: self.width / 2;
-        rotation-origin-y: self.height / 2;
+        transform-origin: { x: self.width / 2, y:self.height / 2 };
     }
 
     ta := TouchArea {
@@ -394,7 +375,7 @@ export component ColorPicker inherits Rectangle {
         color-pad := Rectangle {
             width: self.height;
             border-radius: 48px;
-            border-corner-shape: superellipse(Theme.config.edges-shape);
+            corner-shape: CornerShape.squircle;
             clip: true;
             background: Theme.colors.third-col;
 
@@ -508,6 +489,7 @@ export component ColorPicker inherits Rectangle {
                 h := Knob {
                     size: 48px;
                     rotation: ((root.harmony-angle / 1deg) * (270.0 / 180.0) * 1deg);
+		    // range of this is bad!
                     changed(angle) => {
                         if root.stop-count == 1 {
                             root.stop-count = 2;
@@ -527,15 +509,6 @@ export component ColorPicker inherits Rectangle {
                     }
                     released => { root.emit-committed(); }
                 }
-            }
-
-            HorizontalLayout {
-                alignment: start;
-                Text {
-                    text: @tr("Colorize icon");
-                }
-
-                Switch { }
             }
         }
     }

@@ -10,6 +10,6 @@ dirs = "7.0.0"
 serde = { version = "1.0.229", features = ["derive"] }
 utils = {path = "../../utils"}
 slint = { 
-    git = "https://github.com/R-Cramer4/slint.git", 
-    branch = "corner-shape",
-    default-features = false}
+    git = "https://github.com/slint-ui/slint",
+    branch = "robin/corner-shape-femtovg",
+default-features = false}

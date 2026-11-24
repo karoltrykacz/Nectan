@@ -11,13 +11,16 @@ export global WindowBridge {
     in-out property <bool> any-modal-open;
     in-out property <bool> nectan-modal-open: false;
 
-    in-out property <bool> maximized;
-    in-out property <bool> sidebar-visible: true;
-    in-out property <bool> sidebar-hover: true;
+    in-out property <bool> sidebar-visible;
+    in-out property <bool> sidebar-hover;
     in-out property <length> sidebar-width: 200px;
-    in-out property <bool> topbar-hover: false;
 
-    callback drag-window();
+    in-out property <bool> maximized;
+    in-out property <bool> fullscreen;
+    in-out property <length> window-width: 1080px;
+    in-out property <length> window-height: 720px;
+
+    in-out property <bool> topbar-hover;
 
     callback minimize-window();
     callback maximize-window();
@@ -35,48 +38,26 @@ export global WindowBridge {
     callback join_discord();
     callback open_github();
     callback open_privacy();
-}
 
-export component TopBarShower inherits Rectangle {
-    x: WindowBridge.sidebar-hover || WindowBridge.sidebar-visible ? WindowBridge.sidebar-width + 20px : 0;
-    z: 3;
-    y: 0;
-    width: 100%;
-    height: 25px;
+    callback copy_str(string);
 
-    WindowMoveArea {
-
-        TouchArea {
-            pointer-event(event) => {
-                if self.mouse-y > 20px {
-                    WindowBridge.topbar-hover = false;
-                }
-                if self.mouse-y < 20px {
-                    WindowBridge.topbar-hover = true;
-                }
-                EventResult.reject
-            }
-        }
-    }
-}
-
-export component MainWindowTouchArea inherits TouchArea {
-
-    pointer-event(event) => {
-        if self.mouse-y > 20px {
-            WindowBridge.topbar-hover = false;
-        } else {
-            WindowBridge.topbar-hover = true;
-        }
+    changed maximized => {
+        Theme.config-changed();
     }
 
-    scroll-event(event) => {
-        if event.delta-x > 10px {
-            WindowBridge.sidebar-visible = true;
-        }
-        if event.delta-x < -10px {
-            WindowBridge.sidebar-visible = false;
-        }
-        return accept;
+    changed fullscreen => {
+        Theme.config-changed();
+    }
+
+    changed sidebar-visible => {
+        Theme.config-changed();
+    }
+
+    changed window-width => {
+        Theme.config-changed();
+    }
+
+    changed window-height => {
+        Theme.config-changed();
     }
 }

@@ -7,7 +7,7 @@ import "./fonts/Rubik-Regular.ttf";
 import "./fonts/Rubik-SemiBold.ttf";
 
 export struct ThemeColors {
-    primary-col: color,
+    primary-col: brush,
     secondary-col: color,
     third-col: color,
     fourth-col: color,
@@ -32,26 +32,31 @@ export struct ThemeConfig {
     font-scale: float,
     topbar-always-on: bool,
     native-topbar: bool,
+    bluriness: float,
+    transparency: float,
+    window-backpane-transparency: float,
 }
 
 export global Theme {
     in-out property <int> mode: 1;
     in-out property <bool> theme-selector;
 
-    in-out property <ThemeConfig> config: {
-        edges-shape: 2.5,
-        round-edges: true,
-        font: "Rubik",
-        font-scale: 1.0,
-        topbar-always-on: false,
-        native-topbar: false,
-    };
+    in-out property <ThemeConfig> config;
 
     out property <easing> easing: cubic-bezier(0.25, 0.96, 0.43, 0.98);
     out property <duration> animation-speed: 128ms;
     out property <length> font-header: 20px;
 
     out property <length> font-size: 13px * config.font-scale;
+    out property <length> blur: config.bluriness * 10px;
+
+    public pure function complementary(c: color) -> color {
+        let hsv = c.to-hsv();
+        let hue = Math.mod(hsv.hue + 180, 360);
+        return Colors.hsv(hue, 1.0, 1.0, 1.0);
+    }
+
+    out property <color> compl-col: complementary(root.a-primary-col);
 
     callback config-changed();
     callback mode-changed(int);
@@ -77,6 +82,22 @@ export global Theme {
                 fourth-font: #888888,
                 hover-col: #00000022,
                 border-col: #cccccc,
+            },
+        },
+        {
+            code: "ultra-dark",
+            name: "Oled",
+            colors: {
+                primary-col: #000,
+                secondary-col: #090909,
+                third-col: #121212,
+                fourth-col: #171717,
+                primary-font: #ffffff,
+                secondary-font: #cccccc,
+                third-font: #aaaaaa,
+                fourth-font: #888888,
+                hover-col: #ffffff27,
+                border-col: #404040,
             },
         },
         {
@@ -144,86 +165,6 @@ export global Theme {
             },
         },
         {
-            code: "honey",
-            name: "Honey",
-            colors: {
-                primary-col: #cc5803,
-                secondary-col: #e2711d,
-                third-col: #ff9505,
-                fourth-col: #FFA318,
-                primary-font: #000,
-                secondary-font: #000,
-                third-font: #000,
-                fourth-font: #000,
-                hover-col: #FFA318,
-                border-col: #FFA318,
-            },
-        },
-        {
-            code: "midnight",
-            name: "Midnight",
-            colors: {
-                primary-col: #0b1020,
-                secondary-col: #111a2e,
-                third-col: #1a2742,
-                fourth-col: #263653,
-                primary-font: #f0f4ff,
-                secondary-font: #c4d0e8,
-                third-font: #8fa5c9,
-                fourth-font: #6f83a6,
-                hover-col: #ffffff18,
-                border-col: #2c3d5c,
-            },
-        },
-        {
-            code: "broccoli",
-            name: "Broccoli",
-            colors: {
-                primary-col: #004b23,
-                secondary-col: #006400,
-                third-col: #007200,
-                fourth-col: #008000,
-                primary-font: #f1f1f1,
-                secondary-font: #e1e1e1,
-                third-font: #d1d1d1,
-                fourth-font: #c1c1c1,
-                hover-col: #008000,
-                border-col: #008000,
-            },
-        },
-        {
-            code: "forest",
-            name: "Forest",
-            colors: {
-                primary-col: #12191a,
-                secondary-col: #182224,
-                third-col: #1f2d2e,
-                fourth-col: #2a3d3e,
-                primary-font: #e6f0e8,
-                secondary-font: #c2d6c6,
-                third-font: #8fb09a,
-                fourth-font: #6a8a76,
-                hover-col: #7fd99a1c,
-                border-col: #2a3d3e,
-            },
-        },
-        {
-            code: "pinky",
-            name: "Pinky",
-            colors: {
-                primary-col: #b5566f,
-                secondary-col: #c2677f,
-                third-col: #cd7a90,
-                fourth-col: #d88fa1,
-                primary-font: #ffffff,
-                secondary-font: #f1f1f1,
-                third-font: #e1e1e1,
-                fourth-font: #d1d1d1,
-                hover-col: #e3a9b9,
-                border-col: #cd7a90,
-            },
-        },
-        {
             code: "ice-cream",
             name: "Neapolitan ice cream",
             colors: {
@@ -245,8 +186,8 @@ export global Theme {
             colors: {
                 primary-col: #5b0619,
                 secondary-col:#710d23,
-                third-col: #8b1a29,
-                fourth-col: #a7252c.darker(0.05),
+                third-col:#800e27,
+                fourth-col: #9c192a,
                 primary-font: #f1f1f1,
                 secondary-font: #e1e1e1,
                 third-font: #d1d1d1,
@@ -256,13 +197,29 @@ export global Theme {
             },
         },
         {
+            code: "goo",
+            name: "Gooey",
+            colors: {
+                primary-col: #4f044e,
+                secondary-col: #630962,
+                third-col: #7d117c,
+                fourth-col: #941e92,
+                primary-font: #f1f1f1,
+                secondary-font: #e1e1e1,
+                third-font: #d1d1d1,
+                fourth-font: #c1c1c1,
+                hover-col: #961d95,
+                border-col: #8f108d,
+            },
+        },
+        {
             code: "fishy",
             name: "Fishy business",
             colors: {
                 primary-col: #1b2d61,
                 secondary-col: #234b8f,
                 third-col: #2c6bbe,
-                fourth-col: #5d9bff,
+                fourth-col: #2661ad,
                 primary-font: #fff9f2,
                 secondary-font:#d7f8f8,
                 third-font: #b1f8ff,
@@ -272,19 +229,19 @@ export global Theme {
             },
         },
         {
-            code: "kill",
-            name: "Killer",
+            code: "slime-or-grass",
+            name: "Slime",
             colors: {
-                primary-col: #e68612,
-                secondary-col:#f8b71e,
-                third-col: #fac31a,
-                fourth-col: #fcd613,
-                primary-font: #000,
-                secondary-font: #000,
-                third-font: #000,
-                fourth-font: #000,
-                hover-col: #fcd613,
-                border-col: #fcd613,
+                primary-col: #0f4503,
+                secondary-col: #1a610b,
+                third-col: #247a11,
+                fourth-col: #379c21,
+                primary-font: #f7f7b7,
+                secondary-font: #e3deaf,
+                third-font: #f0e8c2,
+                fourth-font: #ccb889,
+                hover-col: #2da318,
+                border-col: #4cbf37,
             },
         },
         {

@@ -1,0 +1,236 @@
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import {
+    GeneralModal,
+    PrimaryButton,
+    SearchBar,
+    SearchBarWithInput,
+    PlainLineEdit,
+} from "elements.slint";
+import { ListView } from "std-widgets.slint";
+
+export struct OpenWithApp { name: string, icon: image, id: string }
+
+export global OpenWithBridge {
+    in-out property <bool> open;
+    in-out property <[OpenWithApp]> apps;
+    in-out property <int> selected: 0;
+    callback confirm(int);
+
+    callback filter(string);
+    callback clear-filter();
+    callback load-apps();
+}
+
+export component OpenWithModal inherits GeneralModal {
+    property <length> row-height: 42px;
+    property <bool> list-mode: !input.has-focus;
+
+    function reset-selection() {
+        OpenWithBridge.selected = 0;
+        list.content-y = 0px;
+    }
+
+    function ensure-row-visible() {
+        let top = OpenWithBridge.selected * root.row-height;
+        let bottom = top + root.row-height;
+        if (top < -list.content-y) {
+            list.content-y = -top;
+        } else if (bottom > -list.content-y + list.visible-height) {
+            list.content-y = -(bottom - list.visible-height);
+        }
+    }
+
+    function step(delta: int) {
+        let n = OpenWithBridge.apps.length;
+        if (n == 0) {
+            return;
+        }
+        OpenWithBridge.selected = max(0, min(n - 1, OpenWithBridge.selected + delta));
+        root.ensure-row-visible();
+    }
+
+    function focus-list() {
+        scope.focus();
+    }
+
+    function focus-search() {
+        input.focus-input();
+    }
+
+    function confirm-selected() {
+        if (OpenWithBridge.apps.length > 0) {
+            OpenWithBridge.confirm(OpenWithBridge.selected);
+            OpenWithBridge.open = false;
+        }
+    }
+
+    on-close => {
+        OpenWithBridge.open = false;
+    }
+
+    init => {
+        OpenWithBridge.load-apps();
+        OpenWithBridge.clear-filter();
+    }
+
+    Rectangle {
+        width: min(420px, parent.width - 160px);
+        height: min(720px, parent.height - 160px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+
+        background: Theme.colors.primary-col;
+        border-radius: Theme.config.round-edges ? 24px : 4px;
+        corner-shape: CornerShape.squircle;
+        border-width: 1px;
+        border-color: Theme.colors.fourth-col;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000050;
+        drop-shadow-offset-y: 8px;
+
+        TouchArea {
+            clicked => {}
+        }
+
+        scope := FocusScope {
+            capture-key-pressed(event) => {
+                if (!input.has-focus) {
+                    return reject;
+                }
+                if (event.text == Key.Tab || event.text == Key.Backtab || event.text == Key.Return) {
+                    root.focus-list();
+                    return accept;
+                }
+                if (event.text == Key.DownArrow) {
+                    root.step(1);
+                    return accept;
+                }
+                if (event.text == Key.UpArrow) {
+                    root.step(-1);
+                    return accept;
+                }
+                reject
+            }
+
+            key-pressed(event) => {
+                if (input.has-focus) {
+                    return reject;
+                }
+                if (event.text == "j" || event.text == Key.DownArrow) {
+                    root.step(1);
+                    return accept;
+                }
+                if (event.text == "k" || event.text == Key.UpArrow) {
+                    root.step(-1);
+                    return accept;
+                }
+                if (event.text == Key.Tab || event.text == Key.Backtab) {
+                    root.focus-search();
+                    return accept;
+                }
+                if (event.text == Key.Return) {
+                    root.confirm-selected();
+                    return accept;
+                }
+                reject
+            }
+
+            content := VerticalLayout {
+                padding: 20px;
+                spacing: 16px;
+
+                Text {
+                    color: Theme.colors.primary-font;
+                    text: @tr("Choose app");
+                    font-weight: 600;
+                    font-size: 20px;
+                }
+
+                Rectangle {
+                    height: 42px;
+                    border-radius: 24px;
+                    corner-shape: CornerShape.squircle;
+                    background: input.has-focus ? Theme.colors.fourth-col : Theme.colors.third-col;
+                    border-width: 1px;
+                    border-color: Theme.colors.fourth-col;
+
+                    Image {
+                        x: 12px;
+                        source: Icons.search;
+                        height: 20px;
+                        width: 20px;
+                        colorize: Theme.colors.third-font;
+                    }
+
+                    input := PlainLineEdit {
+                        font-size: 1rem;
+                        x: 28px;
+                        edited(needle) => {
+                            root.reset-selection();
+                            OpenWithBridge.filter(needle);
+                        }
+                        rejected => {
+                            root.reset-selection();
+                            OpenWithBridge.clear-filter();
+                        }
+                    }
+                }
+
+                list := ListView {
+                    for app[i] in OpenWithBridge.apps: Rectangle {
+                        ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                OpenWithBridge.selected = i;
+                                OpenWithBridge.confirm(i);
+                                OpenWithBridge.open = false;
+                            }
+                        }
+
+                        height: root.row-height;
+                        transform-scale: ta.pressed ? 0.9875 : 1.0;
+                        background: i == OpenWithBridge.selected ? Theme.colors.fourth-col : ta.has-hover ? Theme.colors.third-col : transparent;
+                        border-radius: 20px;
+                        corner-shape: CornerShape.squircle;
+                        border-width: (i == OpenWithBridge.selected && root.list-mode) ? 1px : 0px;
+                        border-color: Theme.colors.third-font;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            alignment: start;
+                            cross-axis-alignment: center;
+
+                            Image {
+                                width: 32px;
+                                height: 32px;
+                                source: app.icon;
+                            }
+
+                            Rectangle {
+                                width: 12px;
+                            }
+
+                            Text {
+                                text: app.name;
+                                font-size: 1rem;
+                                font-weight: 500;
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    PrimaryButton {
+                        alt: true;
+                        text: @tr("Cancel");
+                        clicked => { root.on-close(); }
+                    }
+                }
+            }
+        }
+    }
+}

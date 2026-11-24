@@ -47,6 +47,7 @@ export struct KeyMap {
     grid-view: Shortcut,
     zoom-out: Shortcut,
     zoom-in: Shortcut,
+    command: Shortcut,
 }
 
 export global Keys {
@@ -93,7 +94,7 @@ export component KeysBadge inherits Rectangle {
     width: max(48px, label.preferred-width + 40px);
     height: 26px;
     border-radius: 8px;
-    border-corner-shape: superellipse(Theme.config.edges-shape);
+    corner-shape: CornerShape.squircle;
     background: Theme.colors.third-font;
 
     Rectangle {
@@ -128,6 +129,7 @@ export component ShortcutGroupView inherits VerticalLayout {
 
     alignment: start;
     spacing: 4px;
+    padding-top: 20px;
 
     Text {
         x: 12px;
@@ -138,14 +140,16 @@ export component ShortcutGroupView inherits VerticalLayout {
     }
 
     Rectangle {
-        background: Theme.colors.secondary-col;
+        background: Theme.colors.secondary-col.with-alpha(Theme.config.transparency);
+        backdrop-blur: Theme.blur;
         border-radius: 20px;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
 
         VerticalLayout {
-            padding: 20px;
             padding-bottom: 0;
             padding-top: 0;
+
+            padding: 32px;
 
             for item[i] in root.items: Rectangle {
                 height: 48px;
@@ -157,7 +161,7 @@ export component ShortcutGroupView inherits VerticalLayout {
                         text: item.title;
                         color: Theme.colors.primary-font;
                         font-size: 13px;
-                        font-weight: 400;
+                        font-weight: 500;
                         vertical-alignment: center;
                     }
 

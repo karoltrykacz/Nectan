@@ -468,13 +468,8 @@ export component OutcomingTransferModal inherits Rectangle {
                             ]
 
                             IconButton {
-                                width: 28px;
-                                height: 28px;
-                                SvgIcon {
-                                    source: @image-url("icons/edit.svg");
-                                    fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                                    size: 16px;
-                                }
+                                icon: Icons.edit;
+                                icon-size: 16px;
 
                                 clicked => {
                                     name-input.focus();
@@ -878,18 +873,14 @@ export component TextMessageEditor inherits GeneralModal {
                     Rectangle { }
 
                     smaller-btn := IconButton {
-                        height: 28px;
-                        width: 28px;
+                        icon: Icons.zoom-out;
+                        fg: Theme.colors.primary-font;
+                        icon-size: 16px;
 
-                        SvgIcon {
-                            size: 16px;
-                            fg: Theme.colors.primary-font;
-                            source: Icons.zoom-out;
-                            ToolTip {
-                                y: 32px;
-                                text: @tr("Smaller");
-                                opacity: smaller-btn.hovered ? 1.0 : 0.0;
-                            }
+                        ToolTip {
+                            y: 32px;
+                            text: @tr("Smaller");
+                            opacity: smaller-btn.hovered ? 1.0 : 0.0;
                         }
 
                         clicked => {
@@ -904,17 +895,14 @@ export component TextMessageEditor inherits GeneralModal {
                     }
 
                     bigger-btn := IconButton {
-                        height: 28px;
-                        width: 28px;
-                        SvgIcon {
-                            size: 16px;
-                            fg: Theme.colors.primary-font;
-                            source: Icons.zoom-in;
-                            ToolTip {
-                                y: 32px;
-                                text: @tr("Bigger");
-                                opacity: bigger-btn.hovered ? 1.0 : 0.0;
-                            }
+                        icon: Icons.zoom-in;
+                        icon-size: 16px;
+                        fg: Theme.colors.primary-font;
+
+                        ToolTip {
+                            y: 32px;
+                            text: @tr("Bigger");
+                            opacity: bigger-btn.hovered ? 1.0 : 0.0;
                         }
 
                         clicked => {

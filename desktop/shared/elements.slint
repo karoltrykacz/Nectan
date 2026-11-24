@@ -12,6 +12,127 @@ export component SvgIcon inherits Image {
     height: root.size;
 }
 
+export component SettingsPage inherits FocusScope {
+
+    init => {
+        self.focus();
+        // SettingsBridge.selected-row = -1;
+    }
+
+    in property <string> title;
+    in property <string> subtitle;
+    in property <int> row-count: 0;
+
+    // KeyBinding {
+    //     keys: @keys(J);
+    //     activated => {
+    //         SettingsBridge.selected-row = Math.min(SettingsBridge.selected-row + 1, row-count - 1);
+    //     }
+    // }
+    //
+    // KeyBinding {
+    //     keys: @keys(K);
+    //     activated => {
+    //         SettingsBridge.selected-row = Math.max(SettingsBridge.selected-row - 1, 0);
+    //     }
+    // }
+    //
+    // KeyBinding {
+    //     keys: @keys(UpArrow);
+    //     activated => {
+    //         SettingsBridge.selected-row = Math.max(SettingsBridge.selected-row - 1, 0);
+    //     }
+    // }
+    //
+    // KeyBinding {
+    //     keys: @keys(DownArrow);
+    //     activated => {
+    //         SettingsBridge.selected-row = Math.min(SettingsBridge.selected-row + 1, row-count - 1);
+    //     }
+    // }
+
+    ScrollView {
+        VerticalLayout {
+
+            padding: 20px;
+            padding-top: 16px;
+            spacing: 6px;
+            alignment: start;
+
+            Text {
+                text: title;
+                color: Theme.colors.primary-font;
+                font-size: 1.5rem;
+                font-weight: 600;
+            }
+
+            if subtitle != "":Text {
+                text: subtitle;
+                color: Theme.colors.third-font;
+                font-size: 0.9rem;
+                font-weight: 400;
+            }
+
+            Rectangle {
+                height: 4px;
+            }
+
+            @children
+        }
+    }
+}
+
+export component SettingsTab inherits Rectangle {
+    in property <string> tab-name;
+    in property <int> tab-idx;
+    in property <image> icon;
+    in property <length> icon-size;
+    in-out property <int> active-tab;
+
+    height: 28px;
+    border-radius: 12px;
+    corner-shape: CornerShape.squircle;
+    background: active-tab == tab-idx ? Theme.colors.secondary-col
+        : (ta.has-hover ? Theme.colors.secondary-col : transparent);
+    border-width: 1px;
+    border-color: active-tab == tab-idx ? Theme.colors.fourth-col : transparent;
+    transform-scale: ta.pressed ? 0.9875 : 1.0;
+
+    animate transform-scale {
+        duration: 20ms;
+        easing: ease;
+    }
+
+    HorizontalLayout {
+        cross-axis-alignment: center;
+        alignment: start;
+        padding-left: 12px;
+        spacing: 8px;
+
+        SvgIcon {
+            source: root.icon;
+            size: root.icon-size;
+        }
+
+        Text {
+            vertical-alignment: center;
+            text: tab-name;
+            color: active-tab == tab-idx
+                ? Theme.colors.primary-font
+                : (ta.has-hover ? Theme.colors.primary-font : Theme.colors.secondary-font);
+            font-size: 0.9rem;
+            font-weight: 400;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            active-tab = tab-idx;
+        }
+    }
+}
+
 export component SettingsRow {
 
     in property <string> title;
@@ -75,50 +196,198 @@ export component SettingsRow {
     }
 }
 
-export component IconButton inherits Rectangle {
+export component TextButton inherits Rectangle {
 
     in property <color> fg: Theme.colors.third-font;
-    in property <bool> round: true;
+    in property <string> text;
     in property <bool> transform: true;
     in property <length> transform-y: 1px;
-    in property <color> inner-bg: red;
+    in property <color> inner-bg: self.hovered ? Theme.colors.third-col : transparent;
     in property <bool> enabled: true;
+    in property <bool> shown: true;
     out property <bool> hovered: area.has-hover;
     out property <bool> pressed: area.pressed;
-    in property <color> inner-border;
-
-    border-radius: 8px;
-    border-corner-shape: superellipse(Theme.config.edges-shape);
 
     callback clicked();
+
+    opacity: shown ? 1.0 : 0.0;
+    border-radius: 8px;
+    corner-shape: CornerShape.squircle;
+    width: 28px;
+    height: 28px;
+
+    animate opacity {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
 
     inner := Rectangle {
         width: root.width;
         height: root.height;
         border-radius: root.border-radius;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         background: inner-bg != red ? inner-bg : area.has-hover ? Theme.colors.fourth-col : transparent;
+        backdrop-blur: 3px;
+        border-width: 1.5px;
+        transform-scale: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
+        y: root.transform ? area.pressed ? root.transform-y : 0 : 0;
+
+        animate width, height, y {
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
+        }
+
+        Text {
+            text: root.text;
+        }
+    }
+
+    area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ToggleableIconButton inherits Rectangle {
+    in-out property <bool> toggled;
+    in property <color> fg: Theme.colors.third-font;
+    in property <image> icon;
+    in property <length> icon-size: 18px;
+    in property <bool> transform: true;
+    in property <angle> rotation: 0deg;
+    in property <length> transform-y: 1px;
+
+    in property <color> toggled-bg: Theme.colors.primary-font;
+    in property <color> toggled-fg: Theme.colors.primary-col;
+
+    in property <color> inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+    in property <color> colorize: self.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+    in property <color> inner-border;
+
+    in property <bool> enabled: true;
+    in property <bool> shown: true;
+    out property <bool> hovered: area.has-hover;
+    out property <bool> pressed: area.pressed;
+
+    callback clicked();
+
+    opacity: shown ? 1.0 : 0.0;
+    border-radius: 8px;
+    corner-shape: CornerShape.squircle;
+    width: 28px;
+    height: 28px;
+
+    animate opacity {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    inner := Rectangle {
+        width: root.width;
+        height: root.height;
+        border-radius: root.border-radius;
+        corner-shape: CornerShape.squircle;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        background: root.toggled ? root.toggled-bg
+            : root.inner-bg != red ? root.inner-bg
+            : area.has-hover ? Theme.colors.fourth-col : transparent;
+        backdrop-blur: 3px;
+        border-color: root.inner-border;
+        border-width: 1.5px;
+        transform-scale: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
+        y: root.transform ? area.pressed ? root.transform-y : 0 : 0;
+
+        animate width, height, y {
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
+        }
+
+        animate background {
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
+        }
+
+        SvgIcon {
+            source: root.icon;
+            fg: root.toggled ? root.toggled-fg
+                : root.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: root.icon-size;
+            colorize: root.toggled ? root.toggled-fg : root.colorize;
+            transform-rotation: root.rotation;
+
+            animate colorize {
+                duration: Theme.animation-speed;
+                easing: Theme.easing;
+            }
+        }
+    }
+
+    area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.toggled = !root.toggled;
+            root.clicked();
+        }
+    }
+}
+
+export component IconButton inherits Rectangle {
+    in property <color> fg: Theme.colors.third-font;
+    in property <image> icon;
+    in property <length> icon-size: 18px;
+    in property <bool> transform: true;
+    in property <angle> rotation: 0deg;
+    in property <length> transform-y: 1px;
+    in property <color> inner-bg: self.hovered ? Theme.colors.third-col : transparent;
+    in property <color> colorize: self.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+    in property <bool> enabled: true;
+    in property <bool> shown: true;
+    out property <bool> hovered: area.has-hover;
+    out property <bool> pressed: area.pressed;
+    in property <color> inner-border;
+
+    callback clicked();
+
+    opacity: shown ? 1.0 : 0.0;
+    border-radius: 8px;
+    corner-shape: CornerShape.squircle;
+    width: 28px;
+    height: 28px;
+
+    animate opacity {
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
+    }
+
+    inner := Rectangle {
+        width: root.width;
+        height: root.height;
+        border-radius: root.border-radius;
+        corner-shape: CornerShape.squircle;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        background: inner-bg != red ? inner-bg : area.has-hover ? Theme.colors.fourth-col : transparent;
+        backdrop-blur: 3px;
         border-color: inner-border;
         border-width: 1.5px;
 
         animate width, height, y {
-            duration: 50ms;
-            easing: ease;
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
         }
 
         transform-scale: root.transform ? area.pressed ? 0.97 : 1.0 : 1.0;
 
         y: root.transform ? area.pressed ? root.transform-y : 0 : 0;
 
-        content := Rectangle {
-
-            @children
-
-            animate width, height {
-                duration: 50ms;
-                easing: ease;
-            }
+        SvgIcon {
+            source: root.icon;
+            fg: root.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+            size: root.icon-size;
+            colorize: root.colorize;
+            transform-rotation: root.rotation;
         }
     }
 
@@ -206,8 +475,8 @@ export component Carousel {
             Rectangle {
                 property <length> viewport-x: root.center-x - root.selected-index * (root.itemWidth + root.spacing);
                 animate viewport-x {
-                    duration: root.duration;
-                    easing: ease;
+                    duration: Theme.animation-speed;
+                    easing: Theme.easing;
                 }
                 property <length> swipe-offset: 0;
                 x: self.viewport-x + swipe-offset;
@@ -219,8 +488,8 @@ export component Carousel {
                         swipe-offset: (swipe.current-position.x - swipe.pressed-position.x).clamp(-root.itemWidth, root.itemWidth);
                         out {
                             animate swipe-offset {
-                                duration: root.duration;
-                                easing: ease;
+                                duration: Theme.animation-speed;
+                                easing: Theme.easing;
                             }
                         }
                     }
@@ -240,7 +509,9 @@ export component PlainLineEdit inherits Rectangle {
     in-out property <string> input-text;
     in property <string> placeholder-text;
     in property <int> start;
+    in property <length> font-size: 0.9rem;
     in property <bool> autofocus: true;
+    in property <bool> has-focus: text-input.has-focus;
     in property <int> end: input-text.character-count;
     in property <bool> hide-input;
 
@@ -263,6 +534,7 @@ export component PlainLineEdit inherits Rectangle {
     }
 
     FocusScope {
+
         KeyBinding {
             keys: @keys(Escape);
             activated => {
@@ -303,13 +575,13 @@ export component PlainLineEdit inherits Rectangle {
             color: Theme.colors.third-font;
         }
 
-        TouchArea {
-            width: parent.width - 24px;
-            mouse-cursor: text;
-            clicked => {
-                text-input.focus();
-            }
-        }
+        // TouchArea {
+        //     width: parent.width - 24px;
+        //     mouse-cursor: text;
+        //     clicked => {
+        //         text-input.focus();
+        //     }
+        // }
     }
 }
 
@@ -323,6 +595,7 @@ export component GeneralModal inherits Rectangle {
     forward-focus: focus-scope;
 
     focus-scope := FocusScope {
+
         focus-lost(reason) => {
             root.restore-focus();
             root.on-close();
@@ -355,8 +628,8 @@ export component GeneralModal inherits Rectangle {
         Rectangle {
             background: #00000088;
             border-radius: Theme.config.round-edges ? 24px : 0;
-            border-corner-shape: superellipse(Theme.config.edges-shape);
-            // backdrop-blur: 2px;
+            corner-shape: CornerShape.squircle;
+            backdrop-blur: 3px;
 
             TouchArea {
                 clicked => {
@@ -505,8 +778,8 @@ export component PrimarySmallButton {
         background: Theme.colors.primary-font;
 
         animate width, height, y {
-            duration: 20ms;
-            easing: ease-out;
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
         }
         states [
             pressed when touch.pressed: {
@@ -548,7 +821,7 @@ export component SquareButton {
         width: 100%;
         height: 100%;
         border-radius: 12px;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
         background: root.alt
             ? (touch.pressed
             ? Theme.colors.third-col
@@ -562,12 +835,12 @@ export component SquareButton {
         border-color: Theme.colors.hover-col;
 
         animate background {
-            duration: 100ms;
-            easing: ease-out;
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
         }
         animate width, height {
-            duration: 20ms;
-            easing: ease-out;
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
         }
         states [
             pressed when touch.pressed: {
@@ -623,24 +896,26 @@ export component PrimaryButton {
     callback clicked;
     property <bool> is-disabled: !root.button-enabled || root.button-loading;
     in property <image> image;
+    in property <length> image-size: 16px;
 
     height: 30px;
     width: max(81px, layout.preferred-width);
 
     animate width {
-        duration: 200ms;
-        easing: ease-out;
+        duration: Theme.animation-speed;
+        easing: Theme.easing;
     }
 
     Rectangle {
         height: 100%;
         width: 100%;
         border-radius: 12px;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+
+        corner-shape: CornerShape.squircle;
         background: root.alt
             ? (touch.pressed
             ? Theme.colors.third-col
-            : (touch.has-hover ? Theme.colors.secondary-col : transparent))
+            : (touch.has-hover ? Theme.colors.secondary-col.with-alpha(0.5) : transparent))
             : (root.is-disabled
             ? Theme.colors.third-font
             : (touch.pressed
@@ -648,14 +923,15 @@ export component PrimaryButton {
             : (touch.has-hover ? Theme.colors.secondary-font : Theme.colors.primary-font)));
         border-width: root.alt ? 1px : 0px;
         border-color: Theme.colors.hover-col;
+        backdrop-blur: 3px;
 
         animate background {
-            duration: 100ms;
-            easing: ease-out;
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
         }
         animate width, height, y {
-            duration: 20ms;
-            easing: ease-out;
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
         }
         states [
             pressed when touch.pressed: {
@@ -676,8 +952,9 @@ export component PrimaryButton {
                     colorize: root.alt
                         ? Theme.colors.primary-font
                         : (root.is-disabled ? Theme.colors.third-col : Theme.colors.primary-col);
-                    width: 16px;
-                    height: 16px;
+
+                    width: root.image-size;
+                    height: root.image-size;
                 }
             }
             if root.image.height > 0: Rectangle {
@@ -975,7 +1252,7 @@ export component Dropdown inherits Rectangle {
         height: 32px;
         width: parent.width;
         border-radius: 24px;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
         background: header-area.has-hover
             ? Theme.colors.fourth-col
             : Theme.colors.third-col;
@@ -983,11 +1260,11 @@ export component Dropdown inherits Rectangle {
         border-color: (root.expanded || fs.has-focus)
             ? Theme.colors.fourth-font
             : Theme.colors.border-col;
-        transform-scale: header-area.pressed ? 0.975 : 1.0;
+        transform-scale: header-area.pressed ? 0.985 : 1.0;
 
         animate background, border-color, transform-scale {
-            duration: 100ms;
-            easing: ease;
+            duration: Theme.animation-speed;
+            easing: Theme.easing;
         }
 
         HorizontalLayout {
@@ -1012,8 +1289,8 @@ export component Dropdown inherits Rectangle {
                 transform-rotation: root.expanded ? 180deg : 0deg;
 
                 animate transform-rotation {
-                    duration: 100ms;
-                    easing: ease;
+                    duration: Theme.animation-speed;
+                    easing: Theme.easing;
                 }
             }
         }
@@ -1114,7 +1391,7 @@ component ThemeRow inherits Rectangle {
         text: root.text;
         color: Theme.colors.primary-font;
         font-size: 13px;
-        font-weight: 400;
+        font-weight: 500;
         vertical-alignment: center;
         horizontal-stretch: 1;
         overflow: elide;
@@ -1227,6 +1504,7 @@ export component ThemeSelector inherits Rectangle {
                         height: root.row-height;
                         text: t.name;
                         selected: Theme.mode == i;
+
                         clicked => {
                             Theme.set-mode(i);
                             fs.focus();
@@ -1257,17 +1535,21 @@ export component Slider inherits Rectangle {
     in property <brush> knob-color: Theme.colors.primary-font;
     in property <length> track-height: 3px;
     in property <length> knob-size: 12px;
+    in property <length> touch-height: 28px;
 
     in property <float> scroll-step: (maximum - minimum) / 1000;
+
+    out property <bool> pressed: touch.pressed;
 
     callback changed(float);
     callback released(float);
 
-    height: knob-size;
+    height: max(root.knob-size, root.touch-height);
 
     private property <float> ratio: (maximum - minimum) == 0
         ? 0 : (value - minimum) / (maximum - minimum);
     private property <length> usable: root.width - root.knob-size;
+    private property <bool> knob-visible: touch.has-hover || touch.pressed;
 
     function set-from-x(x: length) {
         if (root.usable <= 0) { return; }
@@ -1282,6 +1564,7 @@ export component Slider inherits Rectangle {
             root.value + (delta / 1px) * root.scroll-step,
             root.minimum, root.maximum);
         root.changed(root.value);
+        root.released(root.value);
     }
 
     Rectangle {
@@ -1304,13 +1587,18 @@ export component Slider inherits Rectangle {
         x: root.usable * root.ratio;
         y: (parent.height - self.height) / 2;
         width: root.knob-size;
-        height: root.knob-size;
-        border-radius: self.width / 2;
+        height: root.knob-visible ? root.knob-size : 0px;
+        border-radius: self.height / 2;
         background: root.knob-color;
         opacity: root.enabled ? 1.0 : 0.5;
+
+        animate height {
+            duration: 120ms;
+            easing: ease-in-out;
+        }
     }
 
-    TouchArea {
+    touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
 
@@ -1319,6 +1607,7 @@ export component Slider inherits Rectangle {
                 if (e.kind == PointerEventKind.down) {
                     root.set-from-x(self.mouse-x);
                 } else if (e.kind == PointerEventKind.up) {
+                    root.set-from-x(self.mouse-x);
                     root.released(root.value);
                 }
             }
@@ -1341,7 +1630,6 @@ export component Slider inherits Rectangle {
         }
     }
 }
-
 
 export component Breadcrumb inherits HorizontalLayout {
 
@@ -1388,12 +1676,17 @@ export component Breadcrumb inherits HorizontalLayout {
                 z: 1;
                 y: parent.height - 2px;
                 width: 128px;
-                height: 256px;
+                height: open ? 256px : 0px;
                 border-radius: 12px;
-                border-corner-shape: superellipse(Theme.config.edges-shape);
+                corner-shape: CornerShape.squircle;
                 background: Theme.colors.primary-col;
                 border-width: 1px;
                 border-color: Theme.colors.third-col;
+
+                animate height {
+                    duration: Theme.animation-speed * 12;
+                    easing: Theme.easing;
+                }
 
                 menu-ta := TouchArea {
                     mouse-cursor: pointer;
@@ -1407,8 +1700,9 @@ export component SearchBar inherits Rectangle {
     background: h.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
     height: 32px;
     border-radius: 24px;
-    border-corner-shape: superellipse(Theme.config.edges-shape);
+    corner-shape: CornerShape.squircle;
     transform-scale: h.pressed ? 0.98 : 1.0;
+
     callback search();
 
     HorizontalLayout {
@@ -1441,6 +1735,53 @@ export component SearchBar inherits Rectangle {
     }
 }
 
+export component SearchBarWithInput inherits Rectangle {
+    // background: ta.pressed ? red : ta.has-hover ? Theme.colors.fourth-col : Theme.colors.third-col;
+    background: white;
+    height: 32px;
+    border-radius: 24px;
+    corner-shape: CornerShape.squircle;
+    // transform-scale: ta.pressed ? 0.9 : 1.0;
+
+    callback edited(string);
+    callback cancelled();
+    callback accepted(string);
+
+    property <string> needle;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        spacing: 8px;
+        cross-axis-alignment: center;
+
+        SvgIcon {
+            source: Icons.search;
+            fg: Theme.colors.third-font;
+            size: 16px;
+        }
+
+        Rectangle {
+            Text {
+                x: 0;
+                y: (parent.height - self.height) / 2 + 1px;
+                text: @tr("Search...");
+                font-size: 0.9rem;
+                color: Theme.colors.secondary-font;
+            }
+
+            le := PlainLineEdit {
+                // input-text <=> root.needle;
+                placeholder-text: @tr("Search...");
+                edited(needle) => {
+                    root.edited(needle);
+                }
+                rejected => { root.cancelled(); }
+                accepted => { root.accepted(needle); }
+            }
+        }
+    }
+}
+
 export component ContextMenuItem inherits Rectangle {
     in property <string> text;
     in property <image> icon;
@@ -1448,7 +1789,7 @@ export component ContextMenuItem inherits Rectangle {
 
     height: 30px;
     border-radius: 24px;
-    border-corner-shape: superellipse(Theme.config.edges-shape);
+    corner-shape: CornerShape.squircle;
     background: item-area.has-hover ? Theme.colors.fourth-col : transparent;
 
     HorizontalLayout {
@@ -1510,7 +1851,7 @@ export component ContextMenu inherits Rectangle {
             background: Theme.colors.primary-col;
             border-radius: 24px;
             border-width: 1px;
-            border-corner-shape: superellipse(Theme.config.edges-shape);
+            corner-shape: CornerShape.squircle;
             border-color: Theme.colors.fourth-col;
             drop-shadow-blur: 16px;
             drop-shadow-color: #00000040;
@@ -1526,19 +1867,21 @@ export component ContextMenu inherits Rectangle {
 }
 
 export component MenuRow inherits Rectangle {
-
     in property <string> text;
     in property <image> icon;
+    in property <angle> icon-rot;
+    in property <brush> colorize: Theme.colors.primary-font;
 
     callback clicked;
 
     height: 28px;
 
     Rectangle {
-        background: ta.pressed ? Theme.colors.fourth-col :
-            ta.has-hover ? Theme.colors.third-col : transparent;
+        background: ta.pressed ? Theme.colors.fourth-col.with-alpha(0.5) :
+            ta.has-hover ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+        backdrop-blur: 3px;
         border-radius: 12px;
-        border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
         transform-scale: ta.pressed ? 0.9875 : 1.0;
 
         HorizontalLayout {
@@ -1546,24 +1889,29 @@ export component MenuRow inherits Rectangle {
             padding-right: 10px;
             spacing: 8px;
             cross-axis-alignment: center;
-            alignment: space-between;
+            alignment: start;
+
+            if root.icon.width != 0: Image {
+                source: icon;
+                width: 14px;
+                height: 14px;
+                colorize: root.colorize;
+                transform-rotation: root.icon-rot;
+            }
 
             Text {
                 text: root.text;
                 font-size: 0.9rem;
                 color: Theme.colors.primary-font;
                 vertical-alignment: center;
-            }
-
-            if root.icon.width != 0: Image {
-                source: icon;
-                width: 16px;
-                height: 16px;
+                font-weight: 400;
+                letter-spacing: -0.1px;
             }
         }
     }
 
     ta := TouchArea {
+        mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
 }
@@ -1576,4 +1924,37 @@ export component MenuSeparator inherits Rectangle {
         height: 1px;
         background: Theme.colors.border-col;
     }
+}
+
+export component NectanAppFrame inherits Rectangle {
+    in property <bool> maximized;
+    background: Theme.colors.primary-col.with-alpha(Theme.config.window-backpane-transparency);
+    border-color: Theme.colors.fourth-col;
+    border-width: root.maximized ? 0 : 1px;
+    border-radius: Theme.config.round-edges ? root.maximized ? 0 : 24px : 0;
+    corner-shape: CornerShape.squircle;
+    clip: true;
+
+    @children
+}
+
+export component GlassPanel inherits Rectangle {
+    in property <bool> shown: true;
+    callback activity();
+
+    border-radius: 24px;
+    corner-shape: CornerShape.squircle;
+    backdrop-blur: 3px;
+    background: #0007;
+    border-color: #fff4;
+    border-width: 1px;
+    opacity: root.shown ? 1.0 : 0.0;
+    visible: self.opacity > 0.01;
+    animate opacity { duration: 250ms; }
+
+    TouchArea {
+        pointer-event(e) => { root.activity(); }
+    }
+
+    @children
 }

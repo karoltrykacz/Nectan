@@ -9,8 +9,8 @@ use resvg::{
     usvg,
 };
 use slint::{
-    ComponentHandle, Global, Image, Rgba8Pixel, SharedPixelBuffer,
-    Weak,
+    Color, ComponentHandle, Global, Image, Rgba8Pixel,
+    SharedPixelBuffer, Weak,
 };
 use std::{
     cell::RefCell,
@@ -22,9 +22,14 @@ use std::{
     },
     thread,
 };
+use tracing::info;
 
 use crate::properties::{handle_properties, open_properties};
-use crate::{ImageViewer, PropertiesBridge, theme::init_theme};
+use crate::state::ui;
+use crate::{
+    ImageViewer, ProbedColor, PropertiesBridge, theme::init_theme,
+};
+use clipboard_rs::Clipboard;
 
 thread_local! {
     static IMAGE_WINDOW: RefCell<Option<ImageViewer>> = RefCell::new(None);
@@ -510,6 +515,41 @@ fn render_detail(
     }
 }
 
+fn probe_pixel(nx: f32, ny: f32, turns: i32) -> Option<ProbedColor> {
+    STATE.with_borrow(|s| {
+        let img = s.base.as_ref().or(s.preview.as_ref())?;
+        let (w, h) = img.dimensions();
+        let turns = turns.rem_euclid(4);
+        let (rw, rh) = if turns % 2 == 1 { (h, w) } else { (w, h) };
+        let rx = (nx.clamp(0.0, 1.0) * rw as f32)
+            .floor()
+            .clamp(0.0, rw as f32 - 1.0) as u32;
+        let ry = (ny.clamp(0.0, 1.0) * rh as f32)
+            .floor()
+            .clamp(0.0, rh as f32 - 1.0) as u32;
+        let (fx, fy) = match turns {
+            1 => (ry, h - 1 - rx),
+            2 => (w - 1 - rx, h - 1 - ry),
+            3 => (w - 1 - ry, rx),
+            _ => (rx, ry),
+        };
+        let bx = if s.flip_h { w - 1 - fx } else { fx };
+        let by = if s.flip_v { h - 1 - fy } else { fy };
+        let p = img.get_pixel(bx, by);
+        let (r, g, b, a) = (p[0], p[1], p[2], p[3]);
+        let hex = if a < 255 {
+            format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+        } else {
+            format!("#{r:02x}{g:02x}{b:02x}")
+        };
+        info!("Probed {hex}");
+        Some(ProbedColor {
+            color: Color::from_rgb_u8(r, g, b),
+            hex: hex.into(),
+        })
+    })
+}
+
 fn read_params(
     w: &ImageViewer,
     flip_h: bool,
@@ -700,7 +740,16 @@ fn run_edits(w: &ImageViewer) {
     });
 }
 
-fn load_current(weak: &Weak<ImageViewer>) {
+fn fit_window_to_image(w: &ImageViewer, img_w: u32, img_h: u32) {
+    let iw = img_w.max(1) as f32;
+    let ih = img_h.max(1) as f32;
+    let scale = (1080.0 / iw).min(720.0 / ih).min(1.0);
+    let width = (iw * scale).round().max(400.0);
+    let height = (ih * scale).round().max(300.0);
+    w.window().set_size(slint::LogicalSize::new(width, height));
+}
+
+fn load_current(weak: &Weak<ImageViewer>, fit: bool) {
     let generation =
         LOAD_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let Some(path) =
@@ -733,7 +782,11 @@ fn load_current(weak: &Weak<ImageViewer>) {
                     Ok((tree, preview, buf)) => {
                         install_vector(&w, tree, preview);
                         w.set_can_edit(false);
+                        let (iw, ih) = (buf.width(), buf.height());
                         w.set_image(Image::from_rgba8(buf));
+                        if fit {
+                            fit_window_to_image(&w, iw, ih);
+                        }
                     }
                     Err(e) => eprintln!(
                         "failed to load {}: {e}",
@@ -766,7 +819,11 @@ fn load_current(weak: &Weak<ImageViewer>) {
                 Ok((base, preview, buf)) => {
                     install_base(&w, base, preview);
                     w.set_can_edit(true);
+                    let (iw, ih) = (buf.width(), buf.height());
                     w.set_image(Image::from_rgba8(buf));
+                    if fit {
+                        fit_window_to_image(&w, iw, ih);
+                    }
                 }
                 Err(e) => eprintln!(
                     "failed to load {}: {e}",
@@ -849,7 +906,7 @@ fn navigate(weak: &Weak<ImageViewer>, delta: isize) {
     reset_edit_values(&w);
     w.set_detail_valid(false);
     sync_nav(&w);
-    load_current(weak);
+    load_current(weak, false);
 
     if PropertiesBridge::get(&w).get_open() {
         if let Some(p) =
@@ -882,6 +939,16 @@ fn wire(w: &ImageViewer) {
     w.on_detail_requested(move |nx, ny, nw, nh, turns, scale| {
         if let Some(w) = weak.upgrade() {
             request_detail(&w, nx, ny, nw, nh, turns, scale);
+        }
+    });
+
+    w.on_probe_color(|nx, ny, turns| {
+        probe_pixel(nx, ny, turns).unwrap_or_default()
+    });
+
+    w.on_copy_probed_color(|hex| {
+        if let Err(e) = ui().clipboard().set_text(hex.to_string()) {
+            eprintln!("failed to copy color: {e}");
         }
     });
 
@@ -1049,7 +1116,7 @@ pub fn image_viewer(
 
     sync_nav(&w);
     wire(&w);
-    load_current(&weak);
+    load_current(&weak, true);
     w.show()?;
 
     IMAGE_WINDOW.with(|slot| *slot.borrow_mut() = Some(w));

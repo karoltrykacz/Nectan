@@ -9,14 +9,18 @@ import {
     Switch,
     GlassPanel,
     GeneralModal,
+    MenuRow,
 } from "../../shared/elements.slint";
 import { WindowBridge } from "../../shared/window.slint";
 import { Icons } from "../../shared/icons.slint";
+import { MenuPopup } from "sidebar.slint";
 
 export enum ViewMode {
     contain,
     fill,
 }
+
+export struct ProbedColor { color: color, hex: string }
 
 component EditSlider inherits VerticalLayout {
     in property <string> label;
@@ -142,6 +146,12 @@ export component ImageViewer inherits Window {
     in-out property <float> crop-w: 1;
     in-out property <float> crop-h: 1;
 
+    in-out property <bool> picking-color: false;
+    property <bool> probe-over: false;
+    property <length> probe-x: 0px;
+    property <length> probe-y: 0px;
+    property <ProbedColor> probed: { color: transparent, hex: "" };
+
     in-out property <bool> editing: false;
     changed editing => {
         if (root.editing) {
@@ -175,6 +185,8 @@ export component ImageViewer inherits Window {
     callback save-requested();
     callback edit-cancelled();
     callback detail-requested(float, float, float, float, int, float);
+    pure callback probe-color(float, float, int) -> ProbedColor;
+    callback copy-probed-color(string);
 
     property <angle> rot: root.turns * 90deg;
     animate rot {
@@ -276,6 +288,28 @@ export component ImageViewer inherits Window {
     function close-tools() {
         root.cropping = false;
         root.editing = false;
+        root.picking-color = false;
+    }
+
+    function update-probe(mx: length, my: length) {
+        if (root.box-w <= 0px || root.box-h <= 0px) {
+            return;
+        }
+        root.probe-x = mx;
+        root.probe-y = my;
+        let nx = (mx - (viewport.width / 2 + root.eff-pan-x)) / root.box-w + 0.5;
+        let ny = (my - (viewport.height / 2 + root.eff-pan-y)) / root.box-h + 0.5;
+        root.probe-over = nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1;
+        if (root.probe-over) {
+            root.probed = root.probe-color(nx, ny, root.turns);
+        }
+    }
+
+    function commit-probe() {
+        if (root.probe-over && root.probed.hex != "") {
+            root.copy-probed-color(root.probed.hex);
+        }
+        root.picking-color = false;
     }
 
     function go-next() {
@@ -577,11 +611,21 @@ export component ImageViewer inherits Window {
 
                 TouchArea {
                     enabled: !root.cropping;
-                    mouse-cursor: root.z-held ? MouseCursor.ns-resize
+                    mouse-cursor: root.picking-color ? MouseCursor.crosshair
+                        : root.z-held ? MouseCursor.ns-resize
                         : (self.pressed ? MouseCursor.grabbing : MouseCursor.grab);
 
                     pointer-event(e) => {
                         root.poke();
+                        if (root.picking-color) {
+                            if (e.kind == PointerEventKind.move) {
+                                root.update-probe(self.mouse-x, self.mouse-y);
+                            }
+                            if (e.button == PointerEventButton.left && e.kind == PointerEventKind.up) {
+                                root.commit-probe();
+                            }
+                            return;
+                        }
                         if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
                             root.start-pan-x = root.eff-pan-x;
                             root.start-pan-y = root.eff-pan-y;
@@ -610,7 +654,9 @@ export component ImageViewer inherits Window {
                     }
 
                     double-clicked => {
-                        root.reset-view();
+                        if (!root.picking-color) {
+                            root.reset-view();
+                        }
                     }
                     scroll-event(e) => {
                         if (PropertiesBridge.open) {
@@ -619,6 +665,40 @@ export component ImageViewer inherits Window {
                         root.poke();
                         root.zoom-at(1.0 + e.delta-y / 1200px, self.mouse-x - viewport.width / 2, self.mouse-y - viewport.height / 2);
                         return accept;
+                    }
+                }
+
+                if root.picking-color && root.probe-over && root.probed.hex != "": Rectangle {
+                    x: Math.min(root.probe-x + 16px, viewport.width - self.width - 8px);
+                    y: Math.min(root.probe-y + 20px, viewport.height - self.height - 8px);
+                    width: probe-layout.preferred-width;
+                    height: probe-layout.preferred-height;
+                    background: #000c;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: #fff3;
+
+                    probe-layout := HorizontalLayout {
+                        padding: 8px;
+                        spacing: 8px;
+                        cross-axis-alignment: center;
+
+                        Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 4px;
+                            background: root.probed.color;
+                            border-width: 1px;
+                            border-color: #fff5;
+                        }
+
+                        Text {
+                            text: root.probed.hex;
+                            color: #f1f1f1;
+                            font-size: 0.85rem;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
                     }
                 }
 
@@ -843,7 +923,7 @@ export component ImageViewer inherits Window {
                     IconButton {
                         icon: Icons.rotate-left;
                         icon-size: 15px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => { root.turns -= 1; }
                     }
@@ -851,31 +931,15 @@ export component ImageViewer inherits Window {
                     IconButton {
                         icon: Icons.rotate-right;
                         icon-size: 15px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => { root.turns += 1; }
-                    }
-
-                    if root.can-edit: IconButton {
-                        icon: Icons.crop;
-                        icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: #f1f1f1;
-                        clicked => { root.toggle-crop(); }
-                    }
-
-                    if root.can-edit: IconButton {
-                        icon: Icons.edit;
-                        icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: #f1f1f1;
-                        clicked => { root.editing = !root.editing; }
                     }
 
                     IconButton {
                         icon: Icons.info;
                         icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => { root.info-requested(); }
                     }
@@ -883,7 +947,7 @@ export component ImageViewer inherits Window {
                     IconButton {
                         icon: Icons.zoom-out;
                         icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => { root.zoom-at(1 / 1.25, 0px, 0px); }
                     }
@@ -891,7 +955,7 @@ export component ImageViewer inherits Window {
                     IconButton {
                         icon: Icons.zoom-in;
                         icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => { root.zoom-at(1.25, 0px, 0px); }
                     }
@@ -933,21 +997,87 @@ export component ImageViewer inherits Window {
                         }
                     }
 
-                    IconButton {
-                        icon: Icons.print;
-                        icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
-                        colorize: #f1f1f1;
-                        clicked => { root.print-requested(); }
-                    }
+                    // IconButton {
+                    //     icon: Icons.print;
+                    //     icon-size: 16px;
+                    //     inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                    //     colorize: #f1f1f1;
+                    //     clicked => { root.print-requested(); }
+                    // }
+                    // if root.can-edit: IconButton {
+                    //     icon: Icons.crop;
+                    //     icon-size: 16px;
+                    //     inner-bg: self.hovered ? #fff2 : transparent;
+                    //     colorize: #f1f1f1;
+                    //     clicked => { root.toggle-crop(); }
+                    // }
+                    //
+                    // if root.can-edit: IconButton {
+                    //     icon: Icons.edit;
+                    //     icon-size: 16px;
+                    //     inner-bg: self.hovered ? #fff2 : transparent;
+                    //     colorize: #f1f1f1;
+                    //     clicked => { root.editing = !root.editing; }
+                    // }
+
 
                     IconButton {
                         icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
                         icon-size: 16px;
-                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        inner-bg: self.hovered ? #fff2 : transparent;
                         colorize: #f1f1f1;
                         clicked => {
                             root.full-screen = !root.full-screen;
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.more-horizontal;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? #fff2 : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { menu-popup.show(); }
+
+                        menu-popup := MenuPopup {
+                            width: parent.width;
+                            height: parent.height;
+                            menu-width: 208px;
+
+                            MenuRow {
+                                text: @tr("Pick color");
+                                icon: Icons.pipette;
+                                clicked => {
+                                    root.editing = false;
+                                    root.cropping = false;
+                                    root.picking-color = true;
+                                    root.poke();
+                                    menu-popup.close();
+                                }
+                            }
+
+                            MenuRow {
+                                text: @tr("Print");
+                                icon: Icons.print;
+                                clicked => {
+                                    menu-popup.close();
+                                }
+                            }
+
+                            MenuRow {
+                                text: @tr("Edit");
+                                icon: Icons.edit;
+                                clicked => {
+                                    menu-popup.close();
+                                }
+                            }
+
+                            MenuRow {
+                                text: @tr("Crop");
+                                icon: Icons.crop;
+                                clicked => {
+                                    menu-popup.close();
+                                }
+                            }
                         }
                     }
                 }

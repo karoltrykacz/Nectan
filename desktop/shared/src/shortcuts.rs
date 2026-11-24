@@ -26,6 +26,7 @@ const DEFAULT_SHORTCUTS: &[(&str, &[&str], &[&str])] = &[
         &["Control", "Shift", "F"],
     ),
     ("copy", &["Y"], &["Control", "C"]),
+    ("paste", &["P"], &["Control", "V"]),
     ("next", &["N"], &[]),
     ("previous", &["Shift", "N"], &[]),
     ("cut", &["D"], &["Control", "X"]),
@@ -42,6 +43,7 @@ const DEFAULT_SHORTCUTS: &[(&str, &[&str], &[&str])] = &[
     ("grid-view", &["Control", "Digit2"], &[]),
     ("zoom-out", &["Control", "HyphenMinus"], &[]),
     ("zoom-in", &["Control", "Plus"], &[]),
+    ("command", &["Control", "K"], &["Control", "P"]),
 ];
 
 pub fn default_shortcut(id: &str) -> StoredShortcut {

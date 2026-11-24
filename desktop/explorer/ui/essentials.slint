@@ -1,10 +1,18 @@
-import { MenuRow, SvgIcon } from "../../shared/elements.slint";
+import { MenuRow, SvgIcon, MenuSeparator } from "../../shared/elements.slint";
 import { ColorPicker } from "../../shared/color_picker.slint";
 import { Theme } from "../../shared/theme.slint";
 import { Icons } from "../../shared/icons.slint";
 import { HoverBridge } from "../../shared/hover.slint";
 
-export struct EssentialTileData { id: int, slot: int, emoji: string, icon: image, color: brush, font_color: color }
+export struct EssentialTileData {
+    id: int,
+    slot: int,
+    emoji: string,
+    icon: image,
+    color: brush,
+    font_color: color,
+    custom_color: bool
+}
 
 export global EssentialsBridge {
     in-out property <[EssentialTileData]> essentials-data;
@@ -28,6 +36,8 @@ export global EssentialsBridge {
     callback change-icon(int);
     callback set-color(int, [color]);
     callback reset-color(int);
+
+    callback reset-all();
 
     pure callback colors-of(int) -> [color];
     callback preview-color(int, [color]);
@@ -54,8 +64,7 @@ component EssentialMenu inherits Rectangle {
         x: root.pop-x;
         y: root.pop-y;
         width: root.picking-color ? 512px : 256px;
-        height: root.picking-color ? 256px : 96px;
-
+        height: root.picking-color ? 256px : 190px;
         close-policy: close-on-click-outside;
 
         Rectangle {
@@ -72,20 +81,44 @@ component EssentialMenu inherits Rectangle {
                 padding: 6px;
 
                 MenuRow {
+                    text: @tr("Add new");
+                    icon: Icons.plus;
+                    clicked => {}
+                }
+
+                MenuRow {
                     text: @tr("Remove");
+                    icon: Icons.plus;
+                    icon-rot: 45deg;
                     clicked => { EssentialsBridge.remove(root.menu-id); popup.close(); }
                 }
 
                 MenuRow {
                     text: @tr("Change icon");
+                    icon: Icons.edit;
                     clicked => { EssentialsBridge.change-icon(root.menu-id); popup.close(); }
                 }
 
                 MenuRow {
                     text: @tr("Change color");
+                    icon: Icons.palette;
                     clicked => {
                         root.picking-color = true;
                     }
+                }
+
+                MenuSeparator { }
+
+                MenuRow {
+                    text: @tr("Reset");
+                    icon: Icons.rotate-left;
+                    clicked => { EssentialsBridge.reset-color(root.menu-id); popup.close(); }
+                }
+
+                MenuRow {
+                    text: @tr("Reset all");
+                    icon: Icons.refresh;
+                    clicked => { EssentialsBridge.reset-all(); popup.close(); }
                 }
             }
 
@@ -216,7 +249,8 @@ export component Essentials {
     }
 
     for t in root.tiles: Rectangle {
-        background: hovered ? t.color.brighter(0.25) : t.color.with-alpha(Theme.config.transparency);
+        property <brush> tile-color: t.custom_color ? t.color : Theme.colors.third-col;
+        background: hovered ? tile-color.brighter(0.25) : tile-color.with-alpha(Theme.config.transparency);
         backdrop-blur: Theme.blur;
         x: grid-col * (root.cell-w + root.gap) + off-x;
         y: grid-row * (root.cell-h + root.gap) + off-y;

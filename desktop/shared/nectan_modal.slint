@@ -1,12 +1,12 @@
 import { WindowBridge } from "window.slint";
 import { GeneralModal } from "elements.slint";
 import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
 
 export component NectanModal inherits GeneralModal {
 
     on-close => { WindowBridge.nectan-modal-open = false; }
 
-    init => { root.focus(); }
     TouchArea {
         clicked => { WindowBridge.nectan-modal-open = false; }
     }
@@ -26,7 +26,7 @@ export component NectanModal inherits GeneralModal {
             alignment: center;
 
             Image {
-                source: @image-url("icons/tray.png");
+                source: Icons.nectan;
                 width: 96px;
                 height: 96px;
             }

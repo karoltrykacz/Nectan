@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap, error::Error, hash::Hash, sync::RwLock,
-};
+use std::{collections::HashMap, error::Error, sync::RwLock};
 use utils::storage_utils::{DataWriter, JsonSerializer};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -14,6 +12,11 @@ pub struct Appearance {
     pub round_window_edges: bool,
     pub native_topbar: bool,
     pub topbar_always_on: bool,
+    pub sidebar: bool,
+    pub maximized: bool,
+    pub fullscreen: bool,
+    pub window_height: f32,
+    pub window_width: f32,
 }
 
 impl Default for Appearance {
@@ -26,6 +29,11 @@ impl Default for Appearance {
             round_window_edges: true,
             native_topbar: false,
             topbar_always_on: false,
+            maximized: false,
+            fullscreen: false,
+            sidebar: true,
+            window_height: 720.0,
+            window_width: 1080.0,
         }
     }
 }
@@ -100,12 +108,18 @@ impl CommonStorage {
         *self.inner.write().unwrap() = new;
     }
 
-    pub fn set_appearance(&self, new: Appearance) {
-        self.update(|s| s.appearance = new);
+    pub fn set_appearance(
+        &self,
+        new: Appearance,
+    ) -> Result<(), Box<dyn Error>> {
+        self.update(|s| s.appearance = new)
     }
 
-    pub fn set_lang(&self, new: String) {
-        self.update(|s| s.language = new);
+    pub fn set_lang(
+        &self,
+        new: String,
+    ) -> Result<(), Box<dyn Error>> {
+        self.update(|s| s.language = new)
     }
 
     pub fn shortcuts(&self) -> HashMap<String, StoredShortcut> {

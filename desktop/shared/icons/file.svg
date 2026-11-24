@@ -1,1 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#000000" viewBox="0 0 256 256"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"></path></svg>
+<svg width="60" height="80" viewBox="0 0 60 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_63_1692)">
+<path d="M0 8C0 3.58172 3.58172 0 8 0H35L60 25V72C60 76.4183 56.4183 80 52 80H8C3.58172 80 0 76.4183 0 72V8Z" fill="white" style="fill:white;fill-opacity:1;"/>
+<mask id="stroke0_63_1692" fill="white">
+<path d="M0 8C0 3.58172 3.58172 0 8 0H35L60 25V72C60 76.4183 56.4183 80 52 80H8C3.58172 80 0 76.4183 0 72V8Z"/>
+</mask>
+<path d="M35 0H8C3.58172 0 0 3.58172 0 8V72C0 76.4183 3.58172 80 8 80H52C56.4183 80 60 76.4183 60 72V25L35 0Z" stroke-width="6" stroke="#C8D2E1" style="stroke:#C8D2E1;stroke:color(display-p3 0.7836 0.8231 0.8824);stroke-opacity:1;" mask="url(#stroke0_63_1692)"/>
+<path d="M58 26H40C36.6863 26 34 23.3137 34 20V2" stroke-width="3" stroke-linecap="round" stroke="#C8D2E1" style="stroke:#C8D2E1;stroke:color(display-p3 0.7836 0.8231 0.8824);stroke-opacity:1;"/>
+</g>
+<defs>
+<clipPath id="clip0_63_1692">
+<rect width="60" height="80" fill="white" style="fill:white;fill-opacity:1;"/>
+</clipPath>
+</defs>
+</svg>

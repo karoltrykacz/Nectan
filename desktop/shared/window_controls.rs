@@ -1,5 +1,7 @@
 use crate::App;
 use crate::WindowBridge;
+use crate::state::ui;
+use clipboard_rs::Clipboard;
 use slint::{ComponentHandle, Global, Weak};
 
 pub fn handle_window_controls(w: &App) {
@@ -25,6 +27,10 @@ pub fn handle_window_controls(w: &App) {
         if let Some(w) = w_weak.upgrade() {
             let _ = w.hide();
         }
+    });
+
+    bridge.on_copy_str(move |text| {
+        let _ = ui().clipboard().set_text(text.to_string());
     });
 }
 

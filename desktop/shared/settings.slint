@@ -29,7 +29,7 @@ export component IconsEditor inherits GeneralModal {
         drop-shadow-color: #00000099;
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
-        // border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
         border-radius: 12px;
         border-width: 1px;
         border-color: Theme.colors.border-col;
@@ -67,13 +67,9 @@ export component IconsEditor inherits GeneralModal {
                 width: 320px;
                 alignment: center;
                 for icon[i] in icons: IconButton {
-                    width: 28px;
-                    height: 28px;
-                    SvgIcon {
-                        source: icon;
-                        fg: parent.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
-                        size: 18px;
-                    }
+                    icon: icon;
+                    fg: self.hovered ? Theme.colors.primary-font : Theme.colors.third-font;
+                    icon-size: 18px;
                 }
             }
 
@@ -241,7 +237,7 @@ export component FontModal inherits GeneralModal {
         drop-shadow-blur: 28px;
         background: Theme.colors.primary-col;
         border-radius: 24px;
-        // border-corner-shape: superellipse(Theme.config.edges-shape);
+        corner-shape: CornerShape.squircle;
         border-width: 1px;
         border-color: Theme.colors.border-col;
         clip: true;
