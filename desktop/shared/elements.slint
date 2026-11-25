@@ -1251,7 +1251,7 @@ export component Dropdown inherits Rectangle {
         y: 0;
         height: 32px;
         width: parent.width;
-        border-radius: 24px;
+        border-radius: 20px;
         corner-shape: CornerShape.squircle;
         background: header-area.has-hover
             ? Theme.colors.fourth-col
@@ -1309,8 +1309,8 @@ export component Dropdown inherits Rectangle {
         y: 44px;
         width: parent.width;
         height: root.list-height;
-
-        border-radius: 8px;
+        border-radius: 20px;
+        corner-shape: CornerShape.squircle;
         background: Theme.colors.third-col;
         border-width: 1px;
         border-color: Theme.colors.border-col;
@@ -1370,6 +1370,16 @@ export component LangSelection inherits Dropdown {
     selected(idx) => {
         WindowBridge.selected-language-idx = idx;
         WindowBridge.select-language(WindowBridge.languages[idx].code);
+    }
+}
+
+export component ThemeSelection inherits Dropdown {
+    width: 196px;
+    options: Theme.theme-options;
+    current: Theme.mode;
+
+    selected(idx) => {
+        Theme.set-mode(idx);
     }
 }
 
@@ -1957,4 +1967,53 @@ export component GlassPanel inherits Rectangle {
     }
 
     @children
+}
+
+export component StarRating inherits Rectangle {
+    in-out property <int> rating: 0;      // Wybrana ocena (0–5)
+    in property <int> max-stars: 5;       // Liczba gwiazdek
+    out property <int> hovered-idx: -1;   // Indeks gwiazdki pod kursorem
+    callback rating-changed(int);
+
+    property <length> star-size: 18px;
+    property <length> star-spacing: 4px;
+    property <length> step: star-size + star-spacing;
+
+    width: (max-stars * step) - star-spacing;
+    height: star-size;
+
+    HorizontalLayout {
+        spacing: root.star-spacing;
+        alignment: start;
+
+        for i in root.max-stars: Image {
+            property <bool> is-filled: stars.has-hover ? (i <= root.hovered-idx) : (i < root.rating);
+            property <bool> is-pressed-star: stars.pressed && (i == root.hovered-idx);
+
+            source: self.is-filled ? Icons.star-filled : Icons.star;
+            width: root.star-size;
+            height: root.star-size;
+            colorize: self.is-filled ? #f9b105 : #ffffff33;
+
+            transform-scale: self.is-pressed-star ? 0.85 : 1.0;
+
+            animate transform-scale {
+                duration: 100ms;
+                easing: ease-out;
+            }
+        }
+    }
+
+    stars := TouchArea {
+        mouse-cursor: pointer;
+
+        pointer-event(event) => {
+            root.hovered-idx = clamp(floor(self.mouse-x / root.step), 0, root.max-stars - 1);
+        }
+
+        clicked => {
+            root.rating = root.hovered-idx + 1;
+            root.rating-changed(root.rating);
+        }
+    }
 }

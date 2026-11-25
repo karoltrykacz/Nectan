@@ -5,6 +5,7 @@ import "./fonts/Rubik-Light.ttf";
 import "./fonts/Rubik-Medium.ttf";
 import "./fonts/Rubik-Regular.ttf";
 import "./fonts/Rubik-SemiBold.ttf";
+import { DropDownOption } from "./dropdown.slint";
 
 export struct ThemeColors {
     primary-col: brush,
@@ -40,6 +41,7 @@ export struct ThemeConfig {
 export global Theme {
     in-out property <int> mode: 1;
     in-out property <bool> theme-selector;
+    in-out property <[DropDownOption]> theme-options;
 
     in-out property <ThemeConfig> config;
 
@@ -149,6 +151,22 @@ export global Theme {
             },
         },
         {
+            code: "solarized-light",
+            name: "Solarized Light",
+            colors: {
+                primary-col: #fdf6e3,
+                secondary-col: #eee8d5,
+                third-col: #c8bfa0,
+                fourth-col: #beb391,
+                primary-font: #002b36,
+                secondary-font: #073642,
+                third-font: #0d4350,
+                fourth-font: #1a5563,
+                hover-col: #b5890022,
+                border-col: #1a5563,
+            },
+        },
+        {
             code: "gruvbox",
             name: "Gruvbox",
             colors: {
@@ -235,13 +253,45 @@ export global Theme {
                 primary-col: #0f4503,
                 secondary-col: #1a610b,
                 third-col: #247a11,
-                fourth-col: #379c21,
+                fourth-col: #2c8718,
                 primary-font: #f7f7b7,
                 secondary-font: #e3deaf,
                 third-font: #f0e8c2,
                 fourth-font: #ccb889,
                 hover-col: #2da318,
                 border-col: #4cbf37,
+            },
+        },
+        {
+            code: "caramel",
+            name: "Caramel?",
+            colors: {
+                primary-col: #754d07,
+                secondary-col:#8a5d11,
+                third-col: #96691a,
+                fourth-col: #ab7a26,
+                primary-font: #f1f1f1,
+                secondary-font: #e1e1e1,
+                third-font: #d1d1d1,
+                fourth-font: #c1c1c1,
+                hover-col: #9c6c1a,
+                border-col: #9e6b15,
+            },
+        },
+        {
+            code: "earth",
+            name: "Earth",
+            colors: {
+                primary-col: #754d07,
+                secondary-col: #0d6c13,
+                third-col: #098b18,
+                fourth-col: #0a9a13,
+                primary-font: #f1f1f1,
+                secondary-font: #e1e1e1,
+                third-font: #d1d1d1,
+                fourth-font: #c1c1c1,
+                hover-col: #45772a,
+                border-col: #9e6b15,
             },
         },
         {
@@ -304,7 +354,7 @@ export component ThemeAnimator inherits Rectangle {
 
     animate p-primary-col, p-secondary-col, p-third-col, p-fourth-col, p-primary-font, p-secondary-font, p-third-font, p-fourth-font, p-hover-col, p-border-col {
         duration: 250ms;
-        easing: ease-in-out;
+        easing: Theme.easing;
     }
 
     changed p-primary-col => { Theme.a-primary-col = root.p-primary-col; }
