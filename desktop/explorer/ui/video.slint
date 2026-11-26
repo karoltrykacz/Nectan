@@ -1,4 +1,3 @@
-
 import { Theme, ThemeAnimator } from "../../shared/theme.slint";
 import {
     NectanAppFrame,
@@ -6,9 +5,83 @@ import {
     Slider,
     IconButton,
     LinkButton,
+    PrimaryButton,
+    MenuPopup,
+    MenuRow,
+    StarRating,
+    ShortcutRow,
+    ShortcutsModal,
 } from "../../shared/elements.slint";
 import { WindowBridge } from "../../shared/window.slint";
 import { Icons } from "../../shared/icons.slint";
+
+component FFMPEGNotFound inherits Rectangle {
+    callback install();
+    callback close();
+
+    background: Theme.colors.primary-col;
+
+    HorizontalLayout {
+
+        VerticalLayout {
+            VerticalLayout {
+                Text {
+                    text: "Ubuntu";
+                }
+
+                Text {
+                    text: "Ubuntu";
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            cross-axis-alignment: center;
+
+            Text {
+                text: @tr("ffmpeg not found");
+                color: #fff;
+                font-size: 1.5rem;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            Text {
+                text: @tr("Install ffmpeg to playback videos.");
+                color: #888;
+                font-size: 0.8rem;
+                font-weight: 500;
+            }
+
+            Rectangle {
+                height: 20px;
+            }
+
+            HorizontalLayout {
+                PrimaryButton {
+                    text: @tr("Close");
+                    alt: true;
+                    image: Icons.close;
+                    clicked => { close(); }
+                }
+
+                Rectangle {
+                    width: 12px;
+                }
+
+                PrimaryButton {
+                    text: @tr("Install");
+                    image: Icons.link;
+                    clicked => { install(); }
+                }
+            }
+        }
+    }
+}
 
 export component VideoPlayer inherits Window {
     title: "Nectan Video Player";
@@ -20,12 +93,153 @@ export component VideoPlayer inherits Window {
     no-frame: !Theme.config.native-topbar;
     background: transparent;
     maximized: WindowBridge.maximized;
+    default-font-family: Theme.config.font;
+    default-font-size: Theme.font-size;
 
     in-out property <bool> ffmpeg-found: true;
 
+    callback open-ffmpeg();
+
+    in property <bool> playing;
+    in-out property <image> texture;
+
+    property <bool> vol-tray-open;
+
+    property <bool> shortcuts;
+    in property <string> file-name;
+    in property <string> file-size;
+
+    in-out property <float> progress;
+    in-out property <float> volume: 1.0;
+    in-out property <float> playback-speed: 1.0;
+
+    property <bool> controls-visible: true;
+
+    function wake() {
+        root.controls-visible = true;
+        idle-timer.restart();
+    }
+
+    idle-timer := Timer {
+        interval: 2s;
+        running: root.controls-visible;
+        triggered => {
+            self.running = false;
+            root.controls-visible = false;
+        }
+    }
+
+    pure callback toggle-pause-play();
+    pure callback toggle-mute();
+
+    callback volume-changed(float);
+    callback time-changed(float);
+    callback time-released(float);
+    callback seek-relative(float);
+    callback playback-speed-changed(float);
+    callback add-subtitle();
+    callback cycle-subtitle();
+
+    changed volume => {
+        volume-changed(root.volume);
+    }
+
+    function cycle-playback-speed() {
+        if (root.playback-speed < 0.75) {
+            root.playback-speed = 1.0;
+        } else if (root.playback-speed < 1.125) {
+            root.playback-speed = 1.25;
+        } else if (root.playback-speed < 1.375) {
+            root.playback-speed = 1.5;
+        } else if (root.playback-speed < 1.75) {
+            root.playback-speed = 2.0;
+        } else {
+            root.playback-speed = 0.5;
+        }
+        root.playback-speed-changed(root.playback-speed);
+    }
+
     ThemeAnimator { }
 
-    FocusScope {
+    fs := FocusScope {
+        KeyBinding {
+            keys: @keys(Space);
+            activated => { toggle-pause-play(); }
+        }
+
+        KeyBinding {
+            keys: @keys(LeftArrow);
+            activated => { seek-relative(-10); }
+        }
+
+        KeyBinding {
+            keys: @keys(RightArrow);
+            activated => { seek-relative(10); }
+        }
+
+        KeyBinding {
+            keys: @keys(H);
+            activated => { seek-relative(-10); }
+        }
+
+        KeyBinding {
+            keys: @keys(L);
+            activated => { seek-relative(10); }
+        }
+
+        KeyBinding {
+            keys: @keys(J);
+            activated => {
+                root.volume = clamp(root.volume - 0.1, 0.0, 1.0);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(UpArrow);
+            activated => {
+                root.volume = clamp(root.volume + 0.1, 0.0, 1.0);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(DownArrow);
+            activated => {
+                root.volume = clamp(root.volume - 0.1, 0.0, 1.0);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(K);
+            activated => {
+                root.volume = clamp(root.volume + 0.1, 0.0, 1.0);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(M);
+            activated => { toggle-mute(); }
+        }
+
+        KeyBinding {
+            keys: @keys(F);
+            activated => { root.full-screen = !root.full-screen; }
+        }
+
+        KeyBinding {
+            keys: @keys(F11);
+            activated => { root.full-screen = !root.full-screen; }
+        }
+
+        KeyBinding {
+            keys: @keys(Escape);
+            activated => { root.full-screen = false; }
+        }
+
+        key-pressed(e) => {
+            root.wake();
+            reject
+        }
+
         init => {
             self.focus();
         }
@@ -33,31 +247,285 @@ export component VideoPlayer inherits Window {
         NectanAppFrame {
             maximized: root.maximized || root.full-screen;
             background: #000;
+            border-color: #fff3;
 
-            if !ffmpeg-found: Rectangle {
-                VerticalLayout {
-                    alignment: center;
-                    cross-axis-alignment: center;
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: root.texture;
+                image-fit: contain;
+            }
 
-                    Text {
-                        text: @tr("ffmpeg not found");
-                        color: #fff;
-                        font-size: 1.5rem;
-                        font-weight: 600;
-                    }
-
-                    Rectangle {
-                        height: 8px;
-                    }
-
-                    Text {
-                        text: @tr("Install ffmpeg to use video player.");
-                        color: #888;
-                        font-size: 0.8rem;
-                        font-weight: 500;
+            TouchArea {
+                mouse-cursor: root.controls-visible ? MouseCursor.default : MouseCursor.none;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.move || e.kind == PointerEventKind.down) {
+                        root.wake();
                     }
                 }
             }
+
+            VerticalLayout {
+                opacity: root.controls-visible ? 1.0 : 0.0;
+                visible: self.opacity > 0.01;
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-bottom: 12px;
+
+                animate opacity {
+                    duration: 1s;
+                    easing: Theme.easing;
+                }
+
+                view-bar := HorizontalLayout {
+                    cross-axis-alignment: start;
+                    padding-top: 16px;
+
+                    VerticalLayout {
+                        Text {
+                            text: root.file-name;
+                            font-size: 1.5rem;
+                            font-weight: 600;
+                            color: #f1f1f1;
+                            overflow: elide;
+                        }
+                        // HorizontalLayout {
+                        //     alignment: start;
+                        //     // StarRating { }
+                        // }
+                        // Rectangle {
+                        //     height: 4px;
+                        // }
+
+                        Text {
+                            text: root.file-size;
+                            font-size: 0.8rem;
+                            font-weight: 500;
+                            color: #888;
+                        }
+                    }
+
+                    Rectangle { }
+
+                    IconButton {
+                        icon: Icons.key;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #c8c8c8;
+                        clicked => { root.shortcuts = true; }
+                    }
+
+                    IconButton {
+                        icon: Icons.minimize;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { root.minimized = true; }
+                    }
+
+                    IconButton {
+                        icon: Icons.maximize;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #f1f1f1;
+                        clicked => {
+                            root.maximized = !root.maximized;
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.close;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? Theme.colors.third-col.with-alpha(0.5) : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { root.close(); }
+                    }
+                }
+
+                Rectangle { }
+
+                Slider {
+                    track-color: #fff3;
+                    fill-color: #f1f1f1;
+                    knob-color: #f1f1f1;
+
+                    value <=> root.progress;
+
+                    changed(v) => {
+                        time-changed(v);
+                    }
+
+                    released(v) => {
+                        time-released(v);
+                    }
+                }
+
+                HorizontalLayout {
+                    padding-top: 0;
+                    spacing: 8px;
+
+                    Rectangle {
+                        width: (28px * 3) + (8px * 2);
+
+                        Slider {
+                            track-color: #fff3;
+                            fill-color: #f1f1f1;
+                            knob-color: #f1f1f1;
+                            value <=> root.volume;
+                        }
+                    }
+
+                    Rectangle { }
+
+                    IconButton {
+                        icon: Icons.fast-forward;
+                        rotation: 180deg;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? #fff3 : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { seek-relative(-10); }
+                    }
+
+                    IconButton {
+                        icon: root.playing ? Icons.pause : Icons.play;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? #fff3 : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { toggle-pause-play(); }
+                    }
+
+                    IconButton {
+                        icon: Icons.fast-forward;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? #fff3 : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { seek-relative(10); }
+                    }
+
+                    Rectangle { }
+
+                    IconButton {
+                        icon: Icons.subtitles;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? #fff3 : transparent;
+                        colorize: #f1f1f1;
+
+                        clicked => { subs-popup.show(); }
+
+                        subs-popup := MenuPopup {
+                            show-on-left: true;
+                            width: parent.width;
+                            height: parent.height;
+                            menu-width: 208px;
+
+                            MenuRow {
+                                text: @tr("Add Subtitle File");
+                                icon: Icons.plus;
+                                clicked => {
+                                    subs-popup.close();
+                                    root.add-subtitle();
+                                }
+                            }
+
+                            MenuRow {
+                                text: @tr("Sub Track");
+                                icon: Icons.chevron-right;
+                                clicked => {
+                                    subs-popup.close();
+                                    root.cycle-subtitle();
+                                }
+                            }
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.settings;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? #fff3 : transparent;
+                        colorize: #f1f1f1;
+                        clicked => {
+                            settings-popup.show();
+                        }
+
+                        settings-popup := MenuPopup {
+                            show-on-left: true;
+                            width: parent.width;
+                            height: parent.height;
+                            menu-width: 208px;
+
+                            MenuRow {
+                                text: "Speed: \{root.playback-speed}x";
+                                icon: Icons.recent;
+                                clicked => {
+                                    root.cycle-playback-speed();
+                                }
+                            }
+                        }
+                    }
+
+                    IconButton {
+                        icon: root.full-screen ? Icons.exit-fullscreen : Icons.fullscreen;
+                        icon-size: 16px;
+                        inner-bg: self.hovered ? #fff3 : transparent;
+                        colorize: #f1f1f1;
+                        clicked => { root.full-screen = !root.full-screen; }
+                    }
+                }
+            }
+
+            if !ffmpeg-found: FFMPEGNotFound {
+                install => { open-ffmpeg(); }
+                close => { root.close(); }
+            }
         }
+    }
+
+    if root.shortcuts: ShortcutsModal {
+        ShortcutRow {
+            text: @tr("Play / pause");
+            keys: @keys(Space);
+        }
+
+        ShortcutRow {
+            text: @tr("Seek backward 10 seconds");
+            keys: @keys(LeftArrow);
+            alt-keys: @keys(H);
+        }
+
+        ShortcutRow {
+            text: @tr("Seek forward 10 seconds");
+            keys: @keys(RightArrow);
+            alt-keys: @keys(L);
+        }
+
+        ShortcutRow {
+            text: @tr("Volume up");
+            keys: @keys(K);
+            alt-keys: @keys(UpArrow);
+        }
+
+        ShortcutRow {
+            text: @tr("Volume down");
+            keys: @keys(J);
+            alt-keys: @keys(DownArrow);
+        }
+
+        ShortcutRow {
+            text: @tr("Mute");
+            keys: @keys(M);
+        }
+
+        ShortcutRow {
+            text: @tr("Toggle fullscreen");
+            keys: @keys(F11);
+            alt-keys: @keys(F);
+        }
+
+        ShortcutRow {
+            text: @tr("Exit fullscreen");
+            keys: @keys(Escape);
+        }
+
+        on-close => { fs.focus(); root.shortcuts = false; }
     }
 }

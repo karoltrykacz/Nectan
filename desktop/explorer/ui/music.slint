@@ -7,6 +7,8 @@ import {
     GeneralModal,
     TextButton,
     SvgIcon,
+    ShortcutRow,
+    ShortcutsModal,
 } from "../../shared/elements.slint";
 import { WindowBridge } from "../../shared/window.slint";
 import { Icons } from "../../shared/icons.slint";
@@ -25,14 +27,13 @@ component QueueRow inherits Rectangle {
     callback drag-started();
     callback drag-ended();
     callback drag-cancelled();
-    // Cursor y in window coordinates.
     callback drag-position(length);
 
     height: 48px;
-    opacity: root.dragging ? 0.35 : 1.0;
-    background: row-ta.pressed ? #fff5 : row-ta.has-hover ? #fff3 : transparent;
     border-radius: 12px;
     corner-shape: CornerShape.squircle;
+    opacity: root.dragging ? 0.35 : 1.0;
+    background: row-ta.pressed ? #fff5 : row-ta.has-hover ? #fff3 : transparent;
 
     row-ta := TouchArea {
         mouse-cursor: pointer;
@@ -168,39 +169,6 @@ component ArtworkInspector inherits GeneralModal {
     }
 }
 
-component ShortcutsModal inherits GeneralModal {
-
-    init => { self.focus(); }
-
-    Rectangle {
-        width: min(720px, parent.width - 40px);
-        height: min(480px, parent.height - 40px);
-        clip: true;
-        corner-shape: CornerShape.squircle;
-        drop-shadow-color: #00000099;
-        drop-shadow-blur: 28px;
-        background: #0003;
-        backdrop-blur: 5px;
-        border-radius: 24px;
-        border-width: 1px;
-        border-color: #fff3;
-
-        TouchArea {
-            clicked => {}
-        }
-
-        VerticalLayout {
-            padding: 20px;
-            Text {
-                font-size: 1.5rem;
-                font-weight: 600;
-                text: @tr("Shortcuts");
-                color: #f1f1f1;
-            }
-        }
-    }
-}
-
 component ArtworkCard inherits Rectangle {
     in property <image> source;
     in property <length> size: min(200px, root.source.height * 1px);
@@ -287,6 +255,7 @@ export component MusicPlayer inherits Window {
     in-out property <bool> repeat: false;
     in-out property <bool> shortcuts: false;
     in-out property <bool> properties: false;
+
     in-out property <bool> queue-open;
     in-out property <[Track]> queue-tracks;
     property <int> drag-source: -1;
@@ -520,11 +489,11 @@ export component MusicPlayer inherits Window {
                 keys: @keys(I);
                 activated => { root.properties = true; }
             }
-
-            KeyBinding {
-                keys: @keys(Q);
-                activated => { root.queue-open = !root.queue-open; }
-            }
+            //
+            // KeyBinding {
+            //     keys: @keys(Q);
+            //     activated => { root.queue-open = !root.queue-open; }
+            // }
 
             key-pressed(e) => {
                 root.wake();
@@ -661,12 +630,15 @@ export component MusicPlayer inherits Window {
                         cross-axis-alignment: center;
                         spacing: root.compact ? 20px : 12px;
 
-                        if !root.compact: IconButton {
-                            inner-bg: transparent;
-                            icon: Icons.disc;
-                            colorize: #f1f1f1;
-
-                            clicked => { root.queue-open = !root.queue-open; }
+                        // if !root.compact: IconButton {
+                        //     inner-bg: transparent;
+                        //     icon: Icons.disc;
+                        //     colorize: #f1f1f1;
+                        //
+                        //     clicked => { root.queue-open = !root.queue-open; }
+                        // }
+			if !root.compact: Rectangle {
+                            width: 28px;
                         }
 
                         Rectangle { }
@@ -968,6 +940,63 @@ export component MusicPlayer inherits Window {
     }
 
     if root.shortcuts: ShortcutsModal {
+        ShortcutRow {
+            text: @tr("Play / pause");
+            keys: @keys(Space);
+        }
+
+        ShortcutRow {
+            text: @tr("Toggle fullscreen");
+            keys: @keys(F11);
+            alt-keys: @keys(F);
+        }
+
+        ShortcutRow {
+            text: @tr("Show shortcuts");
+            keys: @keys(S);
+        }
+
+        ShortcutRow {
+            text: @tr("Exit fullscreen and restore window");
+            keys: @keys(Escape);
+        }
+
+        ShortcutRow {
+            text: @tr("Volume up");
+            keys: @keys(K);
+            alt-keys: @keys(UpArrow);
+        }
+
+        ShortcutRow {
+            text: @tr("Volume down");
+            keys: @keys(J);
+            alt-keys: @keys(DownArrow);
+        }
+
+        ShortcutRow {
+            text: @tr("Next track");
+            keys: @keys(RightArrow);
+            alt-keys: @keys(L);
+        }
+
+        ShortcutRow {
+            text: @tr("Previous track");
+            keys: @keys(LeftArrow);
+            alt-keys: @keys(H);
+        }
+
+        ShortcutRow {
+            text: @tr("Seek to 0%–90%");
+            keys: @keys(Digit0);
+            alt-keys: @keys(Digit9);
+            alt-separator: "–";
+        }
+
+        ShortcutRow {
+            text: @tr("Properties");
+            keys: @keys(I);
+        }
+
         on-close => { fs.focus(); root.shortcuts = false; }
     }
 
